@@ -17,7 +17,7 @@ const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
-type View = 'list' | 'report' | 'search' | 'image'
+type View = 'list' | 'report' | 'search' | 'create'
 
 export default function Page() {
   const [view, setView] = useState<View>('list')
@@ -31,7 +31,7 @@ export default function Page() {
   const [reportTab, setReportTab] = useState<ReportTab>('progress')
   const [date, setDate] = useState(today())
   const [desc, setDesc] = useState('')
-  const [newStatus, setNewStatus] = useState('')
+  const [progressStatus, setProgressStatus] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitMsg, setSubmitMsg] = useState('')
   const [submitOk, setSubmitOk] = useState(false)
@@ -50,6 +50,15 @@ export default function Page() {
   const [searchTaskResults, setSearchTaskResults] = useState<Task[]>([])
   const [searchDetail, setSearchDetail] = useState<any>(null)
   const [searching, setSearching] = useState(false)
+
+  // create project form
+  const [newName, setNewName] = useState('')
+  const [newContact, setNewContact] = useState('')
+  const [newAddress, setNewAddress] = useState('')
+  const [newStatus, setNewStatus] = useState('報價中')
+  const [creating, setCreating] = useState(false)
+  const [createMsg, setCreateMsg] = useState('')
+  const [createOk, setCreateOk] = useState(false)
 
   // image (progress tab)
   const [imgPreview, setImgPreview] = useState('')
@@ -82,7 +91,7 @@ export default function Page() {
     setSelected(p)
     setDate(today())
     setDesc('')
-    setNewStatus('')
+    setProgressStatus('')
     setSubmitMsg('')
     setSubmitOk(false)
     setItemName('')
@@ -104,14 +113,14 @@ export default function Page() {
       const r = await fetch('/api/progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pageId: selected.id, date, description: desc, newStatus: newStatus || undefined }),
+        body: JSON.stringify({ pageId: selected.id, date, description: desc, newStatus: progressStatus || undefined }),
       })
       const data = await r.json()
       if (r.ok) {
         setSubmitMsg('進度已寫入 Notion ✓')
         setSubmitOk(true)
         setDesc('')
-        setNewStatus('')
+        setProgressStatus('')
         fetchProjects()
       } else {
         setSubmitMsg('錯誤：' + (data.error ?? '未知錯誤'))
@@ -235,6 +244,33 @@ export default function Page() {
     setItemImgPreview('')
   }
 
+  async function submitCreateProject() {
+    if (!newName.trim()) return
+    setCreating(true)
+    setCreateMsg('')
+    setCreateOk(false)
+    try {
+      const r = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, contact: newContact, address: newAddress, status: newStatus }),
+      })
+      const data = await r.json()
+      if (r.ok) {
+        setCreateMsg('專案已建立 ✓')
+        setCreateOk(true)
+        setNewName('')
+        setNewContact('')
+        setNewAddress('')
+        setNewStatus('報價中')
+        fetchProjects()
+      } else {
+        setCreateMsg('錯誤：' + (data.error ?? '未知錯誤'))
+        setCreateOk(false)
+      }
+    } finally { setCreating(false) }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
@@ -242,7 +278,6 @@ export default function Page() {
         <div className="ml-auto flex gap-2">
           <NavBtn active={view === 'list'} onClick={() => setView('list')}>案件清單</NavBtn>
           <NavBtn active={view === 'search'} onClick={() => setView('search')}>查詢</NavBtn>
-          <NavBtn active={view === 'image'} onClick={() => setView('image')}>上傳截圖</NavBtn>
         </div>
       </header>
 
@@ -259,6 +294,11 @@ export default function Page() {
                 <button onClick={() => setSearchText('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
               )}
             </div>
+
+            <button onClick={() => { setView('create'); setCreateMsg(''); setCreateOk(false) }}
+              className="w-full mb-3 border border-dashed border-gray-300 rounded-xl py-2.5 text-sm text-gray-500 hover:border-gray-500 hover:text-gray-700 transition-colors flex items-center justify-center gap-1.5">
+              + 新增專案
+            </button>
 
             <div className="flex gap-1.5 flex-wrap mb-4">
               {FILTER_TABS.map(tab => {
@@ -347,7 +387,7 @@ export default function Page() {
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">同時更新狀態（選填）</label>
-                  <select value={newStatus} onChange={e => setNewStatus(e.target.value)}
+                  <select value={progressStatus} onChange={e => setProgressStatus(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 bg-white">
                     <option value="">不更改</option>
                     {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -575,42 +615,43 @@ export default function Page() {
           </div>
         )}
 
-        {/* IMAGE */}
-        {view === 'image' && (
+        {/* CREATE */}
+        {view === 'create' && (
           <div>
-            <p className="text-sm text-gray-500 mb-4">上傳 LINE 截圖或文件，自動辨識進度資訊</p>
-            <div onClick={() => fileRef.current?.click()}
-              className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-gray-400 transition-colors mb-4">
-              {imgPreview
-                ? imgPreview.startsWith('pdf:')
-                  ? <p className="text-sm text-gray-600">📄 {imgPreview.slice(4)}</p>
-                  : <img src={imgPreview} className="max-h-48 mx-auto rounded-lg" alt="preview" />
-                : <div className="text-gray-400 text-sm">點此選擇圖片或 PDF<br />支援 JPG、PNG、PDF</div>}
-            </div>
-            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/jpg,application/pdf" onChange={handleImage} className="hidden" />
-            {analyzing && <p className="text-sm text-gray-500 text-center py-4">辨識中...</p>}
-            {analyzed && (
-              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 mb-4">
-                <p className="text-xs font-medium text-gray-500">辨識結果</p>
-                {analyzed.disabled
-                  ? <p className="text-sm text-gray-500">{analyzed.error}</p>
-                  : <>
-                    {analyzed.projectHint && <div><span className="text-xs text-gray-400">專案提示：</span><span className="text-sm text-gray-800">{analyzed.projectHint}</span></div>}
-                    <div><span className="text-xs text-gray-400">日期：</span><span className="text-sm text-gray-800">{analyzed.date}</span></div>
-                    <div><span className="text-xs text-gray-400">進度描述：</span><span className="text-sm text-gray-800">{analyzed.description}</span></div>
-                    {analyzed.contact && <div><span className="text-xs text-gray-400">聯絡人：</span><span className="text-sm text-gray-800">{analyzed.contact}</span></div>}
-                    <p className="text-xs text-gray-400">信心度：{analyzed.confidence}</p>
-                    <button onClick={() => setView('list')} className="w-full bg-gray-900 text-white rounded-lg py-2 text-sm font-medium hover:bg-gray-700">
-                      選擇案件套用
-                    </button>
-                  </>
-                }
-                <button onClick={() => { setImgPreview(''); setAnalyzed(null) }}
-                  className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
-                  清除
-                </button>
+            <button onClick={() => setView('list')} className="text-sm text-gray-500 hover:text-gray-800 mb-4 flex items-center gap-1">← 返回清單</button>
+            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+              <p className="text-sm font-medium text-gray-700">新增專案</p>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">專案名稱 <span className="text-red-400">*</span></label>
+                <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+                  placeholder="例：台北信義案"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
               </div>
-            )}
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">聯絡人</label>
+                <input type="text" value={newContact} onChange={e => setNewContact(e.target.value)}
+                  placeholder="例：王先生"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">地址</label>
+                <input type="text" value={newAddress} onChange={e => setNewAddress(e.target.value)}
+                  placeholder="例：台北市信義區..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">狀態</label>
+                <select value={newStatus} onChange={e => setNewStatus(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 bg-white">
+                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <button onClick={submitCreateProject} disabled={creating || !newName.trim()}
+                className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
+                {creating ? '建立中...' : '建立專案 → 寫入 Notion'}
+              </button>
+              {createMsg && <p className={`text-sm text-center font-medium ${createOk ? 'text-green-600' : 'text-red-500'}`}>{createMsg}</p>}
+            </div>
           </div>
         )}
       </main>
