@@ -112,23 +112,32 @@ export async function addProgressRecord(pageId: string, date: string, descriptio
   }
 }
 
-export async function addItemRecord(pageId: string, item: string, spec: string, qty: string) {
+export async function addItemRecord(
+  pageId: string,
+  item: string,
+  content: string,
+  spec: string,
+  qty: string,
+  unit: string,
+  note: string,
+) {
   const tableInfo = await findSectionTable(pageId, '項目清單')
 
-  // Build cells array padded to match existing table width
-  const baseValues = [item, spec, qty]
+  // All 6 values in order: 項目 | 內容 | 規格(cm) | 數量 | 單位 | 備註
+  const allValues = [item, content, spec, qty, unit, note]
 
   if (tableInfo) {
     const width = tableInfo.width
     const cells = Array.from({ length: width }, (_, i) =>
-      [{ type: 'text', text: { content: baseValues[i] ?? '' } }]
+      [{ type: 'text', text: { content: allValues[i] ?? '' } }]
     )
     await notion.blocks.children.append({
       block_id: tableInfo.id,
       children: [{ type: 'table_row', table_row: { cells } }] as any,
     })
   } else {
-    // Auto-create 項目清單 section (3 columns)
+    // Auto-create 項目清單 section (6 columns)
+    const makeCell = (v: string) => [{ type: 'text', text: { content: v } }]
     await notion.blocks.children.append({
       block_id: pageId,
       children: [
@@ -139,12 +148,12 @@ export async function addItemRecord(pageId: string, item: string, spec: string, 
         {
           type: 'table',
           table: {
-            table_width: 3,
+            table_width: 6,
             has_column_header: false,
             has_row_header: false,
             children: [
-              { type: 'table_row', table_row: { cells: [[{ type: 'text', text: { content: '品項' } }], [{ type: 'text', text: { content: '規格' } }], [{ type: 'text', text: { content: '數量' } }]] } },
-              { type: 'table_row', table_row: { cells: [[{ type: 'text', text: { content: item } }], [{ type: 'text', text: { content: spec } }], [{ type: 'text', text: { content: qty } }]] } },
+              { type: 'table_row', table_row: { cells: ['項目','內容','規格(cm)','數量','單位','備註'].map(makeCell) } },
+              { type: 'table_row', table_row: { cells: allValues.map(makeCell) } },
             ],
           },
         },
