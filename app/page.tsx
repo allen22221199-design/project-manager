@@ -13,6 +13,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_OPTIONS = ['報價中', '等待中', '打樣中', '對色中', '生產中', '施工中', '請款中含保留款', '完成']
 
+const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中', '施工中', '等待中']
+
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string }
 type View = 'list' | 'report' | 'search' | 'image'
 
@@ -21,6 +23,8 @@ export default function Page() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Project | null>(null)
+  const [filterStatus, setFilterStatus] = useState('全部')
+  const [searchText, setSearchText] = useState('')
 
   // progress form
   const [date, setDate] = useState(today())
@@ -159,27 +163,71 @@ export default function Page() {
         {/* LIST */}
         {view === 'list' && (
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-gray-500">點選案子開始回報進度</p>
-              <button onClick={fetchProjects} className="text-sm text-blue-600 hover:underline">重新整理</button>
+            {/* 搜尋欄 */}
+            <div className="relative mb-3">
+              <input
+                type="text"
+                value={searchText}
+                onChange={e => setSearchText(e.target.value)}
+                placeholder="搜尋案件名稱或聯絡人..."
+                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gray-400 pr-8"
+              />
+              {searchText && (
+                <button onClick={() => setSearchText('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
+              )}
             </div>
-            {loading ? <p className="text-gray-400 text-sm py-8 text-center">載入中...</p> : (
-              <div className="space-y-2">
-                {projects.length === 0 && <p className="text-gray-400 text-sm text-center py-8">無進行中的案件</p>}
-                {projects.map(p => (
-                  <div key={p.id} onClick={() => selectProject(p)}
-                    className="bg-white border border-gray-200 rounded-xl p-4 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{p.name}</p>
-                      <p className="text-sm text-gray-500 mt-0.5">{p.contact}{p.address ? ` · ${p.address}` : ''}</p>
-                    </div>
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${STATUS_COLORS[p.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                      {p.status}
+
+            {/* 篩選標籤 */}
+            <div className="flex gap-1.5 flex-wrap mb-4">
+              {FILTER_TABS.map(tab => {
+                const count = tab === '全部'
+                  ? projects.length
+                  : projects.filter(p => p.status === tab).length
+                return (
+                  <button key={tab} onClick={() => setFilterStatus(tab)}
+                    className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                      filterStatus === tab
+                        ? 'bg-gray-900 text-white'
+                        : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'
+                    }`}>
+                    {tab}
+                    <span className={`ml-1 ${filterStatus === tab ? 'text-gray-300' : 'text-gray-400'}`}>
+                      {count}
                     </span>
-                  </div>
-                ))}
-              </div>
-            )}
+                  </button>
+                )
+              })}
+              <button onClick={fetchProjects} className="ml-auto text-xs text-gray-400 hover:text-gray-700 px-2">↻ 重新整理</button>
+            </div>
+
+            {loading ? <p className="text-gray-400 text-sm py-8 text-center">載入中...</p> : (() => {
+              const filtered = projects.filter(p => {
+                const matchStatus = filterStatus === '全部' || p.status === filterStatus
+                const matchSearch = !searchText || p.name.includes(searchText) || p.contact.includes(searchText) || p.address.includes(searchText)
+                return matchStatus && matchSearch
+              })
+              return (
+                <div className="space-y-2">
+                  {filtered.length === 0 && (
+                    <p className="text-gray-400 text-sm text-center py-8">
+                      {searchText ? `找不到「${searchText}」相關案件` : '此分類無案件'}
+                    </p>
+                  )}
+                  {filtered.map(p => (
+                    <div key={p.id} onClick={() => selectProject(p)}
+                      className="bg-white border border-gray-200 rounded-xl p-4 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 truncate">{p.name}</p>
+                        <p className="text-sm text-gray-500 mt-0.5">{p.contact}{p.address ? ` · ${p.address}` : ''}</p>
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${STATUS_COLORS[p.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {p.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         )}
 
