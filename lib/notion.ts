@@ -162,6 +162,18 @@ export async function addItemRecord(
   }
 }
 
+export async function createProject(name: string, contact: string, address: string, status: string) {
+  return await notion.pages.create({
+    parent: { database_id: DATABASE_ID },
+    properties: {
+      專案名稱: { title: [{ text: { content: name } }] },
+      聯絡人: { rich_text: [{ text: { content: contact } }] },
+      地址: { rich_text: [{ text: { content: address } }] },
+      狀態: { status: { name: status } },
+    },
+  }) as any
+}
+
 export async function updateProjectStatus(pageId: string, status: string) {
   await notion.pages.update({
     page_id: pageId,
