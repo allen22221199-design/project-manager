@@ -16,6 +16,7 @@ const STATUS_OPTIONS = ['報價中', '等待中', '打樣中', '對色中', '生
 const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中', '施工中', '等待中']
 
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string }
+type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type View = 'list' | 'report' | 'search' | 'image'
 
 export default function Page() {
@@ -35,7 +36,8 @@ export default function Page() {
 
   // search
   const [searchQ, setSearchQ] = useState('')
-  const [searchResults, setSearchResults] = useState<Project[]>([])
+  const [searchProjects2, setSearchProjects2] = useState<Project[]>([])
+  const [searchTasks2, setSearchTasks2] = useState<Task[]>([])
   const [searchDetail, setSearchDetail] = useState<any>(null)
   const [searching, setSearching] = useState(false)
 
@@ -101,7 +103,9 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: searchQ }),
       })
-      setSearchResults(await r.json())
+      const data = await r.json()
+      setSearchProjects2(data.projects ?? [])
+      setSearchTasks2(data.tasks ?? [])
     } finally { setSearching(false) }
   }
 
@@ -293,16 +297,55 @@ export default function Page() {
               </button>
             </div>
 
-            {!searchDetail && searchResults.map(p => (
-              <div key={p.id} onClick={() => loadDetail(p)}
-                className="bg-white border border-gray-200 rounded-xl p-4 mb-2 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 truncate">{p.name}</p>
-                  <p className="text-sm text-gray-500">{p.contact}</p>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${STATUS_COLORS[p.status] ?? 'bg-gray-100 text-gray-600'}`}>{p.status}</span>
-              </div>
-            ))}
+            {!searchDetail && (
+              <>
+                {/* 專案結果 */}
+                {searchProjects2.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-medium text-gray-400 mb-2 px-1">專案 ({searchProjects2.length})</p>
+                    {searchProjects2.map(p => (
+                      <div key={p.id} onClick={() => loadDetail(p)}
+                        className="bg-white border border-gray-200 rounded-xl p-4 mb-2 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 truncate">{p.name}</p>
+                          <p className="text-sm text-gray-500">{p.contact}</p>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${STATUS_COLORS[p.status] ?? 'bg-gray-100 text-gray-600'}`}>{p.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 任務結果 */}
+                {searchTasks2.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 mb-2 px-1">任務事項 ({searchTasks2.length})</p>
+                    {searchTasks2.map(t => (
+                      <a key={t.id} href={t.url} target="_blank" rel="noopener noreferrer"
+                        className="bg-white border border-gray-200 rounded-xl p-4 mb-2 flex items-start gap-3 hover:border-gray-400 transition-colors block no-underline">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 truncate">{t.taskName}</p>
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                            {t.assignees && <p className="text-sm text-gray-500">指派：{t.assignees}</p>}
+                            {t.helpers && <p className="text-sm text-gray-500">協助：{t.helpers}</p>}
+                            {t.dueDate && <p className="text-sm text-gray-400">截止：{t.dueDate}</p>}
+                          </div>
+                          {t.note && <p className="text-xs text-gray-400 mt-1 truncate">{t.note}</p>}
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[t.status] ?? 'bg-gray-100 text-gray-600'}`}>{t.status || '未設定'}</span>
+                          {t.priority && <span className="text-xs text-gray-400">{t.priority}</span>}
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                )}
+
+                {searchProjects2.length === 0 && searchTasks2.length === 0 && searchQ && !searching && (
+                  <p className="text-sm text-gray-400 text-center py-8">找不到相關結果</p>
+                )}
+              </>
+            )}
 
             {searchDetail && (
               <div className="bg-white border border-gray-200 rounded-xl p-4">
