@@ -38,8 +38,11 @@ export default function Page() {
 
   // item form
   const [itemName, setItemName] = useState('')
+  const [itemContent, setItemContent] = useState('')
   const [itemSpec, setItemSpec] = useState('')
   const [itemQty, setItemQty] = useState('')
+  const [itemUnit, setItemUnit] = useState('')
+  const [itemNote, setItemNote] = useState('')
 
   // search
   const [searchQ, setSearchQ] = useState('')
@@ -77,8 +80,11 @@ export default function Page() {
     setSubmitMsg('')
     setSubmitOk(false)
     setItemName('')
+    setItemContent('')
     setItemSpec('')
     setItemQty('')
+    setItemUnit('')
+    setItemNote('')
     setReportTab('progress')
     setView('report')
   }
@@ -117,15 +123,18 @@ export default function Page() {
       const r = await fetch('/api/progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'item', pageId: selected.id, item: itemName, spec: itemSpec, qty: itemQty }),
+        body: JSON.stringify({ action: 'item', pageId: selected.id, item: itemName, content: itemContent, spec: itemSpec, qty: itemQty, unit: itemUnit, note: itemNote }),
       })
       const data = await r.json()
       if (r.ok) {
         setSubmitMsg('品項已寫入 Notion ✓')
         setSubmitOk(true)
         setItemName('')
+        setItemContent('')
         setItemSpec('')
         setItemQty('')
+        setItemUnit('')
+        setItemNote('')
       } else {
         setSubmitMsg('錯誤：' + (data.error ?? '未知錯誤'))
         setSubmitOk(false)
@@ -311,24 +320,44 @@ export default function Page() {
             )}
 
             {reportTab === 'item' && (
-              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">品項名稱 <span className="text-red-400">*</span></label>
-                  <input type="text" value={itemName} onChange={e => setItemName(e.target.value)}
-                    placeholder="例：1F單開門、消防箱蓋板"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">規格／尺寸</label>
-                  <input type="text" value={itemSpec} onChange={e => setItemSpec(e.target.value)}
-                    placeholder="例：110x210cm、92*129"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">數量</label>
-                  <input type="text" value={itemQty} onChange={e => setItemQty(e.target.value)}
-                    placeholder="例：2組、28片"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-sm text-gray-600 mb-1">項目 <span className="text-red-400">*</span></label>
+                    <input type="text" value={itemName} onChange={e => setItemName(e.target.value)}
+                      placeholder="例：消防箱蓋板、維修門"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm text-gray-600 mb-1">內容</label>
+                    <input type="text" value={itemContent} onChange={e => setItemContent(e.target.value)}
+                      placeholder="例：戴固煥盛烤漆、單開門貼板"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">規格(cm)</label>
+                    <input type="text" value={itemSpec} onChange={e => setItemSpec(e.target.value)}
+                      placeholder="例：92*129、60*80"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">數量</label>
+                    <input type="text" value={itemQty} onChange={e => setItemQty(e.target.value)}
+                      placeholder="例：23、28"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">單位</label>
+                    <input type="text" value={itemUnit} onChange={e => setItemUnit(e.target.value)}
+                      placeholder="例：組、片、扇"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">備註</label>
+                    <input type="text" value={itemNote} onChange={e => setItemNote(e.target.value)}
+                      placeholder="其他說明"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                  </div>
                 </div>
                 <button onClick={submitItem} disabled={submitting || !itemName.trim()}
                   className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
