@@ -38,8 +38,8 @@ export default function Page() {
 
   // item form
   const [itemName, setItemName] = useState('')
+  const [itemSpec, setItemSpec] = useState('')
   const [itemQty, setItemQty] = useState('')
-  const [itemNote, setItemNote] = useState('')
 
   // search
   const [searchQ, setSearchQ] = useState('')
@@ -77,8 +77,8 @@ export default function Page() {
     setSubmitMsg('')
     setSubmitOk(false)
     setItemName('')
+    setItemSpec('')
     setItemQty('')
-    setItemNote('')
     setReportTab('progress')
     setView('report')
   }
@@ -117,15 +117,15 @@ export default function Page() {
       const r = await fetch('/api/progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'item', pageId: selected.id, itemName, qty: itemQty, note: itemNote }),
+        body: JSON.stringify({ action: 'item', pageId: selected.id, item: itemName, spec: itemSpec, qty: itemQty }),
       })
       const data = await r.json()
       if (r.ok) {
         setSubmitMsg('品項已寫入 Notion ✓')
         setSubmitOk(true)
         setItemName('')
+        setItemSpec('')
         setItemQty('')
-        setItemNote('')
       } else {
         setSubmitMsg('錯誤：' + (data.error ?? '未知錯誤'))
         setSubmitOk(false)
@@ -201,13 +201,9 @@ export default function Page() {
         {view === 'list' && (
           <div>
             <div className="relative mb-3">
-              <input
-                type="text"
-                value={searchText}
-                onChange={e => setSearchText(e.target.value)}
+              <input type="text" value={searchText} onChange={e => setSearchText(e.target.value)}
                 placeholder="搜尋案件名稱、聯絡人或地址..."
-                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gray-400 pr-8"
-              />
+                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gray-400 pr-8" />
               {searchText && (
                 <button onClick={() => setSearchText('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
               )}
@@ -218,9 +214,7 @@ export default function Page() {
                 const count = tab === '全部' ? projects.length : projects.filter(p => p.status === tab).length
                 return (
                   <button key={tab} onClick={() => setFilterStatus(tab)}
-                    className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
-                      filterStatus === tab ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'
-                    }`}>
+                    className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${filterStatus === tab ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
                     {tab}
                     <span className={`ml-1 ${filterStatus === tab ? 'text-gray-300' : 'text-gray-400'}`}>{count}</span>
                   </button>
@@ -266,11 +260,8 @@ export default function Page() {
         {/* REPORT */}
         {view === 'report' && selected && (
           <div>
-            <button onClick={() => setView('list')} className="text-sm text-gray-500 hover:text-gray-800 mb-4 flex items-center gap-1">
-              ← 返回清單
-            </button>
+            <button onClick={() => setView('list')} className="text-sm text-gray-500 hover:text-gray-800 mb-4 flex items-center gap-1">← 返回清單</button>
 
-            {/* Project card */}
             <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
               <p className="font-medium text-gray-900">{selected.name}</p>
               <p className="text-sm text-gray-500 mt-0.5">{selected.contact}{selected.address ? ` · ${selected.address}` : ''}</p>
@@ -279,7 +270,6 @@ export default function Page() {
               </span>
             </div>
 
-            {/* Tabs */}
             <div className="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1">
               <button onClick={() => { setReportTab('progress'); setSubmitMsg(''); setSubmitOk(false) }}
                 className={`flex-1 text-sm py-2 rounded-lg font-medium transition-colors ${reportTab === 'progress' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
@@ -287,17 +277,15 @@ export default function Page() {
               </button>
               <button onClick={() => { setReportTab('item'); setSubmitMsg(''); setSubmitOk(false) }}
                 className={`flex-1 text-sm py-2 rounded-lg font-medium transition-colors ${reportTab === 'item' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                📦 新增品項
+                📋 新增品項
               </button>
             </div>
 
-            {/* Progress tab */}
             {reportTab === 'progress' && (
               <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">日期</label>
                   <input type="text" value={date} onChange={e => setDate(e.target.value)}
-                    placeholder="2026/06/17"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
                 </div>
                 <div>
@@ -318,40 +306,35 @@ export default function Page() {
                   className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
                   {submitting ? '寫入中...' : '確認送出 → 寫入 Notion'}
                 </button>
-                {submitMsg && (
-                  <p className={`text-sm text-center font-medium ${submitOk ? 'text-green-600' : 'text-red-500'}`}>{submitMsg}</p>
-                )}
+                {submitMsg && <p className={`text-sm text-center font-medium ${submitOk ? 'text-green-600' : 'text-red-500'}`}>{submitMsg}</p>}
               </div>
             )}
 
-            {/* Item tab */}
             {reportTab === 'item' && (
               <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">品項名稱 <span className="text-red-400">*</span></label>
                   <input type="text" value={itemName} onChange={e => setItemName(e.target.value)}
-                    placeholder="例：消防箱蓋板"
+                    placeholder="例：1F單開門、消防箱蓋板"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">規格／尺寸</label>
+                  <input type="text" value={itemSpec} onChange={e => setItemSpec(e.target.value)}
+                    placeholder="例：110x210cm、92*129"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">數量</label>
                   <input type="text" value={itemQty} onChange={e => setItemQty(e.target.value)}
-                    placeholder="例：28片"
+                    placeholder="例：2組、28片"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">備註</label>
-                  <textarea value={itemNote} onChange={e => setItemNote(e.target.value)} rows={2}
-                    placeholder="尺寸、顏色、其他說明..."
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 resize-none" />
                 </div>
                 <button onClick={submitItem} disabled={submitting || !itemName.trim()}
                   className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
                   {submitting ? '寫入中...' : '新增品項 → 寫入 Notion'}
                 </button>
-                {submitMsg && (
-                  <p className={`text-sm text-center font-medium ${submitOk ? 'text-green-600' : 'text-red-500'}`}>{submitMsg}</p>
-                )}
+                {submitMsg && <p className={`text-sm text-center font-medium ${submitOk ? 'text-green-600' : 'text-red-500'}`}>{submitMsg}</p>}
               </div>
             )}
           </div>
@@ -420,54 +403,56 @@ export default function Page() {
             )}
 
             {searchDetail && (
-              <div className="bg-white border border-gray-200 rounded-xl p-4">
-                <button onClick={() => setSearchDetail(null)} className="text-sm text-gray-500 hover:text-gray-800 mb-3 block">← 返回</button>
-                <h2 className="font-medium text-gray-900 text-base">{searchDetail.name}</h2>
-                <div className="flex gap-2 mt-1 flex-wrap">
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[searchDetail.status] ?? 'bg-gray-100 text-gray-600'}`}>{searchDetail.status}</span>
-                  {searchDetail.contact && <span className="text-xs text-gray-500 py-1">{searchDetail.contact}</span>}
-                  {searchDetail.address && <span className="text-xs text-gray-500 py-1">{searchDetail.address}</span>}
+              <div>
+                <button onClick={() => setSearchDetail(null)} className="text-sm text-gray-500 hover:text-gray-800 mb-3 flex items-center gap-1">← 返回</button>
+
+                {/* Header */}
+                <div className="bg-white border border-gray-200 rounded-xl p-4 mb-3">
+                  <h2 className="font-medium text-gray-900 text-base">{searchDetail.name}</h2>
+                  <div className="flex gap-2 mt-1 flex-wrap">
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[searchDetail.status] ?? 'bg-gray-100 text-gray-600'}`}>{searchDetail.status}</span>
+                    {searchDetail.contact && <span className="text-xs text-gray-500 py-1">{searchDetail.contact}</span>}
+                    {searchDetail.address && <span className="text-xs text-gray-500 py-1">{searchDetail.address}</span>}
+                  </div>
                 </div>
 
-                {/* Progress rows */}
-                <div className="mt-4 border-t border-gray-100 pt-4">
-                  <p className="text-xs font-medium text-gray-500 mb-2">📑 進度紀錄</p>
-                  <div className="space-y-2">
-                    {(searchDetail.progressRows ?? []).length === 0
-                      ? <p className="text-sm text-gray-400">尚無進度紀錄</p>
-                      : [...(searchDetail.progressRows ?? [])].reverse().slice(0, 15).map((r: any, i: number) => (
-                        <div key={i} className="flex gap-3 text-sm">
+                {/* 📋 項目清單 */}
+                {(searchDetail.itemRows ?? []).length > 0 && (
+                  <SectionTable title="📋 項目清單" headers={searchDetail.itemHeaders} rows={searchDetail.itemRows} />
+                )}
+
+                {/* 📑 進度紀錄 */}
+                <div className="bg-white border border-gray-200 rounded-xl p-4 mb-3">
+                  <p className="text-xs font-medium text-gray-500 mb-3">📑 進度紀錄</p>
+                  {(searchDetail.progressRows ?? []).length === 0
+                    ? <p className="text-sm text-gray-400">尚無進度紀錄</p>
+                    : <div className="space-y-2">
+                      {[...(searchDetail.progressRows ?? [])].reverse().slice(0, 20).map((r: any, i: number) => (
+                        <div key={i} className="flex gap-3 text-sm border-b border-gray-50 pb-2 last:border-0 last:pb-0">
                           <span className="text-gray-400 shrink-0 w-24">{r.date}</span>
                           <span className="text-gray-700">{r.desc}</span>
                         </div>
-                      ))
-                    }
-                  </div>
-                </div>
-
-                {/* Item rows */}
-                {(searchDetail.itemRows ?? []).length > 0 && (
-                  <div className="mt-4 border-t border-gray-100 pt-4">
-                    <p className="text-xs font-medium text-gray-500 mb-2">📦 品項</p>
-                    <div className="space-y-1">
-                      {(searchDetail.itemRows ?? []).map((r: any, i: number) => (
-                        <div key={i} className="flex gap-2 text-sm">
-                          <span className="text-gray-700 font-medium">{r.name}</span>
-                          {r.qty && <span className="text-gray-500">{r.qty}</span>}
-                          {r.note && <span className="text-gray-400">{r.note}</span>}
-                        </div>
                       ))}
                     </div>
-                  </div>
+                  }
+                </div>
+
+                {/* 🚚 出貨紀錄 */}
+                {(searchDetail.shippingRows ?? []).length > 0 && (
+                  <SectionTable title="🚚 出貨紀錄" headers={searchDetail.shippingHeaders} rows={searchDetail.shippingRows} />
+                )}
+
+                {/* 💰 請款紀錄 */}
+                {(searchDetail.paymentRows ?? []).length > 0 && (
+                  <SectionTable title="💰 請款紀錄" headers={searchDetail.paymentHeaders} rows={searchDetail.paymentRows} />
                 )}
 
                 <button onClick={() => {
                   const proj = projects.find(p => p.id === searchDetail.id)
                   setSelected(proj ?? { id: searchDetail.id, name: searchDetail.name, status: searchDetail.status, contact: searchDetail.contact, address: searchDetail.address, url: '' })
                   setView('report')
-                }}
-                  className="mt-4 w-full border border-gray-200 rounded-lg py-2 text-sm text-gray-700 hover:bg-gray-50">
-                  回報此案進度 / 新增品項
+                }} className="w-full border border-gray-200 rounded-xl py-2.5 text-sm text-gray-700 hover:bg-gray-50 mt-1">
+                  回報進度 / 新增品項
                 </button>
               </div>
             )}
@@ -482,7 +467,7 @@ export default function Page() {
               className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-gray-400 transition-colors mb-4">
               {imgPreview
                 ? <img src={imgPreview} className="max-h-48 mx-auto rounded-lg" alt="preview" />
-                : <div className="text-gray-400 text-sm">點此選擇圖片<br/>支援 JPG、PNG</div>}
+                : <div className="text-gray-400 text-sm">點此選擇圖片<br />支援 JPG、PNG</div>}
             </div>
             <input ref={fileRef} type="file" accept="image/*" onChange={handleImage} className="hidden" />
             {analyzing && <p className="text-sm text-gray-500 text-center py-4">辨識中...</p>}
@@ -497,7 +482,6 @@ export default function Page() {
                     <div><span className="text-xs text-gray-400">進度描述：</span><span className="text-sm text-gray-800">{analyzed.description}</span></div>
                     {analyzed.contact && <div><span className="text-xs text-gray-400">聯絡人：</span><span className="text-sm text-gray-800">{analyzed.contact}</span></div>}
                     <p className="text-xs text-gray-400">信心度：{analyzed.confidence}</p>
-                    <p className="text-xs text-gray-500">請先從清單選擇對應案件，再套用此內容</p>
                     <button onClick={() => setView('list')} className="w-full bg-gray-900 text-white rounded-lg py-2 text-sm font-medium hover:bg-gray-700">
                       選擇案件套用
                     </button>
@@ -512,6 +496,32 @@ export default function Page() {
           </div>
         )}
       </main>
+    </div>
+  )
+}
+
+function SectionTable({ title, headers, rows }: { title: string; headers: string[]; rows: string[][] }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-4 mb-3 overflow-x-auto">
+      <p className="text-xs font-medium text-gray-500 mb-3">{title}</p>
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="border-b border-gray-200">
+            {headers.map((h, i) => (
+              <th key={i} className="text-left text-xs text-gray-400 font-medium pb-2 pr-4 whitespace-nowrap">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri} className="border-b border-gray-50 last:border-0">
+              {row.map((cell, ci) => (
+                <td key={ci} className="py-1.5 pr-4 text-gray-700 align-top whitespace-nowrap">{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
