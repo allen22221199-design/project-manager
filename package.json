@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
+    "@google/generative-ai": "^0.21.0",
     "@notionhq/client": "^2.2.15",
     "next": "14.2.5",
     "react": "^18",
