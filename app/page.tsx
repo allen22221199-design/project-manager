@@ -182,7 +182,7 @@ export default function Page() {
     const reader = new FileReader()
     reader.onload = async (ev) => {
       const dataUrl = ev.target?.result as string
-      setImgPreview(dataUrl)
+      setImgPreview(file.type === 'application/pdf' ? `pdf:${file.name}` : dataUrl)
       setAnalyzing(true)
       setAnalyzed(null)
       const base64 = dataUrl.split(',')[1]
@@ -205,7 +205,7 @@ export default function Page() {
     const reader = new FileReader()
     reader.onload = async (ev) => {
       const dataUrl = ev.target?.result as string
-      setItemImgPreview(dataUrl)
+      setItemImgPreview(file.type === 'application/pdf' ? `pdf:${file.name}` : dataUrl)
       setItemAnalyzing(true)
       setItemAnalyzed(null)
       const base64 = dataUrl.split(',')[1]
@@ -403,21 +403,23 @@ export default function Page() {
                 </div>
                 {/* Image upload */}
                 <div className="border-t border-gray-100 pt-3">
-                  <p className="text-xs text-gray-400 mb-2">📷 上傳圖片自動辨識品項（支援 PNG、JPG）</p>
+                  <p className="text-xs text-gray-400 mb-2">📷 上傳圖片或 PDF 自動辨識品項（支援 PNG、JPG、PDF）</p>
                   <div className="flex gap-2 items-center">
                     <button type="button" onClick={() => itemFileRef.current?.click()}
                       className="flex-1 border border-dashed border-gray-300 rounded-lg py-2 text-sm text-gray-500 hover:border-gray-500 hover:text-gray-700 transition-colors">
-                      {itemImgPreview ? '重新上傳圖片' : '選擇圖片...'}
+                      {itemImgPreview ? '重新上傳檔案' : '選擇圖片或 PDF...'}
                     </button>
                     {itemImgPreview && (
                       <button type="button" onClick={() => { setItemImgPreview(''); setItemAnalyzed(null) }}
                         className="text-gray-400 hover:text-gray-600 px-2 py-2 text-lg leading-none">×</button>
                     )}
                   </div>
-                  <input ref={itemFileRef} type="file" accept="image/png,image/jpeg,image/jpg" onChange={handleItemImage} className="hidden" />
+                  <input ref={itemFileRef} type="file" accept="image/png,image/jpeg,image/jpg,application/pdf" onChange={handleItemImage} className="hidden" />
 
                   {itemImgPreview && !itemAnalyzing && !itemAnalyzed && (
-                    <img src={itemImgPreview} className="mt-2 max-h-32 rounded-lg object-contain" alt="preview" />
+                    itemImgPreview.startsWith('pdf:')
+                      ? <p className="mt-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">📄 {itemImgPreview.slice(4)}</p>
+                      : <img src={itemImgPreview} className="mt-2 max-h-32 rounded-lg object-contain" alt="preview" />
                   )}
                   {itemAnalyzing && (
                     <p className="text-sm text-gray-400 text-center py-3 mt-2">辨識中...</p>
@@ -580,10 +582,12 @@ export default function Page() {
             <div onClick={() => fileRef.current?.click()}
               className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-gray-400 transition-colors mb-4">
               {imgPreview
-                ? <img src={imgPreview} className="max-h-48 mx-auto rounded-lg" alt="preview" />
-                : <div className="text-gray-400 text-sm">點此選擇圖片<br />支援 JPG、PNG</div>}
+                ? imgPreview.startsWith('pdf:')
+                  ? <p className="text-sm text-gray-600">📄 {imgPreview.slice(4)}</p>
+                  : <img src={imgPreview} className="max-h-48 mx-auto rounded-lg" alt="preview" />
+                : <div className="text-gray-400 text-sm">點此選擇圖片或 PDF<br />支援 JPG、PNG、PDF</div>}
             </div>
-            <input ref={fileRef} type="file" accept="image/*" onChange={handleImage} className="hidden" />
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/jpg,application/pdf" onChange={handleImage} className="hidden" />
             {analyzing && <p className="text-sm text-gray-500 text-center py-4">辨識中...</p>}
             {analyzed && (
               <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 mb-4">
