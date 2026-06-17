@@ -51,11 +51,17 @@ export default function Page() {
   const [searchDetail, setSearchDetail] = useState<any>(null)
   const [searching, setSearching] = useState(false)
 
-  // image
+  // image (progress tab)
   const [imgPreview, setImgPreview] = useState('')
   const [analyzing, setAnalyzing] = useState(false)
   const [analyzed, setAnalyzed] = useState<any>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // image (item tab)
+  const [itemImgPreview, setItemImgPreview] = useState('')
+  const [itemAnalyzing, setItemAnalyzing] = useState(false)
+  const [itemAnalyzed, setItemAnalyzed] = useState<any[] | null>(null)
+  const itemFileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { fetchProjects() }, [])
 
@@ -191,6 +197,42 @@ export default function Page() {
       } finally { setAnalyzing(false) }
     }
     reader.readAsDataURL(file)
+  }
+
+  async function handleItemImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target?.result as string
+      setItemImgPreview(dataUrl)
+      setItemAnalyzing(true)
+      setItemAnalyzed(null)
+      const base64 = dataUrl.split(',')[1]
+      const mediaType = file.type || 'image/jpeg'
+      try {
+        const r = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base64, mediaType, type: 'item' }),
+        })
+        const data = await r.json()
+        setItemAnalyzed(Array.isArray(data) ? data : null)
+      } finally { setItemAnalyzing(false) }
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  function applyItemAnalyzed(row: any) {
+    setItemName(row.item ?? '')
+    setItemContent(row.content ?? '')
+    setItemSpec(row.spec ?? '')
+    setItemQty(row.qty ?? '')
+    setItemUnit(row.unit ?? '')
+    setItemNote(row.note ?? '')
+    setItemAnalyzed(null)
+    setItemImgPreview('')
   }
 
   return (
@@ -359,6 +401,49 @@ export default function Page() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
                   </div>
                 </div>
+                {/* Image upload */}
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="text-xs text-gray-400 mb-2">📷 上傳圖片自動辨識品項（支援 PNG、JPG）</p>
+                  <div className="flex gap-2 items-center">
+                    <button type="button" onClick={() => itemFileRef.current?.click()}
+                      className="flex-1 border border-dashed border-gray-300 rounded-lg py-2 text-sm text-gray-500 hover:border-gray-500 hover:text-gray-700 transition-colors">
+                      {itemImgPreview ? '重新上傳圖片' : '選擇圖片...'}
+                    </button>
+                    {itemImgPreview && (
+                      <button type="button" onClick={() => { setItemImgPreview(''); setItemAnalyzed(null) }}
+                        className="text-gray-400 hover:text-gray-600 px-2 py-2 text-lg leading-none">×</button>
+                    )}
+                  </div>
+                  <input ref={itemFileRef} type="file" accept="image/png,image/jpeg,image/jpg" onChange={handleItemImage} className="hidden" />
+
+                  {itemImgPreview && !itemAnalyzing && !itemAnalyzed && (
+                    <img src={itemImgPreview} className="mt-2 max-h-32 rounded-lg object-contain" alt="preview" />
+                  )}
+                  {itemAnalyzing && (
+                    <p className="text-sm text-gray-400 text-center py-3 mt-2">辨識中...</p>
+                  )}
+
+                  {/* Analyzed results — one card per detected item */}
+                  {itemAnalyzed && itemAnalyzed.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs text-gray-500 font-medium">辨識到 {itemAnalyzed.length} 筆品項，點選套用：</p>
+                      {itemAnalyzed.map((row, i) => (
+                        <button key={i} type="button" onClick={() => applyItemAnalyzed(row)}
+                          className="w-full text-left border border-gray-200 rounded-lg px-3 py-2 hover:border-gray-900 hover:bg-gray-50 transition-colors">
+                          <p className="text-sm font-medium text-gray-900">{row.item || '(未辨識)'}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {[row.content, row.spec, row.qty && row.unit ? `${row.qty} ${row.unit}` : row.qty, row.note]
+                              .filter(Boolean).join(' · ')}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {itemAnalyzed && itemAnalyzed.length === 0 && (
+                    <p className="text-xs text-red-400 mt-2">未能從圖片辨識出品項，請手動填寫</p>
+                  )}
+                </div>
+
                 <button onClick={submitItem} disabled={submitting || !itemName.trim()}
                   className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
                   {submitting ? '寫入中...' : '新增品項 → 寫入 Notion'}
