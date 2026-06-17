@@ -97,6 +97,54 @@ export async function updateProjectStatus(pageId: string, status: string) {
   })
 }
 
+const TASKS_DATABASE_ID = '25d2cda48d7781fdb48be99fcf824daf'
+
+export async function searchTasks(query: string) {
+  const [usersRes, titleRes] = await Promise.all([
+    notion.users.list({}),
+    notion.databases.query({
+      database_id: TASKS_DATABASE_ID,
+      filter: { property: '任務名稱', title: { contains: query } },
+      page_size: 20,
+    }),
+  ])
+
+  const matchedUserIds = (usersRes.results as any[])
+    .filter(u => u.name?.toLowerCase().includes(query.toLowerCase()))
+    .map(u => u.id)
+
+  let personResults: any[] = []
+  for (const userId of matchedUserIds.slice(0, 3)) {
+    const r = await notion.databases.query({
+      database_id: TASKS_DATABASE_ID,
+      filter: {
+        or: [
+          { property: '指派人員', people: { contains: userId } },
+          { property: '協助人員', people: { contains: userId } },
+        ],
+      },
+      page_size: 20,
+    })
+    personResults.push(...r.results)
+  }
+
+  const seen = new Set<string>()
+  return [...titleRes.results, ...personResults]
+    .filter((p: any) => { if (seen.has(p.id)) return false; seen.add(p.id); return true })
+    .map((page: any) => ({
+      type: 'task' as const,
+      id: page.id,
+      taskName: page.properties['任務名稱']?.title?.[0]?.plain_text ?? '(未命名)',
+      status: page.properties['狀態']?.status?.name ?? '',
+      assignees: (page.properties['指派人員']?.people ?? []).map((u: any) => u.name).join('、'),
+      helpers: (page.properties['協助人員']?.people ?? []).map((u: any) => u.name).join('、'),
+      dueDate: page.properties['截止日期']?.date?.start ?? '',
+      priority: page.properties['優先等級']?.select?.name ?? '',
+      note: page.properties['備註']?.rich_text?.[0]?.plain_text ?? '',
+      url: page.url,
+    }))
+}
+
 export async function searchProjects(query: string) {
   const res = await notion.search({
     query,
