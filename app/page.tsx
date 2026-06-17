@@ -12,11 +12,11 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 const STATUS_OPTIONS = ['報價中', '等待中', '打樣中', '對色中', '生產中', '施工中', '請款中含保留款', '完成']
-
 const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中', '施工中', '等待中']
 
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
+type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'image'
 
 export default function Page() {
@@ -28,16 +28,23 @@ export default function Page() {
   const [searchText, setSearchText] = useState('')
 
   // progress form
+  const [reportTab, setReportTab] = useState<ReportTab>('progress')
   const [date, setDate] = useState(today())
   const [desc, setDesc] = useState('')
   const [newStatus, setNewStatus] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitMsg, setSubmitMsg] = useState('')
+  const [submitOk, setSubmitOk] = useState(false)
+
+  // item form
+  const [itemName, setItemName] = useState('')
+  const [itemQty, setItemQty] = useState('')
+  const [itemNote, setItemNote] = useState('')
 
   // search
   const [searchQ, setSearchQ] = useState('')
-  const [searchProjects2, setSearchProjects2] = useState<Project[]>([])
-  const [searchTasks2, setSearchTasks2] = useState<Task[]>([])
+  const [searchProjectResults, setSearchProjectResults] = useState<Project[]>([])
+  const [searchTaskResults, setSearchTaskResults] = useState<Task[]>([])
   const [searchDetail, setSearchDetail] = useState<any>(null)
   const [searching, setSearching] = useState(false)
 
@@ -68,6 +75,11 @@ export default function Page() {
     setDesc('')
     setNewStatus('')
     setSubmitMsg('')
+    setSubmitOk(false)
+    setItemName('')
+    setItemQty('')
+    setItemNote('')
+    setReportTab('progress')
     setView('report')
   }
 
@@ -75,20 +87,48 @@ export default function Page() {
     if (!selected || !desc.trim()) return
     setSubmitting(true)
     setSubmitMsg('')
+    setSubmitOk(false)
     try {
       const r = await fetch('/api/progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pageId: selected.id, date, description: desc, newStatus: newStatus || undefined }),
       })
+      const data = await r.json()
       if (r.ok) {
-        setSubmitMsg('已成功寫入 Notion')
+        setSubmitMsg('進度已寫入 Notion ✓')
+        setSubmitOk(true)
         setDesc('')
         setNewStatus('')
         fetchProjects()
       } else {
-        const e = await r.json()
-        setSubmitMsg('錯誤：' + e.error)
+        setSubmitMsg('錯誤：' + (data.error ?? '未知錯誤'))
+        setSubmitOk(false)
+      }
+    } finally { setSubmitting(false) }
+  }
+
+  async function submitItem() {
+    if (!selected || !itemName.trim()) return
+    setSubmitting(true)
+    setSubmitMsg('')
+    setSubmitOk(false)
+    try {
+      const r = await fetch('/api/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'item', pageId: selected.id, itemName, qty: itemQty, note: itemNote }),
+      })
+      const data = await r.json()
+      if (r.ok) {
+        setSubmitMsg('品項已寫入 Notion ✓')
+        setSubmitOk(true)
+        setItemName('')
+        setItemQty('')
+        setItemNote('')
+      } else {
+        setSubmitMsg('錯誤：' + (data.error ?? '未知錯誤'))
+        setSubmitOk(false)
       }
     } finally { setSubmitting(false) }
   }
@@ -104,12 +144,12 @@ export default function Page() {
         body: JSON.stringify({ query: searchQ }),
       })
       const data = await r.json()
-      setSearchProjects2(data.projects ?? [])
-      setSearchTasks2(data.tasks ?? [])
+      setSearchProjectResults(data.projects ?? [])
+      setSearchTaskResults(data.tasks ?? [])
     } finally { setSearching(false) }
   }
 
-  async function loadDetail(p: Project) {
+  async function loadDetail(p: { id: string }) {
     setSearching(true)
     try {
       const r = await fetch('/api/search', {
@@ -144,13 +184,6 @@ export default function Page() {
     reader.readAsDataURL(file)
   }
 
-  async function applyAnalyzed() {
-    if (!analyzed || !selected) return
-    setDesc(analyzed.description ?? '')
-    if (analyzed.date) setDate(analyzed.date)
-    setView('report')
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
@@ -167,13 +200,12 @@ export default function Page() {
         {/* LIST */}
         {view === 'list' && (
           <div>
-            {/* 搜尋欄 */}
             <div className="relative mb-3">
               <input
                 type="text"
                 value={searchText}
                 onChange={e => setSearchText(e.target.value)}
-                placeholder="搜尋案件名稱或聯絡人..."
+                placeholder="搜尋案件名稱、聯絡人或地址..."
                 className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gray-400 pr-8"
               />
               {searchText && (
@@ -181,33 +213,29 @@ export default function Page() {
               )}
             </div>
 
-            {/* 篩選標籤 */}
             <div className="flex gap-1.5 flex-wrap mb-4">
               {FILTER_TABS.map(tab => {
-                const count = tab === '全部'
-                  ? projects.length
-                  : projects.filter(p => p.status === tab).length
+                const count = tab === '全部' ? projects.length : projects.filter(p => p.status === tab).length
                 return (
                   <button key={tab} onClick={() => setFilterStatus(tab)}
                     className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
-                      filterStatus === tab
-                        ? 'bg-gray-900 text-white'
-                        : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'
+                      filterStatus === tab ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'
                     }`}>
                     {tab}
-                    <span className={`ml-1 ${filterStatus === tab ? 'text-gray-300' : 'text-gray-400'}`}>
-                      {count}
-                    </span>
+                    <span className={`ml-1 ${filterStatus === tab ? 'text-gray-300' : 'text-gray-400'}`}>{count}</span>
                   </button>
                 )
               })}
               <button onClick={fetchProjects} className="ml-auto text-xs text-gray-400 hover:text-gray-700 px-2">↻ 重新整理</button>
             </div>
 
-            {loading ? <p className="text-gray-400 text-sm py-8 text-center">載入中...</p> : (() => {
+            {loading ? (
+              <p className="text-gray-400 text-sm py-8 text-center">載入中...</p>
+            ) : (() => {
               const filtered = projects.filter(p => {
                 const matchStatus = filterStatus === '全部' || p.status === filterStatus
-                const matchSearch = !searchText || p.name.includes(searchText) || p.contact.includes(searchText) || p.address.includes(searchText)
+                const q = searchText.toLowerCase()
+                const matchSearch = !q || p.name.toLowerCase().includes(q) || p.contact.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
                 return matchStatus && matchSearch
               })
               return (
@@ -241,45 +269,91 @@ export default function Page() {
             <button onClick={() => setView('list')} className="text-sm text-gray-500 hover:text-gray-800 mb-4 flex items-center gap-1">
               ← 返回清單
             </button>
+
+            {/* Project card */}
             <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
               <p className="font-medium text-gray-900">{selected.name}</p>
-              <p className="text-sm text-gray-500 mt-0.5">{selected.contact}</p>
+              <p className="text-sm text-gray-500 mt-0.5">{selected.contact}{selected.address ? ` · ${selected.address}` : ''}</p>
               <span className={`inline-block mt-2 text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[selected.status] ?? 'bg-gray-100 text-gray-600'}`}>
                 {selected.status}
               </span>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">日期</label>
-                <input type="text" value={date} onChange={e => setDate(e.target.value)}
-                  placeholder="2026/06/17"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">進度描述</label>
-                <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3}
-                  placeholder="例：四色噴印完成，共28片"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 resize-none" />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">同時更新狀態（選填）</label>
-                <select value={newStatus} onChange={e => setNewStatus(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 bg-white">
-                  <option value="">不更改</option>
-                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <button onClick={submitProgress} disabled={submitting || !desc.trim()}
-                className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
-                {submitting ? '寫入中...' : '確認送出 → 寫入 Notion'}
+            {/* Tabs */}
+            <div className="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1">
+              <button onClick={() => { setReportTab('progress'); setSubmitMsg(''); setSubmitOk(false) }}
+                className={`flex-1 text-sm py-2 rounded-lg font-medium transition-colors ${reportTab === 'progress' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                📑 回報進度
               </button>
-              {submitMsg && (
-                <p className={`text-sm text-center ${submitMsg.startsWith('已成功') ? 'text-green-600' : 'text-red-500'}`}>
-                  {submitMsg}
-                </p>
-              )}
+              <button onClick={() => { setReportTab('item'); setSubmitMsg(''); setSubmitOk(false) }}
+                className={`flex-1 text-sm py-2 rounded-lg font-medium transition-colors ${reportTab === 'item' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                📦 新增品項
+              </button>
             </div>
+
+            {/* Progress tab */}
+            {reportTab === 'progress' && (
+              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">日期</label>
+                  <input type="text" value={date} onChange={e => setDate(e.target.value)}
+                    placeholder="2026/06/17"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">進度描述</label>
+                  <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3}
+                    placeholder="例：四色噴印完成，共28片"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 resize-none" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">同時更新狀態（選填）</label>
+                  <select value={newStatus} onChange={e => setNewStatus(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 bg-white">
+                    <option value="">不更改</option>
+                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <button onClick={submitProgress} disabled={submitting || !desc.trim()}
+                  className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
+                  {submitting ? '寫入中...' : '確認送出 → 寫入 Notion'}
+                </button>
+                {submitMsg && (
+                  <p className={`text-sm text-center font-medium ${submitOk ? 'text-green-600' : 'text-red-500'}`}>{submitMsg}</p>
+                )}
+              </div>
+            )}
+
+            {/* Item tab */}
+            {reportTab === 'item' && (
+              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">品項名稱 <span className="text-red-400">*</span></label>
+                  <input type="text" value={itemName} onChange={e => setItemName(e.target.value)}
+                    placeholder="例：消防箱蓋板"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">數量</label>
+                  <input type="text" value={itemQty} onChange={e => setItemQty(e.target.value)}
+                    placeholder="例：28片"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">備註</label>
+                  <textarea value={itemNote} onChange={e => setItemNote(e.target.value)} rows={2}
+                    placeholder="尺寸、顏色、其他說明..."
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 resize-none" />
+                </div>
+                <button onClick={submitItem} disabled={submitting || !itemName.trim()}
+                  className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
+                  {submitting ? '寫入中...' : '新增品項 → 寫入 Notion'}
+                </button>
+                {submitMsg && (
+                  <p className={`text-sm text-center font-medium ${submitOk ? 'text-green-600' : 'text-red-500'}`}>{submitMsg}</p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -289,7 +363,7 @@ export default function Page() {
             <div className="flex gap-2 mb-4">
               <input value={searchQ} onChange={e => setSearchQ(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && doSearch()}
-                placeholder="輸入專案名稱或人員..."
+                placeholder="輸入專案名稱、地址或人員姓名..."
                 className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gray-400 bg-white" />
               <button onClick={doSearch} disabled={searching}
                 className="bg-gray-900 text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-gray-700 disabled:opacity-40">
@@ -299,11 +373,10 @@ export default function Page() {
 
             {!searchDetail && (
               <>
-                {/* 專案結果 */}
-                {searchProjects2.length > 0 && (
+                {searchProjectResults.length > 0 && (
                   <div className="mb-4">
-                    <p className="text-xs font-medium text-gray-400 mb-2 px-1">專案 ({searchProjects2.length})</p>
-                    {searchProjects2.map(p => (
+                    <p className="text-xs font-medium text-gray-400 mb-2 px-1">專案 ({searchProjectResults.length})</p>
+                    {searchProjectResults.map(p => (
                       <div key={p.id} onClick={() => loadDetail(p)}
                         className="bg-white border border-gray-200 rounded-xl p-4 mb-2 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
                         <div className="flex-1 min-w-0">
@@ -316,11 +389,10 @@ export default function Page() {
                   </div>
                 )}
 
-                {/* 任務結果 */}
-                {searchTasks2.length > 0 && (
+                {searchTaskResults.length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-gray-400 mb-2 px-1">任務事項 ({searchTasks2.length})</p>
-                    {searchTasks2.map(t => (
+                    <p className="text-xs font-medium text-gray-400 mb-2 px-1">任務事項 ({searchTaskResults.length})</p>
+                    {searchTaskResults.map(t => (
                       <a key={t.id} href={t.url} target="_blank" rel="noopener noreferrer"
                         className="bg-white border border-gray-200 rounded-xl p-4 mb-2 flex items-start gap-3 hover:border-gray-400 transition-colors block no-underline">
                         <div className="flex-1 min-w-0">
@@ -341,7 +413,7 @@ export default function Page() {
                   </div>
                 )}
 
-                {searchProjects2.length === 0 && searchTasks2.length === 0 && searchQ && !searching && (
+                {searchProjectResults.length === 0 && searchTaskResults.length === 0 && searchQ && !searching && (
                   <p className="text-sm text-gray-400 text-center py-8">找不到相關結果</p>
                 )}
               </>
@@ -356,21 +428,46 @@ export default function Page() {
                   {searchDetail.contact && <span className="text-xs text-gray-500 py-1">{searchDetail.contact}</span>}
                   {searchDetail.address && <span className="text-xs text-gray-500 py-1">{searchDetail.address}</span>}
                 </div>
+
+                {/* Progress rows */}
                 <div className="mt-4 border-t border-gray-100 pt-4">
-                  <p className="text-xs font-medium text-gray-500 mb-2">進度紀錄</p>
+                  <p className="text-xs font-medium text-gray-500 mb-2">📑 進度紀錄</p>
                   <div className="space-y-2">
-                    {(searchDetail.progressRows ?? []).length === 0 && <p className="text-sm text-gray-400">無紀錄</p>}
-                    {(searchDetail.progressRows ?? []).slice(-10).reverse().map((r: any, i: number) => (
-                      <div key={i} className="flex gap-3 text-sm">
-                        <span className="text-gray-400 shrink-0 w-24">{r.date}</span>
-                        <span className="text-gray-700">{r.desc}</span>
-                      </div>
-                    ))}
+                    {(searchDetail.progressRows ?? []).length === 0
+                      ? <p className="text-sm text-gray-400">尚無進度紀錄</p>
+                      : [...(searchDetail.progressRows ?? [])].reverse().slice(0, 15).map((r: any, i: number) => (
+                        <div key={i} className="flex gap-3 text-sm">
+                          <span className="text-gray-400 shrink-0 w-24">{r.date}</span>
+                          <span className="text-gray-700">{r.desc}</span>
+                        </div>
+                      ))
+                    }
                   </div>
                 </div>
-                <button onClick={() => { setSelected(projects.find(p => p.id === searchDetail.id) || { id: searchDetail.id, name: searchDetail.name, status: searchDetail.status, contact: searchDetail.contact, address: searchDetail.address, url: '' }); setView('report') }}
+
+                {/* Item rows */}
+                {(searchDetail.itemRows ?? []).length > 0 && (
+                  <div className="mt-4 border-t border-gray-100 pt-4">
+                    <p className="text-xs font-medium text-gray-500 mb-2">📦 品項</p>
+                    <div className="space-y-1">
+                      {(searchDetail.itemRows ?? []).map((r: any, i: number) => (
+                        <div key={i} className="flex gap-2 text-sm">
+                          <span className="text-gray-700 font-medium">{r.name}</span>
+                          {r.qty && <span className="text-gray-500">{r.qty}</span>}
+                          {r.note && <span className="text-gray-400">{r.note}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <button onClick={() => {
+                  const proj = projects.find(p => p.id === searchDetail.id)
+                  setSelected(proj ?? { id: searchDetail.id, name: searchDetail.name, status: searchDetail.status, contact: searchDetail.contact, address: searchDetail.address, url: '' })
+                  setView('report')
+                }}
                   className="mt-4 w-full border border-gray-200 rounded-lg py-2 text-sm text-gray-700 hover:bg-gray-50">
-                  回報此案進度
+                  回報此案進度 / 新增品項
                 </button>
               </div>
             )}
@@ -381,7 +478,6 @@ export default function Page() {
         {view === 'image' && (
           <div>
             <p className="text-sm text-gray-500 mb-4">上傳 LINE 截圖或文件，自動辨識進度資訊</p>
-
             <div onClick={() => fileRef.current?.click()}
               className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-gray-400 transition-colors mb-4">
               {imgPreview
@@ -389,32 +485,28 @@ export default function Page() {
                 : <div className="text-gray-400 text-sm">點此選擇圖片<br/>支援 JPG、PNG</div>}
             </div>
             <input ref={fileRef} type="file" accept="image/*" onChange={handleImage} className="hidden" />
-
             {analyzing && <p className="text-sm text-gray-500 text-center py-4">辨識中...</p>}
-
             {analyzed && (
               <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 mb-4">
                 <p className="text-xs font-medium text-gray-500">辨識結果</p>
-                {analyzed.projectHint && (
-                  <div><span className="text-xs text-gray-400">專案提示：</span><span className="text-sm text-gray-800">{analyzed.projectHint}</span></div>
-                )}
-                <div><span className="text-xs text-gray-400">日期：</span><span className="text-sm text-gray-800">{analyzed.date}</span></div>
-                <div><span className="text-xs text-gray-400">進度描述：</span><span className="text-sm text-gray-800">{analyzed.description}</span></div>
-                {analyzed.contact && (
-                  <div><span className="text-xs text-gray-400">聯絡人：</span><span className="text-sm text-gray-800">{analyzed.contact}</span></div>
-                )}
-                <p className="text-xs text-gray-400">信心度：{analyzed.confidence}</p>
-                <p className="text-xs text-gray-500">請先從清單選擇對應案件，再套用此內容</p>
-                <div className="flex gap-2">
-                  <button onClick={() => setView('list')}
-                    className="flex-1 bg-gray-900 text-white rounded-lg py-2 text-sm font-medium hover:bg-gray-700">
-                    選擇案件套用
-                  </button>
-                  <button onClick={() => { setImgPreview(''); setAnalyzed(null) }}
-                    className="border border-gray-200 rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
-                    清除
-                  </button>
-                </div>
+                {analyzed.disabled
+                  ? <p className="text-sm text-gray-500">{analyzed.error}</p>
+                  : <>
+                    {analyzed.projectHint && <div><span className="text-xs text-gray-400">專案提示：</span><span className="text-sm text-gray-800">{analyzed.projectHint}</span></div>}
+                    <div><span className="text-xs text-gray-400">日期：</span><span className="text-sm text-gray-800">{analyzed.date}</span></div>
+                    <div><span className="text-xs text-gray-400">進度描述：</span><span className="text-sm text-gray-800">{analyzed.description}</span></div>
+                    {analyzed.contact && <div><span className="text-xs text-gray-400">聯絡人：</span><span className="text-sm text-gray-800">{analyzed.contact}</span></div>}
+                    <p className="text-xs text-gray-400">信心度：{analyzed.confidence}</p>
+                    <p className="text-xs text-gray-500">請先從清單選擇對應案件，再套用此內容</p>
+                    <button onClick={() => setView('list')} className="w-full bg-gray-900 text-white rounded-lg py-2 text-sm font-medium hover:bg-gray-700">
+                      選擇案件套用
+                    </button>
+                  </>
+                }
+                <button onClick={() => { setImgPreview(''); setAnalyzed(null) }}
+                  className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                  清除
+                </button>
               </div>
             )}
           </div>
