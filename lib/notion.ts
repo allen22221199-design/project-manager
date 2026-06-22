@@ -351,7 +351,7 @@ export async function addDailyTask(person: string, task: string, dateStr: string
       任務: { title: [{ text: { content: task } }] },
       人員: { rich_text: [{ text: { content: person } }] },
       日期: { date: { start: dateStr } },
-      狀態: { status: { name: '未開始' } },
+      狀態: { status: { name: '進行中' } },
       來源錄音: { rich_text: [{ text: { content: source } }] },
     },
   })
