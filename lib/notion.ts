@@ -321,6 +321,14 @@ export async function writeHistorySection(dateStr: string, grouped: Record<strin
   await notion.blocks.children.append({ block_id: HISTORY_PAGE_ID, children } as any)
 }
 
+// 依某日期，從資料庫現況重建歷史頁面該天的區塊（編輯後同步用）
+export async function syncHistoryForDate(dateStr: string) {
+  const tasks = await getDailyTasks(dateStr)
+  const grouped: Record<string, string[]> = {}
+  for (const t of tasks) (grouped[t.person] ??= []).push(t.task)
+  await writeHistorySection(dateStr, grouped)
+}
+
 // Update a daily task (reassign person / edit text / change status)
 export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string }) {
   const properties: any = {}
