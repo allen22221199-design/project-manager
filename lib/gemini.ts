@@ -65,3 +65,33 @@ export async function analyzeItemImage(base64: string, mediaType: string) {
     return []
   }
 }
+
+// 整理 Plaud 摘要文字 → 每人工作項目（保留原意、不大改）
+export async function organizeDailyTasks(rawText: string) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const result = await model.generateContent([
+    `你是工作項目整理助理。以下是一段會議或錄音的摘要內容（可能已提到每個人負責的工作）。
+請幫我重新整理成「每個人的工作項目」。重點：盡量保留原意、不要大改內容，只是分類整理清楚、讓敘述更精煉。
+
+請以 JSON 陣列回傳，每筆是一個工作項目：
+[
+  { "person": "負責人姓名", "task": "工作項目描述（簡潔一句）" }
+]
+
+規則：
+- 同一個人有多項工作，就拆成多筆
+- 沒寫明負責人的，person 填「未分類」
+- 只回傳 JSON 陣列，不要其他文字
+
+以下是內容：
+${rawText}`,
+  ])
+
+  const text = result.response.text().trim()
+  try {
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
