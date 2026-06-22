@@ -14,7 +14,7 @@ const STATUS_COLORS: Record<string, string> = {
 const STATUS_OPTIONS = ['報價中', '等待中', '打樣中', '對色中', '生產中', '施工中', '請款中含保留款', '完成']
 const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中', '施工中', '等待中']
 const DAILY_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
-const DAILY_STATUS_CYCLE = ['未開始', '進行中', '完成']
+const DAILY_STATUS_CYCLE = ['未開始', '進行中', '已完成']
 
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
@@ -318,7 +318,7 @@ export default function Page() {
   // 切換狀態
   async function cycleStatus(t: DailyTask) {
     const idx = DAILY_STATUS_CYCLE.indexOf(t.status)
-    const next = DAILY_STATUS_CYCLE[(idx + 1) % DAILY_STATUS_CYCLE.length]
+    t.status === '完成' || t.status === '已完成' ? 'bg-green-100 text-green-700'
     await fetch('/api/daily-tasks', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -845,7 +845,7 @@ export default function Page() {
                                 onDragEnd={() => { setDraggingId(null); setDragOverPerson(null) }}
                                 className={`flex items-start gap-2 text-sm border border-transparent rounded-lg px-1.5 py-1 hover:border-gray-200 hover:bg-gray-50 group ${editingId === t.id ? '' : 'cursor-grab active:cursor-grabbing'}`}>
                                 <button onClick={() => cycleStatus(t)} title="點擊切換狀態"
-                                  className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' ? 'bg-green-100 text-green-700' : t.status === '進行中' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                                  className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' || t.status === '已完成' ? 'bg-green-100 text-green-700' : t.status === '進行中' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
                                   {t.status}
                                 </button>
                                 {editingId === t.id ? (
