@@ -17,7 +17,8 @@ const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
-type View = 'list' | 'report' | 'search' | 'create'
+type View = 'list' | 'report' | 'search' | 'create' | 'daily'
+type DailyTask = { id: string; task: string; person: string; date: string; status: string; source: string }
 
 export default function Page() {
   const [view, setView] = useState<View>('list')
@@ -50,6 +51,10 @@ export default function Page() {
   const [searchTaskResults, setSearchTaskResults] = useState<Task[]>([])
   const [searchDetail, setSearchDetail] = useState<any>(null)
   const [searching, setSearching] = useState(false)
+
+  // daily tasks
+  const [dailyGrouped, setDailyGrouped] = useState<Record<string, DailyTask[]>>({})
+  const [dailyLoading, setDailyLoading] = useState(false)
 
   // create project form
   const [newName, setNewName] = useState('')
@@ -244,6 +249,15 @@ export default function Page() {
     setItemImgPreview('')
   }
 
+  async function fetchDailyTasks() {
+    setDailyLoading(true)
+    try {
+      const r = await fetch('/api/daily-tasks')
+      const data = await r.json()
+      setDailyGrouped(data.grouped ?? {})
+    } finally { setDailyLoading(false) }
+  }
+
   async function submitCreateProject() {
     if (!newName.trim()) return
     setCreating(true)
@@ -277,6 +291,7 @@ export default function Page() {
         <div className="text-lg font-medium text-gray-900">專案進度管理</div>
         <div className="ml-auto flex gap-2">
           <NavBtn active={view === 'list'} onClick={() => setView('list')}>案件清單</NavBtn>
+          <NavBtn active={view === 'daily'} onClick={() => { setView('daily'); fetchDailyTasks() }}>今日工作</NavBtn>
           <NavBtn active={view === 'search'} onClick={() => setView('search')}>查詢</NavBtn>
         </div>
       </header>
@@ -652,6 +667,49 @@ export default function Page() {
               </button>
               {createMsg && <p className={`text-sm text-center font-medium ${createOk ? 'text-green-600' : 'text-red-500'}`}>{createMsg}</p>}
             </div>
+          </div>
+        )}
+
+        {/* DAILY */}
+        {view === 'daily' && (
+          <div>
+            <div className="flex items-center mb-4">
+              <p className="text-sm text-gray-500">每日工作項目（依人員分類）</p>
+              <button onClick={fetchDailyTasks} className="ml-auto text-xs text-gray-400 hover:text-gray-700 px-2">↻ 重新整理</button>
+            </div>
+            {dailyLoading ? (
+              <p className="text-gray-400 text-sm py-8 text-center">載入中...</p>
+            ) : Object.keys(dailyGrouped).length === 0 ? (
+              <div className="bg-white border border-gray-200 rounded-xl p-6 text-center">
+                <p className="text-sm text-gray-400">目前沒有工作項目</p>
+                <p className="text-xs text-gray-300 mt-2">每天 9:30 會自動從 Plaud 錄音生成</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(dailyGrouped).map(([person, tasks]) => (
+                  <div key={person} className="bg-white border border-gray-200 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="w-7 h-7 rounded-full bg-gray-900 text-white text-xs flex items-center justify-center font-medium shrink-0">
+                        {person.slice(0, 1)}
+                      </span>
+                      <p className="font-medium text-gray-900">{person}</p>
+                      <span className="text-xs text-gray-400">{tasks.length} 項</span>
+                    </div>
+                    <div className="space-y-2">
+                      {tasks.map(t => (
+                        <div key={t.id} className="flex items-start gap-2 text-sm border-b border-gray-50 pb-2 last:border-0 last:pb-0">
+                          <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' ? 'bg-green-100 text-green-700' : t.status === '進行中' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {t.status}
+                          </span>
+                          <span className="text-gray-700 flex-1">{t.task}</span>
+                          {t.date && <span className="text-xs text-gray-300 shrink-0">{t.date.slice(5)}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </main>
