@@ -55,7 +55,8 @@ export default function Page() {
   const [searching, setSearching] = useState(false)
 
   // daily tasks
-  const [dailyGrouped, setDailyGrouped] = useState<Record<string, DailyTask[]>>({})
+  const [dailyAll, setDailyAll] = useState<DailyTask[]>([])
+  const [selectedDate, setSelectedDate] = useState('')
   const [dailyLoading, setDailyLoading] = useState(false)
   const [plaudText, setPlaudText] = useState('')
   const [organizing, setOrganizing] = useState(false)
@@ -93,6 +94,10 @@ export default function Page() {
   function today() {
     const d = new Date()
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  function todayISO() {
+    return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
   }
 
   async function fetchProjects() {
@@ -265,7 +270,10 @@ export default function Page() {
     try {
       const r = await fetch('/api/daily-tasks')
       const data = await r.json()
-      setDailyGrouped(data.grouped ?? {})
+      const all: DailyTask[] = data.all ?? []
+      setDailyAll(all)
+      const dates = Array.from(new Set(all.map(t => t.date).filter(Boolean))).sort().reverse()
+      setSelectedDate(prev => (prev && dates.includes(prev)) ? prev : (dates[0] ?? todayISO()))
     } finally { setDailyLoading(false) }
   }
 
@@ -298,23 +306,11 @@ export default function Page() {
 
   // 拖拉換負責人
   async function reassignTask(taskId: string, newPerson: string) {
-    setDailyGrouped(prev => {
-      const next: Record<string, DailyTask[]> = {}
-      let moved: DailyTask | null = null
-      for (const [p, tasks] of Object.entries(prev)) {
-        const keep = tasks.filter(t => {
-          if (t.id === taskId) { moved = { ...t, person: newPerson }; return false }
-          return true
-        })
-        next[p] = keep
-      }
-      if (moved) (next[newPerson] ??= []).push(moved)
-      return next
-    })
+    setDailyAll(prev => prev.map(t => t.id === taskId ? { ...t, person: newPerson } : t))
     await fetch('/api/daily-tasks', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: taskId, person: newPerson }),
+      body: JSON.stringify({ id: taskId, person: newPerson, date: selectedDate }),
     })
     fetchDailyTasks()
   }
@@ -326,7 +322,7 @@ export default function Page() {
     await fetch('/api/daily-tasks', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: t.id, status: next }),
+      body: JSON.stringify({ id: t.id, status: next, date: selectedDate }),
     })
     fetchDailyTasks()
   }
@@ -337,7 +333,7 @@ export default function Page() {
       await fetch('/api/daily-tasks', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: taskId, task: editText.trim() }),
+        body: JSON.stringify({ id: taskId, task: editText.trim(), date: selectedDate }),
       })
     }
     setEditingId(null)
@@ -350,7 +346,7 @@ export default function Page() {
     await fetch('/api/daily-tasks', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: taskId }),
+      body: JSON.stringify({ id: taskId, date: selectedDate }),
     })
     fetchDailyTasks()
   }
@@ -791,12 +787,36 @@ export default function Page() {
               </button>
               {organizeMsg && <p className={`text-sm text-center font-medium ${organizeOk ? 'text-green-600' : 'text-red-500'}`}>{organizeMsg}</p>}
             </div>
-            <p className="text-xs text-gray-400 mb-3">💡 拖曳任務可換負責人；點狀態可切換；點任務文字可編輯</p>
+            {/* 日期標籤 */}
+            {(() => {
+              const dates = Array.from(new Set(dailyAll.map(t => t.date).filter(Boolean))).sort().reverse()
+              if (dates.length === 0) return null
+              const fmt = (d: string) => d === todayISO() ? `今天 ${d.slice(5)}` : d.slice(5)
+              return (
+                <div className="flex gap-1.5 flex-wrap mb-3">
+                  {dates.map(d => (
+                    <button key={d} onClick={() => setSelectedDate(d)}
+                      className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${selectedDate === d ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                      {fmt(d)}
+                    </button>
+                  ))}
+                </div>
+              )
+            })()}
+            <p className="text-xs text-gray-400 mb-3">💡 拖曳任務可換負責人；點狀態可切換；點任務文字可編輯（皆即時同步 Notion）</p>
             {dailyLoading ? (
               <p className="text-gray-400 text-sm py-8 text-center">載入中...</p>
+            ) : dailyAll.length === 0 ? (
+              <div className="bg-white border border-gray-200 rounded-xl p-6 text-center">
+                <p className="text-sm text-gray-400">目前沒有工作項目</p>
+                <p className="text-xs text-gray-300 mt-2">貼上 Plaud 內容整理，或每天 9:30 自動生成</p>
+              </div>
             ) : (
               <div className="space-y-3">
                 {(() => {
+                  const dayTasks = dailyAll.filter(t => t.date === selectedDate)
+                  const dailyGrouped: Record<string, DailyTask[]> = {}
+                  for (const t of dayTasks) (dailyGrouped[t.person] ??= []).push(t)
                   const extraPeople = Object.keys(dailyGrouped).filter(p => !DAILY_PEOPLE.includes(p))
                   const allPeople = [...DAILY_PEOPLE, ...extraPeople]
                   return allPeople.map(person => {
