@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDailyTasks, updateDailyTask, deleteDailyTask } from '@/lib/notion'
+import { getDailyTasks, updateDailyTask, deleteDailyTask, syncHistoryForDate } from '@/lib/notion'
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,9 +18,10 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { id, person, task, status } = await req.json()
+    const { id, person, task, status, date } = await req.json()
     if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
     await updateDailyTask(id, { person, task, status })
+    if (date) { try { await syncHistoryForDate(date) } catch {} }
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
@@ -29,9 +30,10 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { id } = await req.json()
+    const { id, date } = await req.json()
     if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
     await deleteDailyTask(id)
+    if (date) { try { await syncHistoryForDate(date) } catch {} }
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
