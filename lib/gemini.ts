@@ -66,6 +66,9 @@ export async function analyzeItemImage(base64: string, mediaType: string) {
   }
 }
 
+// 只整理以下這幾位人員的工作項目
+const ALLOWED_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
+
 // 整理 Plaud 摘要文字 → 每人工作項目（保留原意、不大改）
 export async function organizeDailyTasks(rawText: string) {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
@@ -73,14 +76,17 @@ export async function organizeDailyTasks(rawText: string) {
     `你是工作項目整理助理。以下是一段會議或錄音的摘要內容（可能已提到每個人負責的工作）。
 請幫我重新整理成「每個人的工作項目」。重點：盡量保留原意、不要大改內容，只是分類整理清楚、讓敘述更精煉。
 
+⚠️ 重要：只輸出以下這幾位人員的工作項目，其他人名或沒提到的人一律不要輸出：
+${ALLOWED_PEOPLE.join('、')}
+
 請以 JSON 陣列回傳，每筆是一個工作項目：
 [
   { "person": "負責人姓名", "task": "工作項目描述（簡潔一句）" }
 ]
 
 規則：
+- person 必須是上面名單中的其中一位，不在名單內的人完全不要列出
 - 同一個人有多項工作，就拆成多筆
-- 沒寫明負責人的，person 填「未分類」
 - 只回傳 JSON 陣列，不要其他文字
 
 以下是內容：
@@ -90,7 +96,9 @@ ${rawText}`,
   const text = result.response.text().trim()
   try {
     const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
-    return Array.isArray(parsed) ? parsed : []
+    if (!Array.isArray(parsed)) return []
+    // 保險：只保留名單內人員
+    return parsed.filter((it: any) => ALLOWED_PEOPLE.includes((it.person ?? '').trim()))
   } catch {
     return []
   }
