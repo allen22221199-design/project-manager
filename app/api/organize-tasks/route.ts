@@ -5,43 +5,36 @@ import { pushToLine } from '@/lib/line'
 
 export async function POST(req: NextRequest) {
   if (!process.env.GEMINI_API_KEY) {
-    return NextResponse.json({ error: '尚未設定 GEMINI_API_KEY' }, { status: 503 })
+    return NextResponse.json({ error: '撠閮剖? GEMINI_API_KEY' }, { status: 503 })
   }
   try {
     const { text, sendLine } = await req.json()
-    if (!text?.trim()) return NextResponse.json({ error: '請貼上 Plaud 內容' }, { status: 400 })
+    if (!text?.trim()) return NextResponse.json({ error: '隢票銝?Plaud ?批捆' }, { status: 400 })
 
-    // 1. Gemini 整理成每人工作項目
-    const items = await organizeDailyTasks(text.trim())
+    // 1. Gemini ?渡???鈭箏極雿???    const items = await organizeDailyTasks(text.trim())
     if (items.length === 0) {
-      return NextResponse.json({ error: '無法從內容整理出工作項目，請確認內容', count: 0 }, { status: 200 })
+      return NextResponse.json({ error: '?⊥?敺摰寞?撌乩??嚗?蝣箄??批捆', count: 0 }, { status: 200 })
     }
 
-    // 台灣時間日期（UTC+8）
-    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
+    // ?啁???交?嚗TC+8嚗?    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
 
-    // 依人員分組（給 LINE、歷史頁面用）
-    const grouped: Record<string, string[]> = {}
+    // 靘犖?∪?蝯?蝯?LINE?風?脤??Ｙ嚗?    const grouped: Record<string, string[]> = {}
     for (const it of items) {
-      ;(grouped[it.person?.trim() || '未分類'] ??= []).push(it.task?.trim() || '')
+      ;(grouped[it.person?.trim() || '?芸?憿?] ??= []).push(it.task?.trim() || '')
     }
 
-    // 2. 重寫當天：先刪掉今天的舊資料，再寫入新版
+    // 2. ?神?嗅予嚗??芣?隞予??鞈?嚗?撖怠?啁?
     await deleteDailyTasksByDate(today)
     for (const it of items) {
-      await addDailyTask(it.person?.trim() || '未分類', it.task?.trim() || '', today, 'Plaud')
+      await addDailyTask(it.person?.trim() || '?芸?憿?, it.task?.trim() || '', today, 'Plaud')
     }
 
-    // 3. 寫入歷史頁面（以日期分段，重寫同一天會替換）
-    try { await writeHistorySection(today, grouped) } catch (e) { /* 歷史頁面失敗不影響主流程 */ }
+    // 3. 撖怠甇瑕?嚗誑?交??挾嚗?撖怠?銝憭拇??踵?嚗?    try { await writeHistorySection(today, grouped) } catch (e) { /* 甇瑕?憭望?銝蔣?蹂蜓瘚? */ }
 
-    // 4. 整理成 LINE 訊息（依人員分組）並推播
+    // 4. ?渡???LINE 閮嚗?鈭箏??嚗蒂?冽
     let lineResult: any = null
     if (sendLine !== false) {
-      let msg = `📋 今日工作項目（${today}）\n`
-      for (const [person, tasks] of Object.entries(grouped)) {
-        msg += `\n【${person}】\n` + tasks.map(t => `・${t}`).join('\n') + '\n'
-      }
+      const msg = `?? 隞撌乩??亥?撌脣???${today}嚗n隢隞乩?蝬脣??亦?嚗nhttps://project-manager-theta-nine.vercel.app`
       try {
         lineResult = await pushToLine(msg)
       } catch (e: any) {
