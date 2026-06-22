@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
 export async function analyzeProgressImage(base64: string, mediaType: string) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
   const today = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/')
   const result = await model.generateContent([
     {
@@ -32,7 +32,7 @@ export async function analyzeProgressImage(base64: string, mediaType: string) {
 }
 
 export async function analyzeItemImage(base64: string, mediaType: string) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
   const result = await model.generateContent([
     {
       inlineData: { data: base64, mimeType: mediaType as any },
@@ -68,7 +68,7 @@ export async function analyzeItemImage(base64: string, mediaType: string) {
 
 // 整理 Plaud 摘要文字 → 每人工作項目（保留原意、不大改）
 export async function organizeDailyTasks(rawText: string) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
   const result = await model.generateContent([
     `你是工作項目整理助理。以下是一段會議或錄音的摘要內容（可能已提到每個人負責的工作）。
 請幫我重新整理成「每個人的工作項目」。重點：盡量保留原意、不要大改內容，只是分類整理清楚、讓敘述更精煉。
