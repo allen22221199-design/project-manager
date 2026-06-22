@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { organizeDailyTasks } from '@/lib/gemini'
-import { addDailyTask } from '@/lib/notion'
+import { addDailyTask, deleteDailyTasksByDate, writeHistorySection } from '@/lib/notion'
 import { pushToLine } from '@/lib/line'
 
 export async function POST(req: NextRequest) {
@@ -17,19 +17,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '無法從內容整理出工作項目，請確認內容', count: 0 }, { status: 200 })
     }
 
-    // 2. 寫進 Notion 每日工作項目
-    const today = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD（本地時區）
+    // 台灣時間日期（UTC+8）
+    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
+
+    // 依人員分組（給 LINE、歷史頁面用）
+    const grouped: Record<string, string[]> = {}
+    for (const it of items) {
+      ;(grouped[it.person?.trim() || '未分類'] ??= []).push(it.task?.trim() || '')
+    }
+
+    // 2. 重寫當天：先刪掉今天的舊資料，再寫入新版
+    await deleteDailyTasksByDate(today)
     for (const it of items) {
       await addDailyTask(it.person?.trim() || '未分類', it.task?.trim() || '', today, 'Plaud')
     }
 
-    // 3. 整理成 LINE 訊息（依人員分組）並推播
+    // 3. 寫入歷史頁面（以日期分段，重寫同一天會替換）
+    try { await writeHistorySection(today, grouped) } catch (e) { /* 歷史頁面失敗不影響主流程 */ }
+
+    // 4. 整理成 LINE 訊息（依人員分組）並推播
     let lineResult: any = null
     if (sendLine !== false) {
-      const grouped: Record<string, string[]> = {}
-      for (const it of items) {
-        ;(grouped[it.person?.trim() || '未分類'] ??= []).push(it.task?.trim() || '')
-      }
       let msg = `📋 今日工作項目（${today}）\n`
       for (const [person, tasks] of Object.entries(grouped)) {
         msg += `\n【${person}】\n` + tasks.map(t => `・${t}`).join('\n') + '\n'
