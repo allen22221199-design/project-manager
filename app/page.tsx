@@ -63,6 +63,9 @@ export default function Page() {
   const [organizeMsg, setOrganizeMsg] = useState('')
   const [organizeOk, setOrganizeOk] = useState(false)
   const [sendLine, setSendLine] = useState(true)
+  const [sendingReminder, setSendingReminder] = useState(false)
+  const [reminderMsg, setReminderMsg] = useState('')
+  const [reminderOk, setReminderOk] = useState(false)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOverPerson, setDragOverPerson] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -317,6 +320,23 @@ export default function Page() {
   }
 
   // 拖拉換負責人
+  async function sendWeeklyReminder() {
+    setSendingReminder(true)
+    setReminderMsg('')
+    setReminderOk(false)
+    try {
+      const r = await fetch('/api/cron/weekly-reminder')
+      const data = await r.json()
+      if (r.ok && data.ok) {
+        setReminderMsg('已發送週報提醒到 LINE ✓')
+        setReminderOk(true)
+      } else {
+        setReminderMsg('發送失敗：' + (data.error ?? '未知錯誤'))
+        setReminderOk(false)
+      }
+    } finally { setSendingReminder(false) }
+  }
+
   async function reassignTask(taskId: string, newPerson: string) {
     setDailyAll(prev => prev.map(t => t.id === taskId ? { ...t, person: newPerson } : t))
     await fetch('/api/daily-tasks', {
@@ -845,6 +865,20 @@ export default function Page() {
               </button>
               {organizeMsg && <p className={`text-sm text-center font-medium ${organizeOk ? 'text-green-600' : 'text-red-500'}`}>{organizeMsg}</p>}
             </div>
+
+            {/* 手動發送週報提醒 */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-700">📣 發送本週工作回報提醒</p>
+                <p className="text-xs text-gray-400 mt-0.5">手動發送 LINE 通知，請大家確認並更新本週工作狀態</p>
+                {reminderMsg && <p className={`text-xs mt-1 font-medium ${reminderOk ? 'text-green-600' : 'text-red-500'}`}>{reminderMsg}</p>}
+              </div>
+              <button onClick={sendWeeklyReminder} disabled={sendingReminder}
+                className="shrink-0 bg-green-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-40 transition-colors">
+                {sendingReminder ? '發送中...' : '發送 LINE'}
+              </button>
+            </div>
+
             {/* 日期標籤 */}
             {(() => {
               const now = new Date(Date.now() + 8 * 3600 * 1000)
