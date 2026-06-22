@@ -272,6 +272,20 @@ export async function getDailyTasks(dateStr?: string) {
   }))
 }
 
+// Update a daily task (reassign person / edit text / change status)
+export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string }) {
+  const properties: any = {}
+  if (fields.person !== undefined) properties['人員'] = { rich_text: [{ text: { content: fields.person } }] }
+  if (fields.task !== undefined) properties['任務'] = { title: [{ text: { content: fields.task } }] }
+  if (fields.status !== undefined) properties['狀態'] = { status: { name: fields.status } }
+  await notion.pages.update({ page_id: id, properties })
+}
+
+// Delete (archive) a daily task
+export async function deleteDailyTask(id: string) {
+  await notion.pages.update({ page_id: id, archived: true })
+}
+
 // Write one daily work item (used by Plaud sync cron)
 export async function addDailyTask(person: string, task: string, dateStr: string, source: string) {
   await notion.pages.create({
