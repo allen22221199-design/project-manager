@@ -55,6 +55,11 @@ export default function Page() {
   // daily tasks
   const [dailyGrouped, setDailyGrouped] = useState<Record<string, DailyTask[]>>({})
   const [dailyLoading, setDailyLoading] = useState(false)
+  const [plaudText, setPlaudText] = useState('')
+  const [organizing, setOrganizing] = useState(false)
+  const [organizeMsg, setOrganizeMsg] = useState('')
+  const [organizeOk, setOrganizeOk] = useState(false)
+  const [sendLine, setSendLine] = useState(true)
 
   // create project form
   const [newName, setNewName] = useState('')
@@ -256,6 +261,33 @@ export default function Page() {
       const data = await r.json()
       setDailyGrouped(data.grouped ?? {})
     } finally { setDailyLoading(false) }
+  }
+
+  async function organizePlaud() {
+    if (!plaudText.trim()) return
+    setOrganizing(true)
+    setOrganizeMsg('')
+    setOrganizeOk(false)
+    try {
+      const r = await fetch('/api/organize-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: plaudText, sendLine }),
+      })
+      const data = await r.json()
+      if (r.ok && data.count > 0) {
+        const lineNote = data.line?.ok ? '，已發送 LINE ✓'
+          : data.line?.skipped ? '（LINE 未設定，略過）'
+          : data.line?.error ? `（LINE 發送失敗：${data.line.error}）` : ''
+        setOrganizeMsg(`已整理 ${data.count} 筆工作項目並寫入 Notion ✓${lineNote}`)
+        setOrganizeOk(true)
+        setPlaudText('')
+        fetchDailyTasks()
+      } else {
+        setOrganizeMsg('錯誤：' + (data.error ?? '無法整理'))
+        setOrganizeOk(false)
+      }
+    } finally { setOrganizing(false) }
   }
 
   async function submitCreateProject() {
@@ -676,6 +708,23 @@ export default function Page() {
             <div className="flex items-center mb-4">
               <p className="text-sm text-gray-500">每日工作項目（依人員分類）</p>
               <button onClick={fetchDailyTasks} className="ml-auto text-xs text-gray-400 hover:text-gray-700 px-2">↻ 重新整理</button>
+            </div>
+
+            {/* 貼上 Plaud 內容 → Gemini 整理 */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 space-y-3">
+              <p className="text-sm font-medium text-gray-700">📥 貼上 Plaud 內容自動整理</p>
+              <textarea value={plaudText} onChange={e => setPlaudText(e.target.value)} rows={5}
+                placeholder="把 Plaud 生成好的摘要內容貼到這裡，Gemini 會自動整理成每個人的工作項目..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 resize-none" />
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input type="checkbox" checked={sendLine} onChange={e => setSendLine(e.target.checked)} className="rounded" />
+                整理完同時發送到 LINE 群組
+              </label>
+              <button onClick={organizePlaud} disabled={organizing || !plaudText.trim()}
+                className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
+                {organizing ? '整理中...' : '✦ 整理並寫入今日工作'}
+              </button>
+              {organizeMsg && <p className={`text-sm text-center font-medium ${organizeOk ? 'text-green-600' : 'text-red-500'}`}>{organizeMsg}</p>}
             </div>
             {dailyLoading ? (
               <p className="text-gray-400 text-sm py-8 text-center">載入中...</p>
