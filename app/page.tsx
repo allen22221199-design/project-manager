@@ -14,7 +14,7 @@ const STATUS_COLORS: Record<string, string> = {
 const STATUS_OPTIONS = ['報價中', '等待中', '打樣中', '對色中', '生產中', '施工中', '請款中含保留款', '完成']
 const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中', '施工中', '等待中']
 const DAILY_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
-const DAILY_STATUS_CYCLE = ['未開始', '進行中', '已完成']
+const DAILY_STATUS_CYCLE = ['進行中', '已完成']
 
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
@@ -67,6 +67,9 @@ export default function Page() {
   const [dragOverPerson, setDragOverPerson] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
+  const [inProgressTasks, setInProgressTasks] = useState<DailyTask[]>([])
+  const [selectedPersonTag, setSelectedPersonTag] = useState<string | null>(null)
+  const [dailyTaskResults, setDailyTaskResults] = useState<DailyTask[]>([])
 
   // create project form
   const [newName, setNewName] = useState('')
@@ -191,7 +194,16 @@ export default function Page() {
       const data = await r.json()
       setSearchProjectResults(data.projects ?? [])
       setSearchTaskResults(data.tasks ?? [])
+      setDailyTaskResults(data.dailyTasks ?? [])
     } finally { setSearching(false) }
+  }
+
+  async function fetchInProgress() {
+    try {
+      const r = await fetch('/api/daily-tasks')
+      const data = await r.json()
+      setInProgressTasks((data.all ?? []).filter((t: DailyTask) => t.status === '進行中'))
+    } catch {}
   }
 
   async function loadDetail(p: { id: string }) {
@@ -318,7 +330,7 @@ export default function Page() {
   // 切換狀態
   async function cycleStatus(t: DailyTask) {
     const idx = DAILY_STATUS_CYCLE.indexOf(t.status)
-    t.status === '完成' || t.status === '已完成' ? 'bg-green-100 text-green-700'
+    const next = DAILY_STATUS_CYCLE[(idx + 1) % DAILY_STATUS_CYCLE.length]
     await fetch('/api/daily-tasks', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -385,7 +397,7 @@ export default function Page() {
         <div className="ml-auto flex gap-2">
           <NavBtn active={view === 'list'} onClick={() => setView('list')}>案件清單</NavBtn>
           <NavBtn active={view === 'daily'} onClick={() => { setView('daily'); fetchDailyTasks() }}>今日工作</NavBtn>
-          <NavBtn active={view === 'search'} onClick={() => setView('search')}>查詢</NavBtn>
+          <NavBtn active={view === 'search'} onClick={() => { setView('search'); fetchInProgress() }}>查詢</NavBtn>
         </div>
       </header>
 
@@ -620,6 +632,35 @@ export default function Page() {
 
             {!searchDetail && (
               <>
+                {/* 進行中任務人名標籤 */}
+                {inProgressTasks.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs text-gray-400 mb-2">進行中任務 — 點選人名查看：</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Array.from(new Set(inProgressTasks.map(t => t.person))).map(person => (
+                        <button key={person}
+                          onClick={() => setSelectedPersonTag(selectedPersonTag === person ? null : person)}
+                          className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${selectedPersonTag === person ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
+                          {person}
+                          <span className="ml-1 opacity-70">{inProgressTasks.filter(t => t.person === person).length}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {selectedPersonTag && (
+                      <div className="mt-3 bg-blue-50 rounded-xl p-3 space-y-1.5">
+                        <p className="text-xs font-medium text-blue-700 mb-2">{selectedPersonTag} 的進行中任務：</p>
+                        {inProgressTasks.filter(t => t.person === selectedPersonTag).map(t => (
+                          <div key={t.id} className="flex items-start gap-2 text-sm">
+                            <span className="text-blue-400 shrink-0 mt-0.5">·</span>
+                            <span className="text-gray-700 flex-1">{t.task}</span>
+                            <span className="text-xs text-gray-400 shrink-0">{t.date}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {searchProjectResults.length > 0 && (
                   <div className="mb-4">
                     <p className="text-xs font-medium text-gray-400 mb-2 px-1">專案 ({searchProjectResults.length})</p>
@@ -660,7 +701,24 @@ export default function Page() {
                   </div>
                 )}
 
-                {searchProjectResults.length === 0 && searchTaskResults.length === 0 && searchQ && !searching && (
+                {dailyTaskResults.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-xs font-medium text-gray-400 mb-2 px-1">今日工作項目 ({dailyTaskResults.length})</p>
+                    {dailyTaskResults.map(t => (
+                      <div key={t.id} className="bg-white border border-gray-200 rounded-xl p-3 mb-2 flex items-start gap-2">
+                        <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '已完成' || t.status === '完成' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                          {t.status}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-700">{t.task}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{t.person} · {t.date}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {searchProjectResults.length === 0 && searchTaskResults.length === 0 && dailyTaskResults.length === 0 && searchQ && !searching && (
                   <p className="text-sm text-gray-400 text-center py-8">找不到相關結果</p>
                 )}
               </>
@@ -789,7 +847,15 @@ export default function Page() {
             </div>
             {/* 日期標籤 */}
             {(() => {
-              const dates = Array.from(new Set(dailyAll.map(t => t.date).filter(Boolean))).sort().reverse()
+              const now = new Date(Date.now() + 8 * 3600 * 1000)
+              const dow = now.getUTCDay()
+              const mon = new Date(now); mon.setUTCDate(now.getUTCDate() - ((dow + 6) % 7))
+              const weekStart = mon.toISOString().slice(0, 10)
+              const sun = new Date(mon); sun.setUTCDate(mon.getUTCDate() + 6)
+              const weekEnd = sun.toISOString().slice(0, 10)
+              const dates = Array.from(new Set(dailyAll.map(t => t.date).filter(Boolean)))
+                .filter(d => d >= weekStart && d <= weekEnd)
+                .sort().reverse()
               if (dates.length === 0) return null
               const fmt = (d: string) => d === todayISO() ? `今天 ${d.slice(5)}` : d.slice(5)
               return (
