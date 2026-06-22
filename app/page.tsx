@@ -13,6 +13,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_OPTIONS = ['報價中', '等待中', '打樣中', '對色中', '生產中', '施工中', '請款中含保留款', '完成']
 const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中', '施工中', '等待中']
+const DAILY_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
+const DAILY_STATUS_CYCLE = ['未開始', '進行中', '完成']
 
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
@@ -60,6 +62,10 @@ export default function Page() {
   const [organizeMsg, setOrganizeMsg] = useState('')
   const [organizeOk, setOrganizeOk] = useState(false)
   const [sendLine, setSendLine] = useState(true)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragOverPerson, setDragOverPerson] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editText, setEditText] = useState('')
 
   // create project form
   const [newName, setNewName] = useState('')
@@ -288,6 +294,65 @@ export default function Page() {
         setOrganizeOk(false)
       }
     } finally { setOrganizing(false) }
+  }
+
+  // 拖拉換負責人
+  async function reassignTask(taskId: string, newPerson: string) {
+    setDailyGrouped(prev => {
+      const next: Record<string, DailyTask[]> = {}
+      let moved: DailyTask | null = null
+      for (const [p, tasks] of Object.entries(prev)) {
+        const keep = tasks.filter(t => {
+          if (t.id === taskId) { moved = { ...t, person: newPerson }; return false }
+          return true
+        })
+        next[p] = keep
+      }
+      if (moved) (next[newPerson] ??= []).push(moved)
+      return next
+    })
+    await fetch('/api/daily-tasks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: taskId, person: newPerson }),
+    })
+    fetchDailyTasks()
+  }
+
+  // 切換狀態
+  async function cycleStatus(t: DailyTask) {
+    const idx = DAILY_STATUS_CYCLE.indexOf(t.status)
+    const next = DAILY_STATUS_CYCLE[(idx + 1) % DAILY_STATUS_CYCLE.length]
+    await fetch('/api/daily-tasks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: t.id, status: next }),
+    })
+    fetchDailyTasks()
+  }
+
+  // 編輯任務文字
+  async function saveEdit(taskId: string) {
+    if (editText.trim()) {
+      await fetch('/api/daily-tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: taskId, task: editText.trim() }),
+      })
+    }
+    setEditingId(null)
+    setEditText('')
+    fetchDailyTasks()
+  }
+
+  // 刪除任務
+  async function deleteTask(taskId: string) {
+    await fetch('/api/daily-tasks', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: taskId }),
+    })
+    fetchDailyTasks()
   }
 
   async function submitCreateProject() {
@@ -726,37 +791,61 @@ export default function Page() {
               </button>
               {organizeMsg && <p className={`text-sm text-center font-medium ${organizeOk ? 'text-green-600' : 'text-red-500'}`}>{organizeMsg}</p>}
             </div>
+            <p className="text-xs text-gray-400 mb-3">💡 拖曳任務可換負責人；點狀態可切換；點任務文字可編輯</p>
             {dailyLoading ? (
               <p className="text-gray-400 text-sm py-8 text-center">載入中...</p>
-            ) : Object.keys(dailyGrouped).length === 0 ? (
-              <div className="bg-white border border-gray-200 rounded-xl p-6 text-center">
-                <p className="text-sm text-gray-400">目前沒有工作項目</p>
-                <p className="text-xs text-gray-300 mt-2">每天 9:30 會自動從 Plaud 錄音生成</p>
-              </div>
             ) : (
               <div className="space-y-3">
-                {Object.entries(dailyGrouped).map(([person, tasks]) => (
-                  <div key={person} className="bg-white border border-gray-200 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="w-7 h-7 rounded-full bg-gray-900 text-white text-xs flex items-center justify-center font-medium shrink-0">
-                        {person.slice(0, 1)}
-                      </span>
-                      <p className="font-medium text-gray-900">{person}</p>
-                      <span className="text-xs text-gray-400">{tasks.length} 項</span>
-                    </div>
-                    <div className="space-y-2">
-                      {tasks.map(t => (
-                        <div key={t.id} className="flex items-start gap-2 text-sm border-b border-gray-50 pb-2 last:border-0 last:pb-0">
-                          <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' ? 'bg-green-100 text-green-700' : t.status === '進行中' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
-                            {t.status}
+                {(() => {
+                  const extraPeople = Object.keys(dailyGrouped).filter(p => !DAILY_PEOPLE.includes(p))
+                  const allPeople = [...DAILY_PEOPLE, ...extraPeople]
+                  return allPeople.map(person => {
+                    const tasks = dailyGrouped[person] ?? []
+                    const isOver = dragOverPerson === person
+                    return (
+                      <div key={person}
+                        onDragOver={e => { e.preventDefault(); setDragOverPerson(person) }}
+                        onDragLeave={() => setDragOverPerson(prev => prev === person ? null : prev)}
+                        onDrop={e => { e.preventDefault(); setDragOverPerson(null); if (draggingId) reassignTask(draggingId, person); setDraggingId(null) }}
+                        className={`bg-white border rounded-xl p-4 transition-colors ${isOver ? 'border-gray-900 bg-gray-50' : 'border-gray-200'}`}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="w-7 h-7 rounded-full bg-gray-900 text-white text-xs flex items-center justify-center font-medium shrink-0">
+                            {person.slice(0, 1)}
                           </span>
-                          <span className="text-gray-700 flex-1">{t.task}</span>
-                          {t.date && <span className="text-xs text-gray-300 shrink-0">{t.date.slice(5)}</span>}
+                          <p className="font-medium text-gray-900">{person}</p>
+                          <span className="text-xs text-gray-400">{tasks.length} 項</span>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                        {tasks.length === 0 ? (
+                          <p className="text-xs text-gray-300 py-1">（可拖任務到這裡）</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {tasks.map(t => (
+                              <div key={t.id} draggable={editingId !== t.id}
+                                onDragStart={() => setDraggingId(t.id)}
+                                onDragEnd={() => { setDraggingId(null); setDragOverPerson(null) }}
+                                className={`flex items-start gap-2 text-sm border border-transparent rounded-lg px-1.5 py-1 hover:border-gray-200 hover:bg-gray-50 group ${editingId === t.id ? '' : 'cursor-grab active:cursor-grabbing'}`}>
+                                <button onClick={() => cycleStatus(t)} title="點擊切換狀態"
+                                  className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' ? 'bg-green-100 text-green-700' : t.status === '進行中' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                                  {t.status}
+                                </button>
+                                {editingId === t.id ? (
+                                  <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
+                                    onBlur={() => saveEdit(t.id)}
+                                    onKeyDown={e => { if (e.key === 'Enter') saveEdit(t.id); if (e.key === 'Escape') { setEditingId(null); setEditText('') } }}
+                                    className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:border-gray-500" />
+                                ) : (
+                                  <span className="text-gray-700 flex-1 cursor-text" onClick={() => { setEditingId(t.id); setEditText(t.task) }}>{t.task}</span>
+                                )}
+                                <button onClick={() => deleteTask(t.id)} title="刪除"
+                                  className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 shrink-0 leading-none">×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                })()}
               </div>
             )}
           </div>
