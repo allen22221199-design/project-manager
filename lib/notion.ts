@@ -272,6 +272,55 @@ export async function getDailyTasks(dateStr?: string) {
   }))
 }
 
+const HISTORY_PAGE_ID = '3872cda48d7781ecafe5e5bfca9c4270'
+
+// 刪除某日期的所有每日工作項目（重寫當天時用）
+export async function deleteDailyTasksByDate(dateStr: string) {
+  const res = await notion.databases.query({
+    database_id: DAILY_TASKS_DATABASE_ID,
+    filter: { property: '日期', date: { equals: dateStr } },
+    page_size: 100,
+  })
+  for (const page of res.results as any[]) {
+    await notion.pages.update({ page_id: page.id, archived: true })
+  }
+}
+
+// 寫入歷史頁面：以日期為標題的區塊；重寫同一天會先刪掉舊區塊再附加新的
+export async function writeHistorySection(dateStr: string, grouped: Record<string, string[]>) {
+  const res = await notion.blocks.children.list({ block_id: HISTORY_PAGE_ID, page_size: 100 })
+  const blocks = res.results as any[]
+
+  // 找出今天的 heading 區塊，刪除它與其後（到下一個 heading_2 之前）的所有區塊
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i]
+    if (b.type === 'heading_2' && (b.heading_2?.rich_text?.[0]?.plain_text ?? '').includes(dateStr)) {
+      const toDelete = [b.id]
+      let j = i + 1
+      while (j < blocks.length && blocks[j].type !== 'heading_2') {
+        toDelete.push(blocks[j].id)
+        j++
+      }
+      for (const id of toDelete) {
+        try { await notion.blocks.delete({ block_id: id }) } catch {}
+      }
+      break
+    }
+  }
+
+  // 組成新區塊：日期 heading + 每人段落 + 任務 bullet
+  const children: any[] = [
+    { type: 'heading_2', heading_2: { rich_text: [{ type: 'text', text: { content: dateStr } }] } },
+  ]
+  for (const [person, tasks] of Object.entries(grouped)) {
+    children.push({ type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: `【${person}】` }, annotations: { bold: true } }] } })
+    for (const t of tasks) {
+      children.push({ type: 'bulleted_list_item', bulleted_list_item: { rich_text: [{ type: 'text', text: { content: t } }] } })
+    }
+  }
+  await notion.blocks.children.append({ block_id: HISTORY_PAGE_ID, children } as any)
+}
+
 // Update a daily task (reassign person / edit text / change status)
 export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string }) {
   const properties: any = {}
