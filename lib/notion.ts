@@ -249,6 +249,43 @@ export async function getProjectDetails(pageId: string) {
   }
 }
 
+const DAILY_TASKS_DATABASE_ID = '80fcd47f0bdc47288c739f5c111e571e'
+
+// Read daily work items, grouped by person
+export async function getDailyTasks(dateStr?: string) {
+  const filter = dateStr
+    ? { property: '日期', date: { equals: dateStr } }
+    : undefined
+  const res = await notion.databases.query({
+    database_id: DAILY_TASKS_DATABASE_ID,
+    ...(filter ? { filter } : {}),
+    sorts: [{ timestamp: 'created_time', direction: 'descending' }],
+    page_size: 100,
+  })
+  return (res.results as any[]).map(page => ({
+    id: page.id,
+    task: page.properties['任務']?.title?.[0]?.plain_text ?? '',
+    person: page.properties['人員']?.rich_text?.[0]?.plain_text ?? '(未分類)',
+    date: page.properties['日期']?.date?.start ?? '',
+    status: page.properties['狀態']?.status?.name ?? '未開始',
+    source: page.properties['來源錄音']?.rich_text?.[0]?.plain_text ?? '',
+  }))
+}
+
+// Write one daily work item (used by Plaud sync cron)
+export async function addDailyTask(person: string, task: string, dateStr: string, source: string) {
+  await notion.pages.create({
+    parent: { database_id: DAILY_TASKS_DATABASE_ID },
+    properties: {
+      任務: { title: [{ text: { content: task } }] },
+      人員: { rich_text: [{ text: { content: person } }] },
+      日期: { date: { start: dateStr } },
+      狀態: { status: { name: '未開始' } },
+      來源錄音: { rich_text: [{ text: { content: source } }] },
+    },
+  })
+}
+
 const TASKS_DATABASE_ID = '25d2cda48d7781fdb48be99fcf824daf'
 
 export async function searchTasks(query: string) {
