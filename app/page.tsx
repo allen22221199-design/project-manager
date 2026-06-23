@@ -78,6 +78,7 @@ export default function Page() {
   const [personTasks, setPersonTasks] = useState<DailyTask[]>([])
   const [personTasksLoading, setPersonTasksLoading] = useState(false)
   const [personFreqFilter, setPersonFreqFilter] = useState<string | null>(null)
+  const [personSubFilter, setPersonSubFilter] = useState<string | null>(null)
   const [projectDetail, setProjectDetail] = useState<any>(null)
   const [projectDetailLoading, setProjectDetailLoading] = useState(false)
 
@@ -741,8 +742,19 @@ export default function Page() {
                       const personAll = inProgressTasks.filter(t => t.person === selectedPersonTag)
                       const weekly = personAll.filter(t => t.freq === '每周')
                       const monthly = personAll.filter(t => t.freq === '每月')
-                      const daily = personAll.filter(t => !t.freq || t.freq === '當日')
-                      const filtered = personFreqFilter === '每周' ? weekly : personFreqFilter === '每月' ? monthly : personAll
+                      const getWeekKey = (d: string) => {
+                        const dt = new Date(d); const dow = dt.getUTCDay()
+                        const mon = new Date(dt); mon.setUTCDate(dt.getUTCDate() - ((dow + 6) % 7))
+                        return mon.toISOString().slice(0, 10)
+                      }
+                      const weekKeys = Array.from(new Set(weekly.map(t => t.date ? getWeekKey(t.date) : '').filter(Boolean))).sort()
+                      const monthKeys = Array.from(new Set(monthly.map(t => t.date ? t.date.slice(0, 7) : '').filter(Boolean))).sort()
+                      const freqPool = personFreqFilter === '每周' ? weekly : personFreqFilter === '每月' ? monthly : personAll
+                      const filtered = personSubFilter
+                        ? personFreqFilter === '每周'
+                          ? freqPool.filter(t => t.date && getWeekKey(t.date) === personSubFilter)
+                          : freqPool.filter(t => t.date && t.date.slice(0, 7) === personSubFilter)
+                        : freqPool
                       const toggleDone = (t: DailyTask) => {
                         const next = t.status === '已完成' ? '進行中' : '已完成'
                         setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
@@ -761,25 +773,54 @@ export default function Page() {
                       )
                       return (
                         <div className="mt-3 bg-blue-50 rounded-xl p-3">
-                          <div className="flex items-center gap-2 mb-3">
-                            <p className="text-xs font-medium text-blue-700">{selectedPersonTag} 的進行中任務（{personAll.length} 項）</p>
+                          {/* 第一層篩選 */}
+                          <div className="flex items-center gap-2 mb-2">
+                            <p className="text-xs font-medium text-blue-700">{selectedPersonTag}（{personAll.length} 項）</p>
                             <div className="ml-auto flex gap-1">
-                              <button onClick={() => setPersonFreqFilter(null)}
+                              <button onClick={() => { setPersonFreqFilter(null); setPersonSubFilter(null) }}
                                 className={`text-xs px-2 py-0.5 rounded-full transition-colors ${!personFreqFilter ? 'bg-blue-600 text-white' : 'bg-white text-blue-700 border border-blue-200 hover:border-blue-400'}`}>
                                 全部
                               </button>
-                              <button onClick={() => setPersonFreqFilter(personFreqFilter === '每周' ? null : '每周')}
+                              <button onClick={() => { setPersonFreqFilter(personFreqFilter === '每周' ? null : '每周'); setPersonSubFilter(null) }}
                                 className={`text-xs px-2 py-0.5 rounded-full transition-colors ${personFreqFilter === '每周' ? 'bg-purple-600 text-white' : 'bg-white text-purple-700 border border-purple-200 hover:border-purple-400'}`}>
                                 每周{weekly.length > 0 ? ` ${weekly.length}` : ''}
                               </button>
-                              <button onClick={() => setPersonFreqFilter(personFreqFilter === '每月' ? null : '每月')}
+                              <button onClick={() => { setPersonFreqFilter(personFreqFilter === '每月' ? null : '每月'); setPersonSubFilter(null) }}
                                 className={`text-xs px-2 py-0.5 rounded-full transition-colors ${personFreqFilter === '每月' ? 'bg-purple-600 text-white' : 'bg-white text-purple-700 border border-purple-200 hover:border-purple-400'}`}>
                                 每月{monthly.length > 0 ? ` ${monthly.length}` : ''}
                               </button>
                             </div>
                           </div>
+                          {/* 第二層：週別 */}
+                          {personFreqFilter === '每周' && weekKeys.length > 0 && (
+                            <div className="flex gap-1 flex-wrap mb-2">
+                              {weekKeys.map(wk => {
+                                const cnt = weekly.filter(t => t.date && getWeekKey(t.date) === wk).length
+                                return (
+                                  <button key={wk} onClick={() => setPersonSubFilter(personSubFilter === wk ? null : wk)}
+                                    className={`text-xs px-2 py-0.5 rounded-full transition-colors ${personSubFilter === wk ? 'bg-purple-500 text-white' : 'bg-white text-purple-600 border border-purple-200 hover:border-purple-400'}`}>
+                                    {wk.slice(5)} 週 {cnt}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+                          {/* 第二層：月份 */}
+                          {personFreqFilter === '每月' && monthKeys.length > 0 && (
+                            <div className="flex gap-1 flex-wrap mb-2">
+                              {monthKeys.map(mk => {
+                                const cnt = monthly.filter(t => t.date && t.date.slice(0, 7) === mk).length
+                                return (
+                                  <button key={mk} onClick={() => setPersonSubFilter(personSubFilter === mk ? null : mk)}
+                                    className={`text-xs px-2 py-0.5 rounded-full transition-colors ${personSubFilter === mk ? 'bg-purple-500 text-white' : 'bg-white text-purple-600 border border-purple-200 hover:border-purple-400'}`}>
+                                    {parseInt(mk.slice(5))}月 {cnt}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
                           {filtered.length === 0
-                            ? <p className="text-xs text-gray-400 py-2 text-center">無{personFreqFilter ?? ''}進行中任務</p>
+                            ? <p className="text-xs text-gray-400 py-2 text-center">無符合的進行中任務</p>
                             : <div>{filtered.map(t => <TaskRow key={t.id} t={t} />)}</div>
                           }
                         </div>
