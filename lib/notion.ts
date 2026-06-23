@@ -249,7 +249,7 @@ export async function getProjectDetails(pageId: string) {
   }
 }
 
-const DAILY_TASKS_DATABASE_ID = '80fcd47f0bdc47288c739f5c111e571e'
+const DAILY_TASKS_DATABASE_ID = process.env.NOTION_DATABASE_ID || '3882cda48d77809299f4f15d6420575b'
 
 // Query all non-completed tasks for a person, optionally filtered by freq
 export async function getTasksByPerson(person: string, freq?: string) {
