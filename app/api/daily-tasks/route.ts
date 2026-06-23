@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDailyTasks, updateDailyTask, deleteDailyTask, syncHistoryForDate } from '@/lib/notion'
+import { getDailyTasks, updateDailyTask, deleteDailyTask, syncHistoryForDate, getTasksByPerson } from '@/lib/notion'
 
 export async function GET(req: NextRequest) {
   try {
     const date = req.nextUrl.searchParams.get('date') ?? undefined
+    const person = req.nextUrl.searchParams.get('person') ?? undefined
+    const freq = req.nextUrl.searchParams.get('freq') ?? undefined
+
+    if (person) {
+      const tasks = await getTasksByPerson(person, freq)
+      return NextResponse.json({ tasks })
+    }
+
     const tasks = await getDailyTasks(date)
-    // Group by person
     const grouped: Record<string, typeof tasks> = {}
     for (const t of tasks) {
       ;(grouped[t.person] ??= []).push(t)
@@ -18,9 +25,9 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { id, person, task, status, date } = await req.json()
+    const { id, person, task, status, freq, date } = await req.json()
     if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
-    await updateDailyTask(id, { person, task, status })
+    await updateDailyTask(id, { person, task, status, freq })
     if (date) { try { await syncHistoryForDate(date) } catch {} }
     return NextResponse.json({ ok: true })
   } catch (e: any) {

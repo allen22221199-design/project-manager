@@ -17,8 +17,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '無法從內容整理出工作項目，請確認內容', count: 0 }, { status: 200 })
     }
 
-    // 台灣時間日期（UTC+8）
-    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
+    // 從內容標題解析日期（支援 YYYY/MM/DD、YYYY-MM-DD、MM/DD、M月D日 等格式）
+    let today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
+    const firstLine = text.trim().split('\n')[0]
+    const m1 = firstLine.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/)
+    const m2 = firstLine.match(/(\d{1,2})[\/](\d{1,2})/)
+    const m3 = firstLine.match(/(\d{1,2})月(\d{1,2})日/)
+    if (m1) {
+      today = `${m1[1]}-${m1[2].padStart(2,'0')}-${m1[3].padStart(2,'0')}`
+    } else if (m2) {
+      const yr = new Date(Date.now() + 8 * 3600 * 1000).getFullYear()
+      today = `${yr}-${m2[1].padStart(2,'0')}-${m2[2].padStart(2,'0')}`
+    } else if (m3) {
+      const yr = new Date(Date.now() + 8 * 3600 * 1000).getFullYear()
+      today = `${yr}-${m3[1].padStart(2,'0')}-${m3[2].padStart(2,'0')}`
+    }
 
     // 依人員分組（給 LINE、歷史頁面用）
     const grouped: Record<string, string[]> = {}

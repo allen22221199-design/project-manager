@@ -251,6 +251,30 @@ export async function getProjectDetails(pageId: string) {
 
 const DAILY_TASKS_DATABASE_ID = '80fcd47f0bdc47288c739f5c111e571e'
 
+// Query all non-completed tasks for a person, optionally filtered by freq
+export async function getTasksByPerson(person: string, freq?: string) {
+  const filters: any[] = [
+    { property: '人員', rich_text: { equals: person } },
+    { property: '狀態', status: { does_not_equal: '已完成' } },
+    { property: '狀態', status: { does_not_equal: '完成' } },
+  ]
+  if (freq) filters.push({ property: '頻率', select: { equals: freq } })
+  const res = await notion.databases.query({
+    database_id: DAILY_TASKS_DATABASE_ID,
+    filter: { and: filters },
+    sorts: [{ property: '日期', direction: 'descending' }],
+    page_size: 100,
+  })
+  return (res.results as any[]).map(page => ({
+    id: page.id,
+    task: page.properties['任務']?.title?.[0]?.plain_text ?? '',
+    person: page.properties['人員']?.rich_text?.[0]?.plain_text ?? '',
+    date: page.properties['日期']?.date?.start ?? '',
+    status: page.properties['狀態']?.status?.name ?? '',
+    freq: page.properties['頻率']?.select?.name ?? '當日',
+  }))
+}
+
 // Read daily work items, grouped by person
 export async function getDailyTasks(dateStr?: string) {
   const filter = dateStr
@@ -269,6 +293,7 @@ export async function getDailyTasks(dateStr?: string) {
     date: page.properties['日期']?.date?.start ?? '',
     status: page.properties['狀態']?.status?.name ?? '未開始',
     source: page.properties['來源錄音']?.rich_text?.[0]?.plain_text ?? '',
+    freq: page.properties['頻率']?.select?.name ?? '當日',
   }))
 }
 
@@ -282,7 +307,10 @@ export async function deleteDailyTasksByDate(dateStr: string) {
     page_size: 100,
   })
   for (const page of res.results as any[]) {
-    await notion.pages.update({ page_id: page.id, archived: true })
+    const freq = (page as any).properties['頻率']?.select?.name ?? '當日'
+    if (freq === '當日') {
+      await notion.pages.update({ page_id: page.id, archived: true })
+    }
   }
 }
 
@@ -330,11 +358,12 @@ export async function syncHistoryForDate(dateStr: string) {
 }
 
 // Update a daily task (reassign person / edit text / change status)
-export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string }) {
+export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string; freq?: string }) {
   const properties: any = {}
   if (fields.person !== undefined) properties['人員'] = { rich_text: [{ text: { content: fields.person } }] }
   if (fields.task !== undefined) properties['任務'] = { title: [{ text: { content: fields.task } }] }
   if (fields.status !== undefined) properties['狀態'] = { status: { name: fields.status } }
+  if (fields.freq !== undefined) properties['頻率'] = { select: { name: fields.freq } }
   await notion.pages.update({ page_id: id, properties })
 }
 
@@ -344,7 +373,7 @@ export async function deleteDailyTask(id: string) {
 }
 
 // Write one daily work item (used by Plaud sync cron)
-export async function addDailyTask(person: string, task: string, dateStr: string, source: string) {
+export async function addDailyTask(person: string, task: string, dateStr: string, source: string, freq: string = '當日') {
   await notion.pages.create({
     parent: { database_id: DAILY_TASKS_DATABASE_ID },
     properties: {
@@ -353,6 +382,7 @@ export async function addDailyTask(person: string, task: string, dateStr: string
       日期: { date: { start: dateStr } },
       狀態: { status: { name: '進行中' } },
       來源錄音: { rich_text: [{ text: { content: source } }] },
+      頻率: { select: { name: freq } },
     },
   })
 }

@@ -20,7 +20,7 @@ type Project = { id: string; name: string; status: string; contact: string; addr
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily'
-type DailyTask = { id: string; task: string; person: string; date: string; status: string; source: string }
+type DailyTask = { id: string; task: string; person: string; date: string; status: string; source: string; freq: string }
 
 export default function Page() {
   const [view, setView] = useState<View>('list')
@@ -73,6 +73,12 @@ export default function Page() {
   const [inProgressTasks, setInProgressTasks] = useState<DailyTask[]>([])
   const [selectedPersonTag, setSelectedPersonTag] = useState<string | null>(null)
   const [dailyTaskResults, setDailyTaskResults] = useState<DailyTask[]>([])
+  const [weekOffset, setWeekOffset] = useState(0)
+  const [personTasks, setPersonTasks] = useState<DailyTask[]>([])
+  const [personTasksLoading, setPersonTasksLoading] = useState(false)
+  const [personFreqFilter, setPersonFreqFilter] = useState<string | null>(null)
+  const [projectDetail, setProjectDetail] = useState<any>(null)
+  const [projectDetailLoading, setProjectDetailLoading] = useState(false)
 
   // create project form
   const [newName, setNewName] = useState('')
@@ -114,7 +120,7 @@ export default function Page() {
     } finally { setLoading(false) }
   }
 
-  function selectProject(p: Project) {
+  async function selectProject(p: Project) {
     setSelected(p)
     setDate(today())
     setDesc('')
@@ -128,7 +134,17 @@ export default function Page() {
     setItemUnit('')
     setItemNote('')
     setReportTab('progress')
+    setProjectDetail(null)
+    setProjectDetailLoading(true)
     setView('report')
+    try {
+      const r = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageId: p.id }),
+      })
+      setProjectDetail(await r.json())
+    } catch {} finally { setProjectDetailLoading(false) }
   }
 
   async function submitProgress() {
@@ -205,8 +221,18 @@ export default function Page() {
     try {
       const r = await fetch('/api/daily-tasks')
       const data = await r.json()
-      setInProgressTasks((data.all ?? []).filter((t: DailyTask) => t.status === '進行中'))
+      setInProgressTasks((data.all ?? []).filter((t: DailyTask) => t.status !== '已完成' && t.status !== '完成'))
     } catch {}
+  }
+
+  async function loadPersonTasks(person: string) {
+    setPersonTasksLoading(true)
+    setPersonTasks([])
+    try {
+      const r = await fetch(`/api/daily-tasks?person=${encodeURIComponent(person)}`)
+      const data = await r.json()
+      setPersonTasks(data.tasks ?? [])
+    } catch {} finally { setPersonTasksLoading(false) }
   }
 
   async function loadDetail(p: { id: string }) {
@@ -347,40 +373,55 @@ export default function Page() {
     fetchDailyTasks()
   }
 
-  // 切換狀態
+  const FREQ_CYCLE = ['當日', '每周', '每月']
+
+  // 切換狀態（optimistic）
   async function cycleStatus(t: DailyTask) {
     const idx = DAILY_STATUS_CYCLE.indexOf(t.status)
     const next = DAILY_STATUS_CYCLE[(idx + 1) % DAILY_STATUS_CYCLE.length]
-    await fetch('/api/daily-tasks', {
+    setDailyAll(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
+    fetch('/api/daily-tasks', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: t.id, status: next, date: selectedDate }),
-    })
-    fetchDailyTasks()
+    }).then(() => fetchDailyTasks())
   }
 
-  // 編輯任務文字
+  // 切換頻率（optimistic）
+  async function cycleFreq(t: DailyTask) {
+    const idx = FREQ_CYCLE.indexOf(t.freq ?? '當日')
+    const next = FREQ_CYCLE[(idx + 1) % FREQ_CYCLE.length]
+    setDailyAll(prev => prev.map(x => x.id === t.id ? { ...x, freq: next } : x))
+    fetch('/api/daily-tasks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: t.id, freq: next, date: selectedDate }),
+    }).then(() => fetchDailyTasks())
+  }
+
+  // 編輯任務文字（optimistic）
   async function saveEdit(taskId: string) {
-    if (editText.trim()) {
-      await fetch('/api/daily-tasks', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: taskId, task: editText.trim(), date: selectedDate }),
-      })
-    }
+    const newText = editText.trim()
     setEditingId(null)
     setEditText('')
-    fetchDailyTasks()
+    if (newText) {
+      setDailyAll(prev => prev.map(x => x.id === taskId ? { ...x, task: newText } : x))
+      fetch('/api/daily-tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: taskId, task: newText, date: selectedDate }),
+      }).then(() => fetchDailyTasks())
+    }
   }
 
-  // 刪除任務
+  // 刪除任務（optimistic）
   async function deleteTask(taskId: string) {
-    await fetch('/api/daily-tasks', {
+    setDailyAll(prev => prev.filter(x => x.id !== taskId))
+    fetch('/api/daily-tasks', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: taskId, date: selectedDate }),
-    })
-    fetchDailyTasks()
+    }).then(() => fetchDailyTasks())
   }
 
   async function submitCreateProject() {
@@ -500,6 +541,35 @@ export default function Page() {
                 {selected.status}
               </span>
             </div>
+
+            {/* 專案已有資訊 */}
+            {projectDetailLoading && <p className="text-sm text-gray-400 text-center py-3">載入專案資訊中...</p>}
+            {projectDetail && (
+              <div className="mb-4 space-y-3">
+                {(projectDetail.itemRows ?? []).length > 0 && (
+                  <SectionTable title="📋 項目清單" headers={projectDetail.itemHeaders} rows={projectDetail.itemRows} />
+                )}
+                {(projectDetail.progressRows ?? []).length > 0 && (
+                  <div className="bg-white border border-gray-200 rounded-xl p-4">
+                    <p className="text-xs font-medium text-gray-500 mb-3">📑 進度紀錄</p>
+                    <div className="space-y-2">
+                      {[...(projectDetail.progressRows ?? [])].reverse().slice(0, 10).map((r: any, i: number) => (
+                        <div key={i} className="flex gap-3 text-sm border-b border-gray-50 pb-2 last:border-0 last:pb-0">
+                          <span className="text-gray-400 shrink-0 w-24">{r.date}</span>
+                          <span className="text-gray-700">{r.desc}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(projectDetail.shippingRows ?? []).length > 0 && (
+                  <SectionTable title="🚚 出貨紀錄" headers={projectDetail.shippingHeaders} rows={projectDetail.shippingRows} />
+                )}
+                {(projectDetail.paymentRows ?? []).length > 0 && (
+                  <SectionTable title="💰 請款紀錄" headers={projectDetail.paymentHeaders} rows={projectDetail.paymentRows} />
+                )}
+              </div>
+            )}
 
             <div className="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1">
               <button onClick={() => { setReportTab('progress'); setSubmitMsg(''); setSubmitOk(false) }}
@@ -652,14 +722,17 @@ export default function Page() {
 
             {!searchDetail && (
               <>
-                {/* 進行中任務人名標籤 */}
+                {/* 未完成任務人名標籤 */}
                 {inProgressTasks.length > 0 && (
                   <div className="mb-4">
-                    <p className="text-xs text-gray-400 mb-2">進行中任務 — 點選人名查看：</p>
+                    <p className="text-xs text-gray-400 mb-2">未完成任務 — 點選人名查看所有未完成任務：</p>
                     <div className="flex flex-wrap gap-1.5">
                       {Array.from(new Set(inProgressTasks.map(t => t.person))).map(person => (
                         <button key={person}
-                          onClick={() => setSelectedPersonTag(selectedPersonTag === person ? null : person)}
+                          onClick={() => {
+                            if (selectedPersonTag === person) { setSelectedPersonTag(null); setPersonTasks([]); setPersonFreqFilter(null) }
+                            else { setSelectedPersonTag(person); setPersonFreqFilter(null); loadPersonTasks(person) }
+                          }}
                           className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${selectedPersonTag === person ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
                           {person}
                           <span className="ml-1 opacity-70">{inProgressTasks.filter(t => t.person === person).length}</span>
@@ -667,15 +740,35 @@ export default function Page() {
                       ))}
                     </div>
                     {selectedPersonTag && (
-                      <div className="mt-3 bg-blue-50 rounded-xl p-3 space-y-1.5">
-                        <p className="text-xs font-medium text-blue-700 mb-2">{selectedPersonTag} 的進行中任務：</p>
-                        {inProgressTasks.filter(t => t.person === selectedPersonTag).map(t => (
-                          <div key={t.id} className="flex items-start gap-2 text-sm">
-                            <span className="text-blue-400 shrink-0 mt-0.5">·</span>
-                            <span className="text-gray-700 flex-1">{t.task}</span>
-                            <span className="text-xs text-gray-400 shrink-0">{t.date}</span>
+                      <div className="mt-3 bg-blue-50 rounded-xl p-3">
+                        <div className="flex items-center gap-2 mb-3">
+                          <p className="text-xs font-medium text-blue-700">{selectedPersonTag} 的未完成任務</p>
+                          <div className="ml-auto flex gap-1">
+                            {['每周', '每月'].map(f => (
+                              <button key={f} onClick={() => setPersonFreqFilter(personFreqFilter === f ? null : f)}
+                                className={`text-xs px-2 py-0.5 rounded-full transition-colors ${personFreqFilter === f ? 'bg-purple-600 text-white' : 'bg-white text-purple-700 border border-purple-200 hover:border-purple-400'}`}>
+                                {f}
+                              </button>
+                            ))}
                           </div>
-                        ))}
+                        </div>
+                        {personTasksLoading
+                          ? <p className="text-xs text-gray-400 py-2 text-center">載入中...</p>
+                          : (() => {
+                            const filtered = personFreqFilter ? personTasks.filter(t => t.freq === personFreqFilter) : personTasks
+                            if (filtered.length === 0) return <p className="text-xs text-gray-400 py-2 text-center">無{personFreqFilter ?? ''}未完成任務</p>
+                            return <div className="space-y-1.5">
+                              {filtered.map(t => (
+                                <div key={t.id} className="flex items-start gap-2 text-sm">
+                                  <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '已完成' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{t.status}</span>
+                                  {t.freq && t.freq !== '當日' && <span className="text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 bg-purple-100 text-purple-700">{t.freq}</span>}
+                                  <span className="text-gray-700 flex-1">{t.task}</span>
+                                  <span className="text-xs text-gray-400 shrink-0">{t.date}</span>
+                                </div>
+                              ))}
+                            </div>
+                          })()
+                        }
                       </div>
                     )}
                   </div>
@@ -879,27 +972,39 @@ export default function Page() {
               </button>
             </div>
 
-            {/* 日期標籤 */}
+            {/* 日期標籤（含週導覽） */}
             {(() => {
               const now = new Date(Date.now() + 8 * 3600 * 1000)
               const dow = now.getUTCDay()
-              const mon = new Date(now); mon.setUTCDate(now.getUTCDate() - ((dow + 6) % 7))
+              const thisMon = new Date(now); thisMon.setUTCDate(now.getUTCDate() - ((dow + 6) % 7))
+              const mon = new Date(thisMon); mon.setUTCDate(thisMon.getUTCDate() + weekOffset * 7)
               const weekStart = mon.toISOString().slice(0, 10)
               const sun = new Date(mon); sun.setUTCDate(mon.getUTCDate() + 6)
               const weekEnd = sun.toISOString().slice(0, 10)
               const dates = Array.from(new Set(dailyAll.map(t => t.date).filter(Boolean)))
                 .filter(d => d >= weekStart && d <= weekEnd)
                 .sort().reverse()
-              if (dates.length === 0) return null
               const fmt = (d: string) => d === todayISO() ? `今天 ${d.slice(5)}` : d.slice(5)
+              const weekLabel = weekOffset === 0 ? '本週' : weekOffset === -1 ? '上週' : weekOffset < 0 ? `${-weekOffset}週前` : `${weekOffset}週後`
               return (
-                <div className="flex gap-1.5 flex-wrap mb-3">
-                  {dates.map(d => (
-                    <button key={d} onClick={() => setSelectedDate(d)}
-                      className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${selectedDate === d ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
-                      {fmt(d)}
-                    </button>
-                  ))}
+                <div className="mb-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <button onClick={() => setWeekOffset(w => w - 1)} className="text-gray-400 hover:text-gray-700 px-1.5 py-0.5 rounded hover:bg-gray-100 text-base leading-none">‹</button>
+                    <span className="text-xs text-gray-500 font-medium">{weekLabel}（{weekStart.slice(5)} — {weekEnd.slice(5)}）</span>
+                    <button onClick={() => setWeekOffset(w => w + 1)} disabled={weekOffset >= 0} className="text-gray-400 hover:text-gray-700 px-1.5 py-0.5 rounded hover:bg-gray-100 text-base leading-none disabled:opacity-30">›</button>
+                    {weekOffset !== 0 && <button onClick={() => setWeekOffset(0)} className="ml-auto text-xs text-blue-500 hover:text-blue-700">回本週</button>}
+                  </div>
+                  {dates.length === 0
+                    ? <p className="text-xs text-gray-300 py-1">此週無工作項目</p>
+                    : <div className="flex gap-1.5 flex-wrap">
+                      {dates.map(d => (
+                        <button key={d} onClick={() => setSelectedDate(d)}
+                          className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${selectedDate === d ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                          {fmt(d)}
+                        </button>
+                      ))}
+                    </div>
+                  }
                 </div>
               )
             })()}
@@ -948,6 +1053,18 @@ export default function Page() {
                                   className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' || t.status === '已完成' ? 'bg-green-100 text-green-700' : t.status === '進行中' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
                                   {t.status}
                                 </button>
+                                {(t.freq && t.freq !== '當日') && (
+                                  <button onClick={() => cycleFreq(t)} title="點擊切換頻率"
+                                    className="text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 bg-purple-100 text-purple-700">
+                                    {t.freq}
+                                  </button>
+                                )}
+                                {(t.freq === '當日' || !t.freq) && (
+                                  <button onClick={() => cycleFreq(t)} title="點擊切換頻率（當日→每周→每月）"
+                                    className="text-xs px-1 py-0.5 rounded shrink-0 mt-0.5 text-gray-300 hover:text-gray-500 opacity-0 group-hover:opacity-100">
+                                    ↻
+                                  </button>
+                                )}
                                 {editingId === t.id ? (
                                   <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
                                     onBlur={() => saveEdit(t.id)}
