@@ -385,7 +385,7 @@ export default function Page() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: t.id, status: next, date: selectedDate }),
-    }).then(() => fetchDailyTasks())
+    })
   }
 
   // 切換頻率（optimistic）
@@ -397,7 +397,7 @@ export default function Page() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: t.id, freq: next, date: selectedDate }),
-    }).then(() => fetchDailyTasks())
+    })
   }
 
   // 編輯任務文字（optimistic）
@@ -411,7 +411,7 @@ export default function Page() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: taskId, task: newText, date: selectedDate }),
-      }).then(() => fetchDailyTasks())
+      })
     }
   }
 
@@ -422,7 +422,7 @@ export default function Page() {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: taskId, date: selectedDate }),
-    }).then(() => fetchDailyTasks())
+    })
   }
 
   async function submitCreateProject() {
