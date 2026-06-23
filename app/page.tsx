@@ -983,7 +983,7 @@ export default function Page() {
               const weekEnd = sun.toISOString().slice(0, 10)
               const dates = Array.from(new Set(dailyAll.map(t => t.date).filter(Boolean)))
                 .filter(d => d >= weekStart && d <= weekEnd)
-                .sort().reverse()
+                .sort()
               const fmt = (d: string) => d === todayISO() ? `今天 ${d.slice(5)}` : d.slice(5)
               const weekLabel = weekOffset === 0 ? '本週' : weekOffset === -1 ? '上週' : weekOffset < 0 ? `${-weekOffset}週前` : `${weekOffset}週後`
               return (
