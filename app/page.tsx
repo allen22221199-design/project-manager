@@ -1054,7 +1054,7 @@ export default function Page() {
                     ? <p className="text-xs text-gray-300 py-1">此週無工作項目</p>
                     : <div className="flex gap-1.5 flex-wrap">
                       {dates.map(d => (
-                        <button key={d} onClick={() => setSelectedDate(d)}
+                        <button key={d} onClick={() => { setSelectedDate(d); setFilterPerson(null) }}
                           className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${selectedDate === d ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
                           {fmt(d)}
                         </button>
