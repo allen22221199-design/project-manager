@@ -757,6 +757,9 @@ export default function Page() {
                         const next = t.status === '已完成' ? '進行中' : '已完成'
                         setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
                         fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, status: next }) })
+                        if (next === '已完成') {
+                          setTimeout(() => setInProgressTasks(prev => prev.filter(x => x.id !== t.id)), 600)
+                        }
                       }
                       const TaskRow = ({ t }: { t: DailyTask }) => (
                         <div className="flex items-center gap-2 text-sm py-1.5 border-b border-blue-100 last:border-0">
@@ -1065,7 +1068,7 @@ export default function Page() {
               <p className="text-xs text-gray-400">💡 拖曳任務可換負責人；點狀態可切換；點任務文字可編輯（皆即時同步 Notion）</p>
               <div className="ml-auto flex gap-1 flex-wrap">
                 {(() => {
-                  const dayTasks = dailyAll.filter(t => t.date === selectedDate)
+                  const dayTasks = dailyAll.filter(t => t.date === selectedDate && t.status !== '已完成' && t.status !== '完成')
                   const people = Array.from(new Set(dayTasks.map(t => t.person))).filter(Boolean)
                   if (people.length < 2) return null
                   return <>
@@ -1090,7 +1093,7 @@ export default function Page() {
             ) : (
               <div className="space-y-3">
                 {(() => {
-                  const dayTasks = dailyAll.filter(t => t.date === selectedDate)
+                  const dayTasks = dailyAll.filter(t => t.date === selectedDate && t.status !== '已完成' && t.status !== '完成')
                   const dailyGrouped: Record<string, DailyTask[]> = {}
                   for (const t of dayTasks) (dailyGrouped[t.person] ??= []).push(t)
                   const extraPeople = Object.keys(dailyGrouped).filter(p => !DAILY_PEOPLE.includes(p))
