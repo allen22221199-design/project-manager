@@ -1097,20 +1097,6 @@ export default function Page() {
                   className={`text-xs px-2 py-1 rounded-full transition-colors ${showCompleted ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white border border-gray-200 text-gray-400 hover:border-gray-400'}`}>
                   {showCompleted ? '隱藏已完成' : '顯示已完成'}
                 </button>
-                {(() => {
-                  const dayTasks = dailyAll.filter(t => t.date === selectedDate && (showCompleted || (t.status !== '完成' && t.status !== '已封存')))
-                  const people = Array.from(new Set(dayTasks.map(t => t.person))).filter(Boolean)
-                  if (people.length < 2) return null
-                  return <>
-                    {filterPerson && <button onClick={() => setFilterPerson(null)} className="text-xs px-2 py-1 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300">全部</button>}
-                    {people.map(p => (
-                      <button key={p} onClick={() => setFilterPerson(filterPerson === p ? null : p)}
-                        className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${filterPerson === p ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
-                        {p}
-                      </button>
-                    ))}
-                  </>
-                })()}
               </div>
             </div>
             {dailyLoading ? (
