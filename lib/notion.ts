@@ -308,7 +308,8 @@ export async function deleteDailyTasksByDate(dateStr: string) {
     page_size: 100,
   })
   for (const page of res.results as any[]) {
-    await notion.pages.update({ page_id: page.id, archived: true })
+    // 已封存的頁面再封存會報錯，跳過即可
+    try { await notion.pages.update({ page_id: page.id, archived: true }) } catch {}
   }
 }
 
@@ -361,12 +362,23 @@ export async function updateDailyTask(id: string, fields: { person?: string; tas
   if (fields.person !== undefined) properties['人員'] = { rich_text: [{ text: { content: fields.person } }] }
   if (fields.task !== undefined) properties['任務名稱'] = { title: [{ text: { content: fields.task } }] }
   if (fields.status !== undefined) properties['狀態'] = { status: { name: fields.status } }
-  await notion.pages.update({ page_id: id, properties })
+  try {
+    await notion.pages.update({ page_id: id, properties })
+  } catch (e: any) {
+    // 任務頁面已被封存（多半是重新整理過、畫面為舊資料）——忽略，前端重抓即可
+    if (String(e?.message ?? e).includes('archived')) return
+    throw e
+  }
 }
 
 // Delete (archive) a daily task
 export async function deleteDailyTask(id: string) {
-  await notion.pages.update({ page_id: id, archived: true })
+  try {
+    await notion.pages.update({ page_id: id, archived: true })
+  } catch (e: any) {
+    if (String(e?.message ?? e).includes('archived')) return
+    throw e
+  }
 }
 
 // Write one daily work item (used by Plaud sync cron)
