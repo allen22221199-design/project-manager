@@ -74,6 +74,7 @@ export default function Page() {
   const [selectedPersonTag, setSelectedPersonTag] = useState<string | null>(null)
   const [dailyTaskResults, setDailyTaskResults] = useState<DailyTask[]>([])
   const [weekOffset, setWeekOffset] = useState(0)
+  const [filterPerson, setFilterPerson] = useState<string | null>(null)
   const [personTasks, setPersonTasks] = useState<DailyTask[]>([])
   const [personTasksLoading, setPersonTasksLoading] = useState(false)
   const [personFreqFilter, setPersonFreqFilter] = useState<string | null>(null)
@@ -1008,7 +1009,25 @@ export default function Page() {
                 </div>
               )
             })()}
-            <p className="text-xs text-gray-400 mb-3">💡 拖曳任務可換負責人；點狀態可切換；點任務文字可編輯（皆即時同步 Notion）</p>
+            <div className="flex items-center gap-1.5 flex-wrap mb-3">
+              <p className="text-xs text-gray-400">💡 拖曳任務可換負責人；點狀態可切換；點任務文字可編輯（皆即時同步 Notion）</p>
+              <div className="ml-auto flex gap-1 flex-wrap">
+                {(() => {
+                  const dayTasks = dailyAll.filter(t => t.date === selectedDate)
+                  const people = Array.from(new Set(dayTasks.map(t => t.person))).filter(Boolean)
+                  if (people.length < 2) return null
+                  return <>
+                    {filterPerson && <button onClick={() => setFilterPerson(null)} className="text-xs px-2 py-1 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300">全部</button>}
+                    {people.map(p => (
+                      <button key={p} onClick={() => setFilterPerson(filterPerson === p ? null : p)}
+                        className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${filterPerson === p ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                        {p}
+                      </button>
+                    ))}
+                  </>
+                })()}
+              </div>
+            </div>
             {dailyLoading ? (
               <p className="text-gray-400 text-sm py-8 text-center">載入中...</p>
             ) : dailyAll.length === 0 ? (
@@ -1023,7 +1042,7 @@ export default function Page() {
                   const dailyGrouped: Record<string, DailyTask[]> = {}
                   for (const t of dayTasks) (dailyGrouped[t.person] ??= []).push(t)
                   const extraPeople = Object.keys(dailyGrouped).filter(p => !DAILY_PEOPLE.includes(p))
-                  const allPeople = [...DAILY_PEOPLE, ...extraPeople]
+                  const allPeople = [...DAILY_PEOPLE, ...extraPeople].filter(p => !filterPerson || p === filterPerson)
                   return allPeople.map(person => {
                     const tasks = dailyGrouped[person] ?? []
                     const isOver = dragOverPerson === person
