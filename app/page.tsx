@@ -743,10 +743,19 @@ export default function Page() {
                       const monthly = personAll.filter(t => t.freq === '每月')
                       const daily = personAll.filter(t => !t.freq || t.freq === '當日')
                       const filtered = personFreqFilter === '每周' ? weekly : personFreqFilter === '每月' ? monthly : personAll
+                      const toggleDone = (t: DailyTask) => {
+                        const next = t.status === '已完成' ? '進行中' : '已完成'
+                        setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
+                        fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, status: next }) })
+                      }
                       const TaskRow = ({ t }: { t: DailyTask }) => (
-                        <div className="flex items-start gap-2 text-sm py-1 border-b border-blue-100 last:border-0">
-                          {t.freq && t.freq !== '當日' && <span className="text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 bg-purple-100 text-purple-700">{t.freq}</span>}
-                          <span className="text-gray-700 flex-1">{t.task}</span>
+                        <div className="flex items-center gap-2 text-sm py-1.5 border-b border-blue-100 last:border-0">
+                          <button onClick={() => toggleDone(t)}
+                            className={`text-xs px-1.5 py-0.5 rounded shrink-0 cursor-pointer transition-colors ${t.status === '已完成' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
+                            {t.status}
+                          </button>
+                          {t.freq && t.freq !== '當日' && <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-purple-100 text-purple-700">{t.freq}</span>}
+                          <span className={`flex-1 ${t.status === '已完成' ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.task}</span>
                           <span className="text-xs text-gray-400 shrink-0">{t.date}</span>
                         </div>
                       )
@@ -759,22 +768,18 @@ export default function Page() {
                                 className={`text-xs px-2 py-0.5 rounded-full transition-colors ${!personFreqFilter ? 'bg-blue-600 text-white' : 'bg-white text-blue-700 border border-blue-200 hover:border-blue-400'}`}>
                                 全部
                               </button>
-                              {weekly.length > 0 && (
-                                <button onClick={() => setPersonFreqFilter(personFreqFilter === '每周' ? null : '每周')}
-                                  className={`text-xs px-2 py-0.5 rounded-full transition-colors ${personFreqFilter === '每周' ? 'bg-purple-600 text-white' : 'bg-white text-purple-700 border border-purple-200 hover:border-purple-400'}`}>
-                                  每周 {weekly.length}
-                                </button>
-                              )}
-                              {monthly.length > 0 && (
-                                <button onClick={() => setPersonFreqFilter(personFreqFilter === '每月' ? null : '每月')}
-                                  className={`text-xs px-2 py-0.5 rounded-full transition-colors ${personFreqFilter === '每月' ? 'bg-purple-600 text-white' : 'bg-white text-purple-700 border border-purple-200 hover:border-purple-400'}`}>
-                                  每月 {monthly.length}
-                                </button>
-                              )}
+                              <button onClick={() => setPersonFreqFilter(personFreqFilter === '每周' ? null : '每周')}
+                                className={`text-xs px-2 py-0.5 rounded-full transition-colors ${personFreqFilter === '每周' ? 'bg-purple-600 text-white' : 'bg-white text-purple-700 border border-purple-200 hover:border-purple-400'}`}>
+                                每周{weekly.length > 0 ? ` ${weekly.length}` : ''}
+                              </button>
+                              <button onClick={() => setPersonFreqFilter(personFreqFilter === '每月' ? null : '每月')}
+                                className={`text-xs px-2 py-0.5 rounded-full transition-colors ${personFreqFilter === '每月' ? 'bg-purple-600 text-white' : 'bg-white text-purple-700 border border-purple-200 hover:border-purple-400'}`}>
+                                每月{monthly.length > 0 ? ` ${monthly.length}` : ''}
+                              </button>
                             </div>
                           </div>
                           {filtered.length === 0
-                            ? <p className="text-xs text-gray-400 py-2 text-center">無進行中任務</p>
+                            ? <p className="text-xs text-gray-400 py-2 text-center">無{personFreqFilter ?? ''}進行中任務</p>
                             : <div>{filtered.map(t => <TaskRow key={t.id} t={t} />)}</div>
                           }
                         </div>
