@@ -723,55 +723,63 @@ export default function Page() {
 
             {!searchDetail && (
               <>
-                {/* 未完成任務人名標籤 */}
+                {/* 進行中任務人名標籤 */}
                 {inProgressTasks.length > 0 && (
                   <div className="mb-4">
-                    <p className="text-xs text-gray-400 mb-2">未完成任務 — 點選人名查看所有未完成任務：</p>
+                    <p className="text-xs text-gray-400 mb-2">進行中任務 — 點選人名查看：</p>
                     <div className="flex flex-wrap gap-1.5">
                       {Array.from(new Set(inProgressTasks.map(t => t.person))).map(person => (
                         <button key={person}
-                          onClick={() => {
-                            if (selectedPersonTag === person) { setSelectedPersonTag(null); setPersonTasks([]); setPersonFreqFilter(null) }
-                            else { setSelectedPersonTag(person); setPersonFreqFilter(null); loadPersonTasks(person) }
-                          }}
+                          onClick={() => { setSelectedPersonTag(selectedPersonTag === person ? null : person); setPersonFreqFilter(null) }}
                           className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${selectedPersonTag === person ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
                           {person}
                           <span className="ml-1 opacity-70">{inProgressTasks.filter(t => t.person === person).length}</span>
                         </button>
                       ))}
                     </div>
-                    {selectedPersonTag && (
-                      <div className="mt-3 bg-blue-50 rounded-xl p-3">
-                        <div className="flex items-center gap-2 mb-3">
-                          <p className="text-xs font-medium text-blue-700">{selectedPersonTag} 的未完成任務</p>
-                          <div className="ml-auto flex gap-1">
-                            {['每周', '每月'].map(f => (
-                              <button key={f} onClick={() => setPersonFreqFilter(personFreqFilter === f ? null : f)}
-                                className={`text-xs px-2 py-0.5 rounded-full transition-colors ${personFreqFilter === f ? 'bg-purple-600 text-white' : 'bg-white text-purple-700 border border-purple-200 hover:border-purple-400'}`}>
-                                {f}
-                              </button>
-                            ))}
-                          </div>
+                    {selectedPersonTag && (() => {
+                      const personAll = inProgressTasks.filter(t => t.person === selectedPersonTag)
+                      const weekly = personAll.filter(t => t.freq === '每周')
+                      const monthly = personAll.filter(t => t.freq === '每月')
+                      const daily = personAll.filter(t => !t.freq || t.freq === '當日')
+                      const filtered = personFreqFilter === '每周' ? weekly : personFreqFilter === '每月' ? monthly : personAll
+                      const TaskRow = ({ t }: { t: DailyTask }) => (
+                        <div className="flex items-start gap-2 text-sm py-1 border-b border-blue-100 last:border-0">
+                          {t.freq && t.freq !== '當日' && <span className="text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 bg-purple-100 text-purple-700">{t.freq}</span>}
+                          <span className="text-gray-700 flex-1">{t.task}</span>
+                          <span className="text-xs text-gray-400 shrink-0">{t.date}</span>
                         </div>
-                        {personTasksLoading
-                          ? <p className="text-xs text-gray-400 py-2 text-center">載入中...</p>
-                          : (() => {
-                            const filtered = personFreqFilter ? personTasks.filter(t => t.freq === personFreqFilter) : personTasks
-                            if (filtered.length === 0) return <p className="text-xs text-gray-400 py-2 text-center">無{personFreqFilter ?? ''}未完成任務</p>
-                            return <div className="space-y-1.5">
-                              {filtered.map(t => (
-                                <div key={t.id} className="flex items-start gap-2 text-sm">
-                                  <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '已完成' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{t.status}</span>
-                                  {t.freq && t.freq !== '當日' && <span className="text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 bg-purple-100 text-purple-700">{t.freq}</span>}
-                                  <span className="text-gray-700 flex-1">{t.task}</span>
-                                  <span className="text-xs text-gray-400 shrink-0">{t.date}</span>
-                                </div>
-                              ))}
+                      )
+                      return (
+                        <div className="mt-3 bg-blue-50 rounded-xl p-3">
+                          <div className="flex items-center gap-2 mb-3">
+                            <p className="text-xs font-medium text-blue-700">{selectedPersonTag} 的進行中任務（{personAll.length} 項）</p>
+                            <div className="ml-auto flex gap-1">
+                              <button onClick={() => setPersonFreqFilter(null)}
+                                className={`text-xs px-2 py-0.5 rounded-full transition-colors ${!personFreqFilter ? 'bg-blue-600 text-white' : 'bg-white text-blue-700 border border-blue-200 hover:border-blue-400'}`}>
+                                全部
+                              </button>
+                              {weekly.length > 0 && (
+                                <button onClick={() => setPersonFreqFilter(personFreqFilter === '每周' ? null : '每周')}
+                                  className={`text-xs px-2 py-0.5 rounded-full transition-colors ${personFreqFilter === '每周' ? 'bg-purple-600 text-white' : 'bg-white text-purple-700 border border-purple-200 hover:border-purple-400'}`}>
+                                  每周 {weekly.length}
+                                </button>
+                              )}
+                              {monthly.length > 0 && (
+                                <button onClick={() => setPersonFreqFilter(personFreqFilter === '每月' ? null : '每月')}
+                                  className={`text-xs px-2 py-0.5 rounded-full transition-colors ${personFreqFilter === '每月' ? 'bg-purple-600 text-white' : 'bg-white text-purple-700 border border-purple-200 hover:border-purple-400'}`}>
+                                  每月 {monthly.length}
+                                </button>
+                              )}
                             </div>
-                          })()
-                        }
-                      </div>
-                    )}
+                          </div>
+                          {filtered.length === 0
+                            ? <p className="text-xs text-gray-400 py-2 text-center">無進行中任務</p>
+                            : <div>{filtered.map(t => <TaskRow key={t.id} t={t} />)}</div>
+                          }
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
 
