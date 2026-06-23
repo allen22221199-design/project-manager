@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
     const freq = req.nextUrl.searchParams.get('freq') ?? undefined
 
     if (person) {
-      const tasks = await getTasksByPerson(person, freq)
+      const tasks = await getTasksByPerson(person)
       return NextResponse.json({ tasks })
     }
 
