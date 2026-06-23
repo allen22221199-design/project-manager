@@ -332,7 +332,7 @@ export default function Page() {
       const data = await r.json()
       if (r.ok && data.count > 0) {
         const lineNote = data.line?.ok ? '，已發送 LINE ✓'
-          : data.line?.skipped ? (typeof data.line.skipped === 'string' && data.line.skipped.includes('週五') ? '（週五提醒時段，LINE 由自動週報發送）' : '（LINE 未設定，略過）')
+          : data.line?.skipped ? '（LINE 未設定，略過）'
           : data.line?.error ? `（LINE 發送失敗：${data.line.error}）` : ''
         setOrganizeMsg(`已整理 ${data.count} 筆工作項目並寫入 Notion ✓${lineNote}`)
         setOrganizeOk(true)
