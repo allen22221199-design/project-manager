@@ -14,7 +14,7 @@ const STATUS_COLORS: Record<string, string> = {
 const STATUS_OPTIONS = ['報價中', '等待中', '打樣中', '對色中', '生產中', '施工中', '請款中含保留款', '完成']
 const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中', '施工中', '等待中']
 const DAILY_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
-const DAILY_STATUS_CYCLE = ['進行中', '已完成']
+const DAILY_STATUS_CYCLE = ['進行中', '完成']
 
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
@@ -224,7 +224,7 @@ export default function Page() {
     try {
       const r = await fetch('/api/daily-tasks')
       const data = await r.json()
-      setInProgressTasks((data.all ?? []).filter((t: DailyTask) => t.status !== '已完成' && t.status !== '完成'))
+      setInProgressTasks((data.all ?? []).filter((t: DailyTask) => t.status !== '完成' && t.status !== '已封存'))
     } catch {}
   }
 
@@ -755,21 +755,20 @@ export default function Page() {
                           : personAll.filter(t => t.date && t.date.slice(0, 7) === personSubFilter)
                         : personAll
                       const toggleDone = (t: DailyTask) => {
-                        const next = t.status === '已完成' ? '進行中' : '已完成'
+                        const next = t.status === '完成' ? '進行中' : '完成'
                         setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
                         fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, status: next }) })
-                        if (next === '已完成') {
+                        if (next === '完成') {
                           setTimeout(() => setInProgressTasks(prev => prev.filter(x => x.id !== t.id)), 600)
                         }
                       }
                       const TaskRow = ({ t }: { t: DailyTask }) => (
                         <div className="flex items-center gap-2 text-sm py-1.5 border-b border-blue-100 last:border-0">
                           <button onClick={() => toggleDone(t)}
-                            className={`text-xs px-1.5 py-0.5 rounded shrink-0 cursor-pointer transition-colors ${t.status === '已完成' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
+                            className={`text-xs px-1.5 py-0.5 rounded shrink-0 cursor-pointer transition-colors ${t.status === '完成' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
                             {t.status}
                           </button>
-                          {t.freq && t.freq !== '當日' && <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-purple-100 text-purple-700">{t.freq}</span>}
-                          <span className={`flex-1 ${t.status === '已完成' ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.task}</span>
+                          <span className={`flex-1 ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.task}</span>
                           <span className="text-xs text-gray-400 shrink-0">{t.date}</span>
                         </div>
                       )
@@ -876,7 +875,7 @@ export default function Page() {
                     <p className="text-xs font-medium text-gray-400 mb-2 px-1">今日工作項目 ({dailyTaskResults.length})</p>
                     {dailyTaskResults.map(t => (
                       <div key={t.id} className="bg-white border border-gray-200 rounded-xl p-3 mb-2 flex items-start gap-2">
-                        <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '已完成' || t.status === '完成' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                        <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' || t.status === '已封存' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
                           {t.status}
                         </span>
                         <div className="flex-1 min-w-0">
@@ -1098,7 +1097,7 @@ export default function Page() {
                   {showCompleted ? '隱藏已完成' : '顯示已完成'}
                 </button>
                 {(() => {
-                  const dayTasks = dailyAll.filter(t => t.date === selectedDate && (showCompleted || (t.status !== '已完成' && t.status !== '完成')))
+                  const dayTasks = dailyAll.filter(t => t.date === selectedDate && (showCompleted || (t.status !== '完成' && t.status !== '已封存')))
                   const people = Array.from(new Set(dayTasks.map(t => t.person))).filter(Boolean)
                   if (people.length < 2) return null
                   return <>
@@ -1123,7 +1122,7 @@ export default function Page() {
             ) : (
               <div className="space-y-3">
                 {(() => {
-                  const dayTasks = dailyAll.filter(t => t.date === selectedDate && (showCompleted || (t.status !== '已完成' && t.status !== '完成')))
+                  const dayTasks = dailyAll.filter(t => t.date === selectedDate && (showCompleted || (t.status !== '完成' && t.status !== '已封存')))
                   const dailyGrouped: Record<string, DailyTask[]> = {}
                   for (const t of dayTasks) (dailyGrouped[t.person] ??= []).push(t)
                   const extraPeople = Object.keys(dailyGrouped).filter(p => !DAILY_PEOPLE.includes(p))

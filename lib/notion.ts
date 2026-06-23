@@ -251,34 +251,35 @@ export async function getProjectDetails(pageId: string) {
 
 const DAILY_TASKS_DATABASE_ID = process.env.NOTION_DATABASE_ID || '3882cda48d77809299f4f15d6420575b'
 
-// Query all non-completed tasks for a person, optionally filtered by freq
-export async function getTasksByPerson(person: string, freq?: string) {
-  const filters: any[] = [
-    { property: '人員', rich_text: { equals: person } },
-    { property: '狀態', status: { does_not_equal: '已完成' } },
-    { property: '狀態', status: { does_not_equal: '完成' } },
-  ]
-  if (freq) filters.push({ property: '頻率', select: { equals: freq } })
+// Query all non-completed tasks for a person
+export async function getTasksByPerson(person: string) {
   const res = await notion.databases.query({
     database_id: DAILY_TASKS_DATABASE_ID,
-    filter: { and: filters },
-    sorts: [{ property: '日期', direction: 'descending' }],
+    filter: {
+      and: [
+        { property: '人員', rich_text: { equals: person } },
+        { property: '狀態', status: { does_not_equal: '完成' } },
+        { property: '狀態', status: { does_not_equal: '已封存' } },
+      ],
+    },
+    sorts: [{ property: '截止日期', direction: 'descending' }],
     page_size: 100,
   })
   return (res.results as any[]).map(page => ({
     id: page.id,
-    task: page.properties['任務']?.title?.[0]?.plain_text ?? '',
+    task: page.properties['任務名稱']?.title?.[0]?.plain_text ?? '',
     person: page.properties['人員']?.rich_text?.[0]?.plain_text ?? '',
-    date: page.properties['日期']?.date?.start ?? '',
+    date: page.properties['截止日期']?.date?.start ?? '',
     status: page.properties['狀態']?.status?.name ?? '',
-    freq: page.properties['頻率']?.select?.name ?? '當日',
+    source: page.properties['來源錄音']?.rich_text?.[0]?.plain_text ?? '',
+    freq: '當日',
   }))
 }
 
 // Read daily work items, grouped by person
 export async function getDailyTasks(dateStr?: string) {
   const filter = dateStr
-    ? { property: '日期', date: { equals: dateStr } }
+    ? { property: '截止日期', date: { equals: dateStr } }
     : undefined
   const res = await notion.databases.query({
     database_id: DAILY_TASKS_DATABASE_ID,
@@ -288,12 +289,12 @@ export async function getDailyTasks(dateStr?: string) {
   })
   return (res.results as any[]).map(page => ({
     id: page.id,
-    task: page.properties['任務']?.title?.[0]?.plain_text ?? '',
+    task: page.properties['任務名稱']?.title?.[0]?.plain_text ?? '',
     person: page.properties['人員']?.rich_text?.[0]?.plain_text ?? '(未分類)',
-    date: page.properties['日期']?.date?.start ?? '',
+    date: page.properties['截止日期']?.date?.start ?? '',
     status: page.properties['狀態']?.status?.name ?? '未開始',
     source: page.properties['來源錄音']?.rich_text?.[0]?.plain_text ?? '',
-    freq: page.properties['頻率']?.select?.name ?? '當日',
+    freq: '當日',
   }))
 }
 
@@ -303,14 +304,11 @@ const HISTORY_PAGE_ID = '3872cda48d7781ecafe5e5bfca9c4270'
 export async function deleteDailyTasksByDate(dateStr: string) {
   const res = await notion.databases.query({
     database_id: DAILY_TASKS_DATABASE_ID,
-    filter: { property: '日期', date: { equals: dateStr } },
+    filter: { property: '截止日期', date: { equals: dateStr } },
     page_size: 100,
   })
   for (const page of res.results as any[]) {
-    const freq = (page as any).properties['頻率']?.select?.name ?? '當日'
-    if (freq === '當日') {
-      await notion.pages.update({ page_id: page.id, archived: true })
-    }
+    await notion.pages.update({ page_id: page.id, archived: true })
   }
 }
 
@@ -361,9 +359,8 @@ export async function syncHistoryForDate(dateStr: string) {
 export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string; freq?: string }) {
   const properties: any = {}
   if (fields.person !== undefined) properties['人員'] = { rich_text: [{ text: { content: fields.person } }] }
-  if (fields.task !== undefined) properties['任務'] = { title: [{ text: { content: fields.task } }] }
+  if (fields.task !== undefined) properties['任務名稱'] = { title: [{ text: { content: fields.task } }] }
   if (fields.status !== undefined) properties['狀態'] = { status: { name: fields.status } }
-  if (fields.freq !== undefined && fields.freq !== '當日') properties['頻率'] = { select: { name: fields.freq } }
   await notion.pages.update({ page_id: id, properties })
 }
 
@@ -375,13 +372,12 @@ export async function deleteDailyTask(id: string) {
 // Write one daily work item (used by Plaud sync cron)
 export async function addDailyTask(person: string, task: string, dateStr: string, source: string, freq: string = '當日') {
   const properties: any = {
-    任務: { title: [{ text: { content: task } }] },
+    任務名稱: { title: [{ text: { content: task } }] },
     人員: { rich_text: [{ text: { content: person } }] },
-    日期: { date: { start: dateStr } },
+    截止日期: { date: { start: dateStr } },
     狀態: { status: { name: '進行中' } },
     來源錄音: { rich_text: [{ text: { content: source } }] },
   }
-  if (freq && freq !== '當日') properties['頻率'] = { select: { name: freq } }
   await notion.pages.create({ parent: { database_id: DAILY_TASKS_DATABASE_ID }, properties })
 }
 
