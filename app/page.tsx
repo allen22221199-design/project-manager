@@ -1062,6 +1062,31 @@ export default function Page() {
                       ))}
                     </div>
                   }
+                  {/* 人員快速篩選標籤 */}
+                  {(() => {
+                    const dayTasks = dailyAll.filter(t => t.date === selectedDate)
+                    const people = Array.from(new Set(dayTasks.map(t => t.person))).filter(Boolean)
+                    if (people.length < 2) return null
+                    return (
+                      <div className="flex gap-1.5 flex-wrap mt-2">
+                        {filterPerson && (
+                          <button onClick={() => setFilterPerson(null)}
+                            className="text-xs px-2.5 py-1 rounded-full font-medium bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors">
+                            全部
+                          </button>
+                        )}
+                        {people.map(p => (
+                          <button key={p} onClick={() => setFilterPerson(filterPerson === p ? null : p)}
+                            className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${filterPerson === p ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                            {p}
+                            <span className={`ml-1 text-xs ${filterPerson === p ? 'opacity-60' : 'text-gray-400'}`}>
+                              {dayTasks.filter(t => t.person === p).length}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
               )
             })()}
