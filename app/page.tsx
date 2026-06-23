@@ -75,6 +75,7 @@ export default function Page() {
   const [dailyTaskResults, setDailyTaskResults] = useState<DailyTask[]>([])
   const [weekOffset, setWeekOffset] = useState(0)
   const [filterPerson, setFilterPerson] = useState<string | null>(null)
+  const [showCompleted, setShowCompleted] = useState(false)
   const [personTasks, setPersonTasks] = useState<DailyTask[]>([])
   const [personTasksLoading, setPersonTasksLoading] = useState(false)
   const [personFreqFilter, setPersonFreqFilter] = useState<string | null>(null)
@@ -1066,9 +1067,13 @@ export default function Page() {
             })()}
             <div className="flex items-center gap-1.5 flex-wrap mb-3">
               <p className="text-xs text-gray-400">💡 拖曳任務可換負責人；點狀態可切換；點任務文字可編輯（皆即時同步 Notion）</p>
-              <div className="ml-auto flex gap-1 flex-wrap">
+              <div className="ml-auto flex gap-1 flex-wrap items-center">
+                <button onClick={() => setShowCompleted(v => !v)}
+                  className={`text-xs px-2 py-1 rounded-full transition-colors ${showCompleted ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white border border-gray-200 text-gray-400 hover:border-gray-400'}`}>
+                  {showCompleted ? '隱藏已完成' : '顯示已完成'}
+                </button>
                 {(() => {
-                  const dayTasks = dailyAll.filter(t => t.date === selectedDate && t.status !== '已完成' && t.status !== '完成')
+                  const dayTasks = dailyAll.filter(t => t.date === selectedDate && (showCompleted || (t.status !== '已完成' && t.status !== '完成')))
                   const people = Array.from(new Set(dayTasks.map(t => t.person))).filter(Boolean)
                   if (people.length < 2) return null
                   return <>
@@ -1093,7 +1098,7 @@ export default function Page() {
             ) : (
               <div className="space-y-3">
                 {(() => {
-                  const dayTasks = dailyAll.filter(t => t.date === selectedDate && t.status !== '已完成' && t.status !== '完成')
+                  const dayTasks = dailyAll.filter(t => t.date === selectedDate && (showCompleted || (t.status !== '已完成' && t.status !== '完成')))
                   const dailyGrouped: Record<string, DailyTask[]> = {}
                   for (const t of dayTasks) (dailyGrouped[t.person] ??= []).push(t)
                   const extraPeople = Object.keys(dailyGrouped).filter(p => !DAILY_PEOPLE.includes(p))
