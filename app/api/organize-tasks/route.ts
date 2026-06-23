@@ -49,13 +49,22 @@ export async function POST(req: NextRequest) {
     try { await writeHistorySection(today, grouped) } catch (e) { /* 歷史頁面失敗不影響主流程 */ }
 
     // 4. 整理成 LINE 訊息（依人員分組）並推播
+    // 週五 13:30–14:30（台灣時間）跳過，由 Cron 週報提醒統一發送，避免重複
+    const twNow = new Date(Date.now() + 8 * 3600 * 1000)
+    const isFridayReminderWindow = twNow.getUTCDay() === 5 && twNow.getUTCHours() === 6 &&
+      twNow.getUTCMinutes() >= 0 && twNow.getUTCMinutes() <= 59
+    // UTC 06:00–06:59 = TW 14:00–14:59，搭配 cron 0 6 * * 5
     let lineResult: any = null
     if (sendLine !== false) {
-      const msg = `📋 今日工作日誌已完成（${today}）\n請至以下網址查看：\nhttps://project-manager-theta-nine.vercel.app`
-      try {
-        lineResult = await pushToLine(msg)
-      } catch (e: any) {
-        lineResult = { error: e.message }
+      if (isFridayReminderWindow) {
+        lineResult = { skipped: '週五自動提醒時段，LINE 由 Cron 週報統一發送' }
+      } else {
+        const msg = `📋 今日工作日誌已完成（${today}）\n請至以下網址查看：\nhttps://project-manager-theta-nine.vercel.app`
+        try {
+          lineResult = await pushToLine(msg)
+        } catch (e: any) {
+          lineResult = { error: e.message }
+        }
       }
     }
 

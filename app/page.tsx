@@ -332,7 +332,7 @@ export default function Page() {
       const data = await r.json()
       if (r.ok && data.count > 0) {
         const lineNote = data.line?.ok ? '，已發送 LINE ✓'
-          : data.line?.skipped ? '（LINE 未設定，略過）'
+          : data.line?.skipped ? (typeof data.line.skipped === 'string' && data.line.skipped.includes('週五') ? '（週五提醒時段，LINE 由自動週報發送）' : '（LINE 未設定，略過）')
           : data.line?.error ? `（LINE 發送失敗：${data.line.error}）` : ''
         setOrganizeMsg(`已整理 ${data.count} 筆工作項目並寫入 Notion ✓${lineNote}`)
         setOrganizeOk(true)
@@ -966,7 +966,7 @@ export default function Page() {
                 <p className="text-xs text-gray-400 mt-0.5">手動發送 LINE 通知，請大家確認並更新本週工作狀態</p>
                 {reminderMsg && <p className={`text-xs mt-1 font-medium ${reminderOk ? 'text-green-600' : 'text-red-500'}`}>{reminderMsg}</p>}
               </div>
-              <button onClick={sendWeeklyReminder} disabled={sendingReminder}
+              <button onClick={() => { if (window.confirm('確定要現在發送本週工作回報提醒到 LINE 群組嗎？')) sendWeeklyReminder() }} disabled={sendingReminder}
                 className="shrink-0 bg-green-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-40 transition-colors">
                 {sendingReminder ? '發送中...' : '發送 LINE'}
               </button>
