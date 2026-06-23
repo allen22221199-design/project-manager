@@ -2,10 +2,27 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
+// 重試包裝：Gemini 過載(503)或暫時性錯誤時，自動退避重試
+async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
+  let lastErr: any
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn()
+    } catch (e: any) {
+      lastErr = e
+      const msg = String(e?.message ?? e)
+      const transient = msg.includes('503') || msg.includes('overloaded') || msg.includes('high demand') || msg.includes('429')
+      if (!transient || i === retries - 1) throw e
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)))
+    }
+  }
+  throw lastErr
+}
+
 export async function analyzeProgressImage(base64: string, mediaType: string) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
   const today = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/')
-  const result = await model.generateContent([
+  const result = await withRetry(() => model.generateContent([
     {
       inlineData: { data: base64, mimeType: mediaType as any },
     },
@@ -21,7 +38,7 @@ export async function analyzeProgressImage(base64: string, mediaType: string) {
 }
 
 只回傳 JSON，不要其他文字。`,
-  ])
+  ]))
 
   const text = result.response.text().trim()
   try {
@@ -32,8 +49,8 @@ export async function analyzeProgressImage(base64: string, mediaType: string) {
 }
 
 export async function analyzeItemImage(base64: string, mediaType: string) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-  const result = await model.generateContent([
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const result = await withRetry(() => model.generateContent([
     {
       inlineData: { data: base64, mimeType: mediaType as any },
     },
@@ -55,7 +72,7 @@ export async function analyzeItemImage(base64: string, mediaType: string) {
 
 如果圖片中只有一個品項，也回傳陣列（只有一個元素）。
 只回傳 JSON 陣列，不要其他文字。`,
-  ])
+  ]))
 
   const text = result.response.text().trim()
   try {
@@ -71,8 +88,8 @@ const ALLOWED_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳
 
 // 整理 Plaud 摘要文字 → 每人工作項目（保留原意、不大改）
 export async function organizeDailyTasks(rawText: string) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-  const result = await model.generateContent([
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const result = await withRetry(() => model.generateContent([
     `你是工作項目整理助理。以下是一段會議或錄音的摘要內容（可能已提到每個人負責的工作）。
 請幫我重新整理成「每個人的工作項目」。重點：盡量保留原意、不要大改內容，只是分類整理清楚、讓敘述更精煉。
 
@@ -91,7 +108,7 @@ ${ALLOWED_PEOPLE.join('、')}
 
 以下是內容：
 ${rawText}`,
-  ])
+  ]))
 
   const text = result.response.text().trim()
   try {

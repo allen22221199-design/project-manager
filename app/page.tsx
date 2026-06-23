@@ -119,7 +119,8 @@ export default function Page() {
     setLoading(true)
     try {
       const r = await fetch('/api/projects')
-      setProjects(await r.json())
+      const data = await r.json()
+      setProjects(Array.isArray(data) ? data : [])
     } finally { setLoading(false) }
   }
 
