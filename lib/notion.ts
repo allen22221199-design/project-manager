@@ -1,7 +1,7 @@
 import { Client } from '@notionhq/client'
 
 export const notion = new Client({ auth: process.env.NOTION_TOKEN })
-export const DATABASE_ID = process.env.NOTION_DATABASE_ID!
+export const DATABASE_ID = process.env.NOTION_PROJECTS_DATABASE_ID || '25d2cda48d7781a6bec3f101d8c9a872'
 
 const INACTIVE_STATUSES = ['完成', '請款中含保留款']
 
@@ -249,7 +249,7 @@ export async function getProjectDetails(pageId: string) {
   }
 }
 
-const DAILY_TASKS_DATABASE_ID = process.env.NOTION_DATABASE_ID || '3882cda48d77809299f4f15d6420575b'
+const DAILY_TASKS_DATABASE_ID = '3882cda48d77809299f4f15d6420575b'
 
 // Query all non-completed tasks for a person
 export async function getTasksByPerson(person: string) {
