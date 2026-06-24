@@ -281,13 +281,21 @@ export async function getDailyTasks(dateStr?: string) {
   const filter = dateStr
     ? { property: '截止日期', date: { equals: dateStr } }
     : undefined
-  const res = await notion.databases.query({
-    database_id: DAILY_TASKS_DATABASE_ID,
-    ...(filter ? { filter } : {}),
-    sorts: [{ timestamp: 'created_time', direction: 'descending' }],
-    page_size: 100,
-  })
-  return (res.results as any[]).map(page => ({
+  // 分頁抓完全部（Notion 單次最多 100 筆，超過要靠 cursor 續抓）
+  const results: any[] = []
+  let cursor: string | undefined = undefined
+  do {
+    const res: any = await notion.databases.query({
+      database_id: DAILY_TASKS_DATABASE_ID,
+      ...(filter ? { filter } : {}),
+      sorts: [{ timestamp: 'created_time', direction: 'descending' }],
+      page_size: 100,
+      ...(cursor ? { start_cursor: cursor } : {}),
+    })
+    results.push(...res.results)
+    cursor = res.has_more ? res.next_cursor : undefined
+  } while (cursor)
+  return results.map(page => ({
     id: page.id,
     task: page.properties['任務名稱']?.title?.[0]?.plain_text ?? '',
     person: page.properties['人員']?.rich_text?.[0]?.plain_text ?? '(未分類)',
