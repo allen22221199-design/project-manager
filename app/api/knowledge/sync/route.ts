@@ -62,6 +62,11 @@ export async function POST() {
               throw new Error('影片檔請上傳到 YouTube 後，在「連結」欄貼網址（或擷取重點畫面成圖片）')
             }
             const { data, mime } = await fetchAsBase64(f.url)
+            // Gemini 內嵌檔案上限約 20MB（base64 長度 × 0.75 ≈ 原始位元組）
+            const sizeMB = (data.length * 0.75) / (1024 * 1024)
+            if (sizeMB > 18) {
+              throw new Error(`檔案過大（約 ${sizeMB.toFixed(1)}MB，上限約 20MB）。請壓縮、降低解析度或拆分後再上傳`)
+            }
             // 依副檔名精準判斷類型；副檔名不明時才退回下載到的 content-type
             let finalMime = ''
             if (ext === 'pdf') finalMime = 'application/pdf'
