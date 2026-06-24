@@ -95,6 +95,11 @@ export default function Page() {
   const [kbMsg, setKbMsg] = useState('')
   const [kbOk, setKbOk] = useState(false)
 
+  // 本週未完成報表 email
+  const [emailSending, setEmailSending] = useState(false)
+  const [emailMsg, setEmailMsg] = useState('')
+  const [emailOk, setEmailOk] = useState(false)
+
   // 任務詳情面板（內容 / 進度方向）
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detailContent, setDetailContent] = useState('')
@@ -441,6 +446,27 @@ export default function Page() {
         body: JSON.stringify({ id: taskId, task: newText, date: selectedDate }),
       })
     }
+  }
+
+  // 手動寄送本週未完成報表 email（測試用，正式由週五 cron 自動執行）
+  async function sendWeeklyEmail() {
+    setEmailSending(true)
+    setEmailMsg('')
+    setEmailOk(false)
+    try {
+      const r = await fetch('/api/cron/weekly-email')
+      const data = await readJson(r)
+      if (r.ok && data.ok) {
+        setEmailMsg(`已寄出報表到 all16889@gmail.com（${data.total} 項未完成）✓`)
+        setEmailOk(true)
+      } else {
+        setEmailMsg('寄送失敗：' + (data.error ?? '未知錯誤'))
+        setEmailOk(false)
+      }
+    } catch (e: any) {
+      setEmailMsg('寄送失敗：' + e.message)
+      setEmailOk(false)
+    } finally { setEmailSending(false) }
   }
 
   // 同步知識庫（處理 Notion 知識庫中「待處理」的項目）
@@ -1163,6 +1189,19 @@ export default function Page() {
               <button onClick={() => { if (window.confirm('確定要現在發送本週工作回報提醒到 LINE 群組嗎？')) sendWeeklyReminder() }} disabled={sendingReminder}
                 className="shrink-0 bg-green-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-40 transition-colors">
                 {sendingReminder ? '發送中...' : '發送 LINE'}
+              </button>
+            </div>
+
+            {/* 本週未完成報表 email */}
+            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 flex items-center gap-3">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-700">📧 本週未完成事項報表</p>
+                <p className="text-xs text-gray-400 mt-0.5">每週五 17:00 自動寄到 all16889@gmail.com；可在此手動測試寄送</p>
+                {emailMsg && <p className={`text-xs mt-1 font-medium ${emailOk ? 'text-green-600' : 'text-red-500'}`}>{emailMsg}</p>}
+              </div>
+              <button onClick={sendWeeklyEmail} disabled={emailSending}
+                className="shrink-0 bg-indigo-600 text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 transition-colors">
+                {emailSending ? '寄送中...' : '測試寄送'}
               </button>
             </div>
 
