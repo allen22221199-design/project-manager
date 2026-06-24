@@ -20,7 +20,7 @@ type Project = { id: string; name: string; status: string; contact: string; addr
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily'
-type DailyTask = { id: string; task: string; person: string; date: string; status: string; source: string; freq: string }
+type DailyTask = { id: string; task: string; person: string; date: string; status: string; source: string; freq: string; content?: string; direction?: string }
 
 export default function Page() {
   const [view, setView] = useState<View>('list')
@@ -82,6 +82,12 @@ export default function Page() {
   const [personSubFilter, setPersonSubFilter] = useState<string | null>(null)
   const [projectDetail, setProjectDetail] = useState<any>(null)
   const [projectDetailLoading, setProjectDetailLoading] = useState(false)
+
+  // 任務詳情面板（內容 / 進度方向）
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [detailContent, setDetailContent] = useState('')
+  const [detailDirection, setDetailDirection] = useState('')
+  const [savingDetail, setSavingDetail] = useState(false)
 
   // create project form
   const [newName, setNewName] = useState('')
@@ -416,6 +422,28 @@ export default function Page() {
         body: JSON.stringify({ id: taskId, task: newText, date: selectedDate }),
       })
     }
+  }
+
+  // 開啟/關閉任務詳情面板
+  function toggleDetail(t: DailyTask) {
+    if (detailId === t.id) { setDetailId(null); return }
+    setDetailId(t.id)
+    setDetailContent(t.content ?? '')
+    setDetailDirection(t.direction ?? '')
+  }
+
+  // 儲存任務詳情（內容 / 進度方向）
+  async function saveDetail(taskId: string) {
+    setSavingDetail(true)
+    setDailyAll(prev => prev.map(x => x.id === taskId ? { ...x, content: detailContent, direction: detailDirection } : x))
+    try {
+      await fetch('/api/daily-tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: taskId, content: detailContent, direction: detailDirection }),
+      })
+      setDetailId(null)
+    } finally { setSavingDetail(false) }
   }
 
   // 刪除任務（optimistic）
@@ -1135,7 +1163,8 @@ export default function Page() {
                         ) : (
                           <div className="space-y-2">
                             {tasks.map(t => (
-                              <div key={t.id} draggable={editingId !== t.id}
+                              <div key={t.id}>
+                              <div draggable={editingId !== t.id}
                                 onDragStart={() => setDraggingId(t.id)}
                                 onDragEnd={() => { setDraggingId(null); setDragOverPerson(null) }}
                                 className={`flex items-start gap-2 text-sm border border-transparent rounded-lg px-1.5 py-1 hover:border-gray-200 hover:bg-gray-50 group ${editingId === t.id ? '' : 'cursor-grab active:cursor-grabbing'}`}>
@@ -1163,8 +1192,35 @@ export default function Page() {
                                 ) : (
                                   <span className="text-gray-700 flex-1 cursor-text" onClick={() => { setEditingId(t.id); setEditText(t.task) }}>{t.task}</span>
                                 )}
+                                <button onClick={() => toggleDetail(t)} title="詳情 / 內容與進度方向"
+                                  className={`text-xs shrink-0 leading-none mt-0.5 px-1 rounded hover:text-blue-600 ${(t.content || t.direction) ? 'text-blue-500' : 'text-gray-300 opacity-0 group-hover:opacity-100'}`}>📝</button>
                                 <button onClick={() => deleteTask(t.id)} title="刪除"
                                   className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 shrink-0 leading-none">×</button>
+                              </div>
+                              {detailId === t.id && (
+                                <div className="mt-1 ml-1.5 mr-1 mb-2 p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
+                                  <div>
+                                    <label className="text-xs text-gray-500">任務內容</label>
+                                    <textarea value={detailContent} onChange={e => setDetailContent(e.target.value)} rows={3}
+                                      placeholder="這個任務具體要做什麼、相關細節..."
+                                      className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-gray-400 resize-none" />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500">進度方向</label>
+                                    <textarea value={detailDirection} onChange={e => setDetailDirection(e.target.value)} rows={2}
+                                      placeholder="目前進度、下一步方向、最終要達成的目的..."
+                                      className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-gray-400 resize-none" />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button onClick={() => saveDetail(t.id)} disabled={savingDetail}
+                                      className="bg-gray-900 text-white rounded px-3 py-1 text-xs font-medium hover:bg-gray-700 disabled:opacity-40">
+                                      {savingDetail ? '儲存中...' : '儲存'}
+                                    </button>
+                                    <button onClick={() => setDetailId(null)} className="text-xs text-gray-400 hover:text-gray-600 px-1">取消</button>
+                                    <span className="ml-auto text-xs text-gray-300 italic">AI 規劃（即將推出）</span>
+                                  </div>
+                                </div>
+                              )}
                               </div>
                             ))}
                           </div>

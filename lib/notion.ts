@@ -302,8 +302,18 @@ export async function getDailyTasks(dateStr?: string) {
     date: page.properties['截止日期']?.date?.start ?? '',
     status: page.properties['狀態']?.status?.name ?? '未開始',
     source: page.properties['來源錄音']?.rich_text?.[0]?.plain_text ?? '',
+    content: (page.properties['任務內容']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    direction: (page.properties['進度方向']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     freq: '當日',
   }))
+}
+
+// 將長字串切成 Notion rich_text（單段上限 2000 字）
+function toRichText(s: string) {
+  const max = 2000
+  const chunks: any[] = []
+  for (let i = 0; i < s.length; i += max) chunks.push({ text: { content: s.slice(i, i + max) } })
+  return chunks
 }
 
 const HISTORY_PAGE_ID = '3872cda48d7781ecafe5e5bfca9c4270'
@@ -365,11 +375,13 @@ export async function syncHistoryForDate(dateStr: string) {
 }
 
 // Update a daily task (reassign person / edit text / change status)
-export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string; freq?: string }) {
+export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string; freq?: string; content?: string; direction?: string }) {
   const properties: any = {}
   if (fields.person !== undefined) properties['人員'] = { rich_text: [{ text: { content: fields.person } }] }
   if (fields.task !== undefined) properties['任務名稱'] = { title: [{ text: { content: fields.task } }] }
   if (fields.status !== undefined) properties['狀態'] = { status: { name: fields.status } }
+  if (fields.content !== undefined) properties['任務內容'] = { rich_text: toRichText(fields.content) }
+  if (fields.direction !== undefined) properties['進度方向'] = { rich_text: toRichText(fields.direction) }
   try {
     await notion.pages.update({ page_id: id, properties })
   } catch (e: any) {

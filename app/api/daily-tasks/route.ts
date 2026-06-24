@@ -25,9 +25,9 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { id, person, task, status, freq, date } = await req.json()
+    const { id, person, task, status, freq, date, content, direction } = await req.json()
     if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
-    await updateDailyTask(id, { person, task, status, freq })
+    await updateDailyTask(id, { person, task, status, freq, content, direction })
     if (date) { try { await syncHistoryForDate(date) } catch {} }
     return NextResponse.json({ ok: true })
   } catch (e: any) {
