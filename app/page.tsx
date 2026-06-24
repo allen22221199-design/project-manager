@@ -102,7 +102,6 @@ export default function Page() {
   const [savingDetail, setSavingDetail] = useState(false)
 
   // AI 規劃
-  const [aiGoal, setAiGoal] = useState('')
   const [aiPlanning, setAiPlanning] = useState(false)
   const [aiPlanText, setAiPlanText] = useState('')
   const [aiUsedKb, setAiUsedKb] = useState<string[]>([])
@@ -494,7 +493,6 @@ export default function Page() {
     setDetailId(t.id)
     setDetailContent(t.content ?? '')
     setDetailDirection(t.direction ?? '')
-    setAiGoal('')
     setAiPlanText(t.aiPlan ?? '')   // 載入已存的 AI 規劃，方便後續查看
     setAiUsedKb([])
   }
@@ -508,7 +506,7 @@ export default function Page() {
       const r = await fetch('/api/ai-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: t.task, content: detailContent, direction: detailDirection, goal: aiGoal }),
+        body: JSON.stringify({ task: t.task, content: detailContent, direction: detailDirection, goal: detailDirection }),
       })
       const data = await readJson(r)
       if (r.ok) {
@@ -1313,13 +1311,13 @@ export default function Page() {
                                   <div>
                                     <label className="text-xs text-gray-500">任務內容</label>
                                     <textarea value={detailContent} onChange={e => setDetailContent(e.target.value)} rows={3}
-                                      placeholder="這個任務具體要做什麼、相關細節..."
+                                      placeholder="這個任務的背景、細節、目前狀況..."
                                       className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-gray-400 resize-none" />
                                   </div>
                                   <div>
-                                    <label className="text-xs text-gray-500">進度方向</label>
-                                    <textarea value={detailDirection} onChange={e => setDetailDirection(e.target.value)} rows={2}
-                                      placeholder="目前進度、下一步方向、最終要達成的目的..."
+                                    <label className="text-xs text-gray-500">希望 AI 幫你做什麼</label>
+                                    <textarea value={detailDirection} onChange={e => setDetailDirection(e.target.value)} rows={4}
+                                      placeholder={'清楚說明要 AI 做什麼，越具體越準：\n① 想要的產出（規劃步驟／找廠商／寫文案／比價…）\n② 限制（預算、時間、地點、規格、數量）\n③ 偏好或方向\n例：幫我規劃這支產品影片的拍攝流程，並找台中 3 家能配合的攝影團隊比價，預算 2 萬內。'}
                                       className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-gray-400 resize-none" />
                                   </div>
                                   <div className="flex items-center gap-2">
@@ -1328,28 +1326,20 @@ export default function Page() {
                                       {savingDetail ? '儲存中...' : '儲存'}
                                     </button>
                                     <button onClick={() => setDetailId(null)} className="text-xs text-gray-400 hover:text-gray-600 px-1">取消</button>
-                                  </div>
-
-                                  {/* AI 規劃 */}
-                                  <div className="border-t border-gray-200 pt-2 mt-1">
-                                    <p className="text-xs font-medium text-gray-600 mb-1">🤖 AI 規劃</p>
-                                    <textarea value={aiGoal} onChange={e => setAiGoal(e.target.value)} rows={2}
-                                      placeholder="最終想達成的目的 / 補充方向（例：找到 3 家能配合的廠商並比價）"
-                                      className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-gray-400 resize-none" />
                                     <button onClick={() => runAiPlan(t)} disabled={aiPlanning}
-                                      className="mt-1 bg-blue-600 text-white rounded px-3 py-1 text-xs font-medium hover:bg-blue-700 disabled:opacity-40">
-                                      {aiPlanning ? 'AI 思考中（兩階段＋查知識庫＋搜尋）...' : '開始 AI 規劃'}
+                                      className="ml-auto bg-blue-600 text-white rounded px-3 py-1 text-xs font-medium hover:bg-blue-700 disabled:opacity-40">
+                                      {aiPlanning ? 'AI 思考中…' : '🤖 開始 AI 規劃'}
                                     </button>
-                                    {aiPlanText && (
-                                      <div className="mt-2">
-                                        {aiUsedKb.length > 0 && (
-                                          <p className="text-xs text-gray-400 mb-1">參考知識庫：{aiUsedKb.join('、')}</p>
-                                        )}
-                                        <div className="text-sm text-gray-700 whitespace-pre-wrap bg-white border border-gray-200 rounded p-2 max-h-80 overflow-auto">{aiPlanText}</div>
-                                        {!aiPlanning && <p className="mt-1 text-xs text-green-600">✓ 已自動存入 Notion「AI規劃」欄位</p>}
-                                      </div>
-                                    )}
                                   </div>
+                                  {aiPlanText && (
+                                    <div className="mt-1 border-t border-gray-200 pt-2">
+                                      {aiUsedKb.length > 0 && (
+                                        <p className="text-xs text-gray-400 mb-1">參考知識庫：{aiUsedKb.join('、')}</p>
+                                      )}
+                                      <div className="text-sm text-gray-700 whitespace-pre-wrap bg-white border border-gray-200 rounded p-2 max-h-80 overflow-auto">{aiPlanText}</div>
+                                      {!aiPlanning && <p className="mt-1 text-xs text-green-600">✓ 已自動存入 Notion「AI規劃」欄位</p>}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                               </div>

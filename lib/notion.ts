@@ -303,7 +303,7 @@ export async function getDailyTasks(dateStr?: string) {
     status: page.properties['狀態']?.status?.name ?? '未開始',
     source: page.properties['來源錄音']?.rich_text?.[0]?.plain_text ?? '',
     content: (page.properties['任務內容']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
-    direction: (page.properties['進度方向']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    direction: (page.properties['AI需求']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     aiPlan: (page.properties['AI規劃']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     freq: '當日',
   }))
@@ -382,7 +382,7 @@ export async function updateDailyTask(id: string, fields: { person?: string; tas
   if (fields.task !== undefined) properties['任務名稱'] = { title: [{ text: { content: fields.task } }] }
   if (fields.status !== undefined) properties['狀態'] = { status: { name: fields.status } }
   if (fields.content !== undefined) properties['任務內容'] = { rich_text: toRichText(fields.content) }
-  if (fields.direction !== undefined) properties['進度方向'] = { rich_text: toRichText(fields.direction) }
+  if (fields.direction !== undefined) properties['AI需求'] = { rich_text: toRichText(fields.direction) }
   if (fields.aiPlan !== undefined) properties['AI規劃'] = { rich_text: toRichText(fields.aiPlan) }
   try {
     await notion.pages.update({ page_id: id, properties })

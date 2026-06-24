@@ -110,8 +110,7 @@ export async function generateAiPlan(
 ) {
   const base = `任務名稱：${info.task}
 任務內容：${info.content?.trim() || '（未填）'}
-目前進度／方向：${info.direction?.trim() || '（未填）'}
-最終目的：${info.goal?.trim() || '（未填）'}`
+使用者希望你做的事：${info.goal?.trim() || '（未填，請依任務內容自行判斷最有幫助的協助）'}`
 
   // 單次呼叫內完成「初步構思 → 對照內部資料/上網搜尋 → 自我審視」三步，
   // 只輸出最終結果。合併成一次以避免逾時。
