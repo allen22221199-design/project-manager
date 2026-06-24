@@ -413,8 +413,8 @@ export async function addDailyTask(person: string, task: string, dateStr: string
   await notion.pages.create({ parent: { database_id: DAILY_TASKS_DATABASE_ID }, properties })
 }
 
-// ===== 知識庫 =====
-const KNOWLEDGE_DB_ID = '8b84c87273f14a8c9d9bf62935b71b8f'
+// ===== 知識庫（使用 Notion「檔案庫」資料庫）=====
+const KNOWLEDGE_DB_ID = '457fee4d9e8345618e4507cc2c363b74'
 
 // 讀取一個頁面內文的純文字（抓常見 block 的 rich_text）
 export async function readPagePlainText(pageId: string): Promise<string> {
@@ -443,8 +443,7 @@ export async function getKnowledgeQueue() {
   })
   return (res.results as any[]).map(p => ({
     id: p.id,
-    title: p.properties['標題']?.title?.[0]?.plain_text ?? '(未命名)',
-    type: p.properties['類型']?.select?.name ?? '',
+    title: p.properties['檔案名稱']?.title?.[0]?.plain_text ?? '(未命名)',
     url: p.properties['連結']?.url ?? '',
     files: (p.properties['檔案']?.files ?? []).map((f: any) => ({ name: f.name ?? '', url: f.file?.url ?? f.external?.url ?? '' })),
   }))
@@ -459,8 +458,8 @@ export async function getKnowledgeBase() {
   })
   const items = await Promise.all((res.results as any[]).map(async p => ({
     id: p.id,
-    title: p.properties['標題']?.title?.[0]?.plain_text ?? '',
-    tags: (p.properties['分類']?.multi_select ?? []).map((t: any) => t.name),
+    title: p.properties['檔案名稱']?.title?.[0]?.plain_text ?? '',
+    tags: p.properties['分類']?.select?.name ? [p.properties['分類'].select.name] : [],
     summary: (p.properties['萃取摘要']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     text: await readPagePlainText(p.id),
   })))

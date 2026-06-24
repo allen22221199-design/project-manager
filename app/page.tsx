@@ -1092,8 +1092,8 @@ export default function Page() {
             {/* 知識庫同步 */}
             <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 flex items-center gap-3">
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700">📚 同步知識庫</p>
-                <p className="text-xs text-gray-400 mt-0.5">讀取 Notion「知識庫」中待處理的筆記/網頁/圖片/PDF，自動萃取文字建索引（供 AI 規劃使用）</p>
+                <p className="text-sm font-medium text-gray-700">📚 同步檔案庫</p>
+                <p className="text-xs text-gray-400 mt-0.5">讀取 Notion「檔案庫」中待處理的檔案/圖片/PDF/網頁連結，自動萃取文字建索引（供 AI 規劃使用）</p>
                 {kbMsg && <p className={`text-xs mt-1 font-medium ${kbOk ? 'text-green-600' : 'text-red-500'}`}>{kbMsg}</p>}
               </div>
               <button onClick={syncKnowledge} disabled={kbSyncing}

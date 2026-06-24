@@ -35,14 +35,8 @@ export async function POST() {
     for (const item of queue) {
       try {
         let text = ''
-        if (item.type === '筆記') {
-          text = await readPagePlainText(item.id)
-        } else if (item.type === 'YouTube') {
-          throw new Error('YouTube 逐字稿目前尚未支援，請改貼文字摘要或一般網頁連結')
-        } else if (item.type === '網頁') {
-          if (!item.url) throw new Error('缺少「連結」欄位')
-          text = await fetchWebText(item.url)
-        } else if (item.type === '圖片' || item.type === '檔案') {
+        // 自動判斷：有附檔→辨識檔案/圖片；有連結→抓網頁；都沒有→讀頁面內文
+        if (item.files.length > 0) {
           const f = item.files[0]
           if (!f?.url) throw new Error('沒有附加檔案（請在「檔案」欄位上傳）')
           const ext = extOf(f.name || f.url)
@@ -54,10 +48,15 @@ export async function POST() {
             ? mime
             : (ext === 'pdf' ? 'application/pdf' : 'image/png')
           text = await extractTextFromMedia(data, finalMime)
+        } else if (item.url) {
+          if (/youtube\.com|youtu\.be/i.test(item.url)) {
+            throw new Error('YouTube 逐字稿目前尚未支援，請改貼文字摘要或一般網頁連結')
+          }
+          text = await fetchWebText(item.url)
         } else {
-          throw new Error('請先在「類型」欄位選擇：筆記 / 網頁 / 圖片 / 檔案')
+          text = await readPagePlainText(item.id)
         }
-        if (!text.trim()) throw new Error('未取得任何文字內容')
+        if (!text.trim()) throw new Error('未取得內容（請確認有上傳檔案、填連結，或在頁面內文輸入文字）')
         await saveKnowledgeResult(item.id, true, text, '處理成功')
         results.push({ title: item.title, ok: true })
       } catch (e: any) {
