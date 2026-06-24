@@ -93,6 +93,16 @@ export async function extractTextFromMedia(base64: string, mimeType: string) {
   return result.response.text().trim()
 }
 
+// 讓 Gemini 直接讀 YouTube 影片，整理成文字（知識庫用）
+export async function extractTextFromYouTube(url: string) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const result = await withRetry(() => model.generateContent([
+    { fileData: { fileUri: url } } as any,
+    '請完整觀看並聆聽這支影片，把內容整理成文字：包含主題重點、提到的產品／規格／數據／價格／廠商／聯絡資訊與步驟流程。盡量詳實完整，只輸出內容本身，不要加開場白或評論。',
+  ]))
+  return result.response.text().trim()
+}
+
 // 只整理以下這幾位人員的工作項目
 const ALLOWED_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
 

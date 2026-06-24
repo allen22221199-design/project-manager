@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getKnowledgeQueue, readPagePlainText, saveKnowledgeResult } from '@/lib/notion'
-import { extractTextFromMedia } from '@/lib/gemini'
+import { extractTextFromMedia, extractTextFromYouTube } from '@/lib/gemini'
 
 export const maxDuration = 60
 
@@ -42,8 +42,8 @@ export async function POST() {
     const started = Date.now()
     const results: any[] = []
     for (const item of queue) {
-      // 時間預算：避免單次請求超過 Vercel 函式上限而逾時（剩下的下批再處理）
-      if (Date.now() - started > 25000) break
+      // 時間預算：12 秒後不再開始新項目，加上單項最多 45 秒 < 函式 60 秒上限（剩下的下批再處理）
+      if (Date.now() - started > 12000) break
       try {
         // 自動判斷：有附檔→辨識檔案/圖片；有連結→抓網頁；都沒有→讀頁面內文
         const text = (await withTimeout((async (): Promise<string> => {
@@ -61,13 +61,13 @@ export async function POST() {
             return await extractTextFromMedia(data, finalMime)
           } else if (item.url) {
             if (/youtube\.com|youtu\.be/i.test(item.url)) {
-              throw new Error('YouTube 逐字稿目前尚未支援，請改貼文字摘要或一般網頁連結')
+              return await extractTextFromYouTube(item.url)
             }
             return await fetchWebText(item.url)
           } else {
             return await readPagePlainText(item.id)
           }
-        })(), 30000)).trim()
+        })(), 45000)).trim()
         if (!text) throw new Error('未取得內容（請確認有上傳檔案、填連結，或在頁面內文輸入文字）')
         await saveKnowledgeResult(item.id, true, text, '處理成功')
         results.push({ title: item.title, ok: true })
