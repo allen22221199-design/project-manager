@@ -83,6 +83,16 @@ export async function analyzeItemImage(base64: string, mediaType: string) {
   }
 }
 
+// 從圖片或 PDF 檔案完整抄錄文字（知識庫萃取用）
+export async function extractTextFromMedia(base64: string, mimeType: string) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+  const result = await withRetry(() => model.generateContent([
+    { inlineData: { data: base64, mimeType: mimeType as any } },
+    '請把這個檔案／圖片裡的所有文字內容完整、忠實地抄錄出來（包含表格、數字、規格、聯絡資訊）。只輸出內容本身，不要加任何說明或評論。',
+  ]))
+  return result.response.text().trim()
+}
+
 // 只整理以下這幾位人員的工作項目
 const ALLOWED_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
 

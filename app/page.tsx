@@ -83,6 +83,11 @@ export default function Page() {
   const [projectDetail, setProjectDetail] = useState<any>(null)
   const [projectDetailLoading, setProjectDetailLoading] = useState(false)
 
+  // 知識庫同步
+  const [kbSyncing, setKbSyncing] = useState(false)
+  const [kbMsg, setKbMsg] = useState('')
+  const [kbOk, setKbOk] = useState(false)
+
   // 任務詳情面板（內容 / 進度方向）
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detailContent, setDetailContent] = useState('')
@@ -422,6 +427,33 @@ export default function Page() {
         body: JSON.stringify({ id: taskId, task: newText, date: selectedDate }),
       })
     }
+  }
+
+  // 同步知識庫（處理 Notion 知識庫中「待處理」的項目）
+  async function syncKnowledge() {
+    setKbSyncing(true)
+    setKbMsg('')
+    setKbOk(false)
+    try {
+      const r = await fetch('/api/knowledge/sync', { method: 'POST' })
+      const data = await r.json()
+      if (r.ok) {
+        if (data.processed === 0) {
+          setKbMsg('沒有待處理的項目（知識庫都是最新的）')
+          setKbOk(true)
+        } else {
+          const fails = (data.results ?? []).filter((x: any) => !x.ok)
+          setKbMsg(`已處理 ${data.success}/${data.processed} 筆${fails.length ? `；失敗 ${fails.length} 筆：${fails.map((x: any) => `${x.title}(${x.error})`).join('、')}` : ' ✓'}`)
+          setKbOk(fails.length === 0)
+        }
+      } else {
+        setKbMsg('錯誤：' + (data.error ?? '同步失敗'))
+        setKbOk(false)
+      }
+    } catch (e: any) {
+      setKbMsg('錯誤：' + e.message)
+      setKbOk(false)
+    } finally { setKbSyncing(false) }
   }
 
   // 開啟/關閉任務詳情面板
@@ -1054,6 +1086,19 @@ export default function Page() {
               <button onClick={() => { if (window.confirm('確定要現在發送本週工作回報提醒到 LINE 群組嗎？')) sendWeeklyReminder() }} disabled={sendingReminder}
                 className="shrink-0 bg-green-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-40 transition-colors">
                 {sendingReminder ? '發送中...' : '發送 LINE'}
+              </button>
+            </div>
+
+            {/* 知識庫同步 */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-700">📚 同步知識庫</p>
+                <p className="text-xs text-gray-400 mt-0.5">讀取 Notion「知識庫」中待處理的筆記/網頁/圖片/PDF，自動萃取文字建索引（供 AI 規劃使用）</p>
+                {kbMsg && <p className={`text-xs mt-1 font-medium ${kbOk ? 'text-green-600' : 'text-red-500'}`}>{kbMsg}</p>}
+              </div>
+              <button onClick={syncKnowledge} disabled={kbSyncing}
+                className="shrink-0 bg-gray-900 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-700 disabled:opacity-40 transition-colors">
+                {kbSyncing ? '同步中...' : '同步'}
               </button>
             </div>
 

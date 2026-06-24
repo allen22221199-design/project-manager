@@ -413,6 +413,77 @@ export async function addDailyTask(person: string, task: string, dateStr: string
   await notion.pages.create({ parent: { database_id: DAILY_TASKS_DATABASE_ID }, properties })
 }
 
+// ===== 知識庫 =====
+const KNOWLEDGE_DB_ID = '8b84c87273f14a8c9d9bf62935b71b8f'
+
+// 讀取一個頁面內文的純文字（抓常見 block 的 rich_text）
+export async function readPagePlainText(pageId: string): Promise<string> {
+  const out: string[] = []
+  let cursor: string | undefined = undefined
+  do {
+    const res: any = await notion.blocks.children.list({ block_id: pageId, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) })
+    for (const b of res.results as any[]) {
+      const rt = b[b.type]?.rich_text
+      if (Array.isArray(rt)) out.push(rt.map((r: any) => r.plain_text).join(''))
+    }
+    cursor = res.has_more ? res.next_cursor : undefined
+  } while (cursor)
+  return out.filter(Boolean).join('\n')
+}
+
+// 取出知識庫中「待處理」（或狀態空白）的項目
+export async function getKnowledgeQueue() {
+  const res = await notion.databases.query({
+    database_id: KNOWLEDGE_DB_ID,
+    filter: { or: [
+      { property: '狀態', select: { equals: '待處理' } },
+      { property: '狀態', select: { is_empty: true } },
+    ] },
+    page_size: 100,
+  })
+  return (res.results as any[]).map(p => ({
+    id: p.id,
+    title: p.properties['標題']?.title?.[0]?.plain_text ?? '(未命名)',
+    type: p.properties['類型']?.select?.name ?? '',
+    url: p.properties['連結']?.url ?? '',
+    files: (p.properties['檔案']?.files ?? []).map((f: any) => ({ name: f.name ?? '', url: f.file?.url ?? f.external?.url ?? '' })),
+  }))
+}
+
+// 取出知識庫中已處理的內容（給 AI 規劃檢索用）
+export async function getKnowledgeBase() {
+  const res = await notion.databases.query({
+    database_id: KNOWLEDGE_DB_ID,
+    filter: { property: '狀態', select: { equals: '已處理' } },
+    page_size: 100,
+  })
+  const items = await Promise.all((res.results as any[]).map(async p => ({
+    id: p.id,
+    title: p.properties['標題']?.title?.[0]?.plain_text ?? '',
+    tags: (p.properties['分類']?.multi_select ?? []).map((t: any) => t.name),
+    summary: (p.properties['萃取摘要']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    text: await readPagePlainText(p.id),
+  })))
+  return items
+}
+
+// 寫回知識庫處理結果（摘要 + 狀態 + 全文進內文）
+export async function saveKnowledgeResult(pageId: string, ok: boolean, fullText: string, message: string) {
+  await notion.pages.update({ page_id: pageId, properties: {
+    狀態: { select: { name: ok ? '已處理' : '失敗' } },
+    處理訊息: { rich_text: toRichText(message.slice(0, 1900)) },
+    萃取摘要: { rich_text: toRichText(fullText.slice(0, 1900)) },
+  } })
+  if (ok && fullText) {
+    const chunks: string[] = []
+    for (let i = 0; i < fullText.length; i += 1800) chunks.push(fullText.slice(i, i + 1800))
+    await notion.blocks.children.append({ block_id: pageId, children: [
+      { type: 'heading_3', heading_3: { rich_text: [{ type: 'text', text: { content: `【AI 萃取內容】` } }] } },
+      ...chunks.map(c => ({ type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: c } }] } })),
+    ] as any })
+  }
+}
+
 const TASKS_DATABASE_ID = '25d2cda48d7781fdb48be99fcf824daf'
 
 export async function searchTasks(query: string) {
