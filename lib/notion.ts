@@ -288,7 +288,7 @@ export async function getDailyTasks(dateStr?: string) {
     const res: any = await notion.databases.query({
       database_id: DAILY_TASKS_DATABASE_ID,
       ...(filter ? { filter } : {}),
-      sorts: [{ timestamp: 'created_time', direction: 'descending' }],
+      sorts: [{ property: '截止日期', direction: 'descending' }],
       page_size: 100,
       ...(cursor ? { start_cursor: cursor } : {}),
     })
