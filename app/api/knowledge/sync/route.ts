@@ -51,13 +51,23 @@ export async function POST() {
             const f = item.files[0]
             if (!f?.url) throw new Error('沒有附加檔案（請在「檔案」欄位上傳）')
             const ext = extOf(f.name || f.url)
+            const imageMimes: Record<string, string> = {
+              jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+              webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', heif: 'image/heif',
+            }
             if (['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt'].includes(ext)) {
-              throw new Error('Office 檔（Word/Excel/PPT）請先另存為 PDF 再上傳，目前最穩定')
+              throw new Error('Office 檔（Word/Excel/PPT）請先另存為 PDF 再上傳')
+            }
+            if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', 'flv'].includes(ext)) {
+              throw new Error('影片檔請上傳到 YouTube 後，在「連結」欄貼網址（或擷取重點畫面成圖片）')
             }
             const { data, mime } = await fetchAsBase64(f.url)
-            const finalMime = mime.startsWith('image/') || mime === 'application/pdf'
-              ? mime
-              : (ext === 'pdf' ? 'application/pdf' : 'image/png')
+            // 依副檔名精準判斷類型；副檔名不明時才退回下載到的 content-type
+            let finalMime = ''
+            if (ext === 'pdf') finalMime = 'application/pdf'
+            else if (imageMimes[ext]) finalMime = imageMimes[ext]
+            else if (mime.startsWith('image/') || mime === 'application/pdf') finalMime = mime
+            else throw new Error(`不支援的檔案格式（${ext || mime}）。可用：PDF、JPG、PNG、WEBP`)
             return await extractTextFromMedia(data, finalMime)
           } else if (item.url) {
             if (/youtube\.com|youtu\.be/i.test(item.url)) {

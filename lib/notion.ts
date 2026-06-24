@@ -437,6 +437,7 @@ export async function getKnowledgeQueue() {
     database_id: KNOWLEDGE_DB_ID,
     filter: { or: [
       { property: '狀態', select: { equals: '待處理' } },
+      { property: '狀態', select: { equals: '失敗' } },
       { property: '狀態', select: { is_empty: true } },
     ] },
     page_size: 100,
