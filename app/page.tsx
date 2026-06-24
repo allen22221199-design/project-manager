@@ -434,28 +434,40 @@ export default function Page() {
     setKbSyncing(true)
     setKbMsg('')
     setKbOk(false)
+    let totalOk = 0
+    let totalProcessed = 0
+    const allFails: any[] = []
     try {
-      const r = await fetch('/api/knowledge/sync', { method: 'POST' })
-      const raw = await r.text()
-      let data: any
-      try { data = JSON.parse(raw) } catch {
-        setKbMsg('伺服器處理逾時或忙碌（檔案太多）。已處理的會保留，請再按一次「同步」接續處理剩下的。')
-        setKbOk(false)
-        return
-      }
-      if (r.ok) {
-        if (data.processed === 0) {
-          setKbMsg('沒有待處理的項目（檔案庫都是最新的）')
-          setKbOk(true)
-        } else {
-          const fails = (data.results ?? []).filter((x: any) => !x.ok)
-          const moreNote = data.more ? `；還有 ${data.remaining} 筆未處理，請再按一次「同步」接續` : ''
-          setKbMsg(`已處理 ${data.success}/${data.processed} 筆${fails.length ? `；失敗 ${fails.length} 筆：${fails.map((x: any) => `${x.title}(${x.error})`).join('、')}` : ''}${moreNote}${!fails.length && !data.more ? ' ✓' : ''}`)
-          setKbOk(fails.length === 0)
+      // 自動分批：每次後端只跑一小段，前端連續呼叫直到全部處理完
+      for (let round = 0; round < 100; round++) {
+        const r = await fetch('/api/knowledge/sync', { method: 'POST' })
+        const raw = await r.text()
+        let data: any
+        try { data = JSON.parse(raw) } catch {
+          setKbMsg(`已處理 ${totalOk} 筆；伺服器忙碌中斷，請再按一次「同步」接續剩下的`)
+          setKbOk(false)
+          return
         }
+        if (!r.ok) {
+          setKbMsg('錯誤：' + (data.error ?? '同步失敗'))
+          setKbOk(false)
+          return
+        }
+        totalProcessed += data.processed
+        totalOk += data.success
+        ;(data.results ?? []).filter((x: any) => !x.ok).forEach((x: any) => allFails.push(x))
+        if (data.more) {
+          setKbMsg(`處理中... 已完成 ${totalOk} 筆，還有約 ${data.remaining} 筆`)
+        } else {
+          break
+        }
+      }
+      if (totalProcessed === 0) {
+        setKbMsg('沒有待處理的項目（檔案庫都是最新的）')
+        setKbOk(true)
       } else {
-        setKbMsg('錯誤：' + (data.error ?? '同步失敗'))
-        setKbOk(false)
+        setKbMsg(`完成：成功 ${totalOk} 筆${allFails.length ? `；失敗 ${allFails.length} 筆：${allFails.map((x: any) => `${x.title}(${x.error})`).join('、')}` : ' ✓'}`)
+        setKbOk(allFails.length === 0)
       }
     } catch (e: any) {
       setKbMsg('錯誤：' + e.message)

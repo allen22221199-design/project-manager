@@ -8,6 +8,14 @@ function extOf(name: string) {
   return (name.split('?')[0].split('.').pop() || '').toLowerCase()
 }
 
+// 單一項目處理上限，避免某個大檔/卡住的請求拖垮整個函式（逾時回 HTML）
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('處理逾時（檔案過大或來源無回應）')), ms)),
+  ])
+}
+
 async function fetchAsBase64(url: string): Promise<{ data: string; mime: string }> {
   const r = await fetch(url)
   if (!r.ok) throw new Error(`下載檔案失敗 (${r.status})`)
@@ -34,32 +42,33 @@ export async function POST() {
     const started = Date.now()
     const results: any[] = []
     for (const item of queue) {
-      // 時間預算：避免單次請求超過 Vercel 函式上限而逾時
-      if (Date.now() - started > 45000) break
+      // 時間預算：避免單次請求超過 Vercel 函式上限而逾時（剩下的下批再處理）
+      if (Date.now() - started > 25000) break
       try {
-        let text = ''
         // 自動判斷：有附檔→辨識檔案/圖片；有連結→抓網頁；都沒有→讀頁面內文
-        if (item.files.length > 0) {
-          const f = item.files[0]
-          if (!f?.url) throw new Error('沒有附加檔案（請在「檔案」欄位上傳）')
-          const ext = extOf(f.name || f.url)
-          if (['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt'].includes(ext)) {
-            throw new Error('Office 檔（Word/Excel/PPT）請先另存為 PDF 再上傳，目前最穩定')
+        const text = (await withTimeout((async (): Promise<string> => {
+          if (item.files.length > 0) {
+            const f = item.files[0]
+            if (!f?.url) throw new Error('沒有附加檔案（請在「檔案」欄位上傳）')
+            const ext = extOf(f.name || f.url)
+            if (['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt'].includes(ext)) {
+              throw new Error('Office 檔（Word/Excel/PPT）請先另存為 PDF 再上傳，目前最穩定')
+            }
+            const { data, mime } = await fetchAsBase64(f.url)
+            const finalMime = mime.startsWith('image/') || mime === 'application/pdf'
+              ? mime
+              : (ext === 'pdf' ? 'application/pdf' : 'image/png')
+            return await extractTextFromMedia(data, finalMime)
+          } else if (item.url) {
+            if (/youtube\.com|youtu\.be/i.test(item.url)) {
+              throw new Error('YouTube 逐字稿目前尚未支援，請改貼文字摘要或一般網頁連結')
+            }
+            return await fetchWebText(item.url)
+          } else {
+            return await readPagePlainText(item.id)
           }
-          const { data, mime } = await fetchAsBase64(f.url)
-          const finalMime = mime.startsWith('image/') || mime === 'application/pdf'
-            ? mime
-            : (ext === 'pdf' ? 'application/pdf' : 'image/png')
-          text = await extractTextFromMedia(data, finalMime)
-        } else if (item.url) {
-          if (/youtube\.com|youtu\.be/i.test(item.url)) {
-            throw new Error('YouTube 逐字稿目前尚未支援，請改貼文字摘要或一般網頁連結')
-          }
-          text = await fetchWebText(item.url)
-        } else {
-          text = await readPagePlainText(item.id)
-        }
-        if (!text.trim()) throw new Error('未取得內容（請確認有上傳檔案、填連結，或在頁面內文輸入文字）')
+        })(), 30000)).trim()
+        if (!text) throw new Error('未取得內容（請確認有上傳檔案、填連結，或在頁面內文輸入文字）')
         await saveKnowledgeResult(item.id, true, text, '處理成功')
         results.push({ title: item.title, ok: true })
       } catch (e: any) {
