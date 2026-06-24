@@ -590,17 +590,20 @@ export default function Page() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
-        <div className="text-lg font-medium text-gray-900">專案進度管理</div>
-        <div className="ml-auto flex gap-2">
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-200/80 px-4 py-2.5 flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-sm font-bold shadow-sm">煌</div>
+          <div className="text-base font-semibold text-gray-900 tracking-tight">專案進度管理</div>
+        </div>
+        <div className="ml-auto flex gap-1 bg-gray-100/80 rounded-xl p-1">
           <NavBtn active={view === 'list'} onClick={() => setView('list')}>案件清單</NavBtn>
           <NavBtn active={view === 'daily'} onClick={() => { setView('daily'); fetchDailyTasks() }}>今日工作</NavBtn>
           <NavBtn active={view === 'search'} onClick={() => { setView('search'); fetchInProgress() }}>查詢</NavBtn>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto p-4">
+      <main className="max-w-2xl mx-auto p-4 animate-fade-in">
 
         {/* LIST */}
         {view === 'list' && (
@@ -608,7 +611,7 @@ export default function Page() {
             <div className="relative mb-3">
               <input type="text" value={searchText} onChange={e => setSearchText(e.target.value)}
                 placeholder="搜尋案件名稱、聯絡人或地址..."
-                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gray-400 pr-8" />
+                className="w-full bg-white border border-gray-200/70 rounded-xl shadow-sm px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 pr-8" />
               {searchText && (
                 <button onClick={() => setSearchText('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
               )}
@@ -624,7 +627,7 @@ export default function Page() {
                 const count = tab === '全部' ? projects.length : projects.filter(p => p.status === tab).length
                 return (
                   <button key={tab} onClick={() => setFilterStatus(tab)}
-                    className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${filterStatus === tab ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                    className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${filterStatus === tab ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
                     {tab}
                     <span className={`ml-1 ${filterStatus === tab ? 'text-gray-300' : 'text-gray-400'}`}>{count}</span>
                   </button>
@@ -651,7 +654,7 @@ export default function Page() {
                   )}
                   {filtered.map(p => (
                     <div key={p.id} onClick={() => selectProject(p)}
-                      className="bg-white border border-gray-200 rounded-xl p-4 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
+                      className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 truncate">{p.name}</p>
                         <p className="text-sm text-gray-500 mt-0.5">{p.contact}{p.address ? ` · ${p.address}` : ''}</p>
@@ -672,7 +675,7 @@ export default function Page() {
           <div>
             <button onClick={() => setView('list')} className="text-sm text-gray-500 hover:text-gray-800 mb-4 flex items-center gap-1">← 返回清單</button>
 
-            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4">
               <p className="font-medium text-gray-900">{selected.name}</p>
               <p className="text-sm text-gray-500 mt-0.5">{selected.contact}{selected.address ? ` · ${selected.address}` : ''}</p>
               <span className={`inline-block mt-2 text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[selected.status] ?? 'bg-gray-100 text-gray-600'}`}>
@@ -688,7 +691,7 @@ export default function Page() {
                   <SectionTable title="📋 項目清單" headers={projectDetail.itemHeaders} rows={projectDetail.itemRows} />
                 )}
                 {(projectDetail.progressRows ?? []).length > 0 && (
-                  <div className="bg-white border border-gray-200 rounded-xl p-4">
+                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
                     <p className="text-xs font-medium text-gray-500 mb-3">📑 進度紀錄</p>
                     <div className="space-y-2">
                       {[...(projectDetail.progressRows ?? [])].reverse().slice(0, 10).map((r: any, i: number) => (
@@ -721,28 +724,28 @@ export default function Page() {
             </div>
 
             {reportTab === 'progress' && (
-              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+              <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 space-y-4">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">日期</label>
                   <input type="text" value={date} onChange={e => setDate(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">進度描述</label>
                   <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3}
                     placeholder="例：四色噴印完成，共28片"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 resize-none" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">同時更新狀態（選填）</label>
                   <select value={progressStatus} onChange={e => setProgressStatus(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 bg-white">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white">
                     <option value="">不更改</option>
                     {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <button onClick={submitProgress} disabled={submitting || !desc.trim()}
-                  className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
+                  className="w-full bg-indigo-600 text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
                   {submitting ? '寫入中...' : '確認送出 → 寫入 Notion'}
                 </button>
                 {submitMsg && <p className={`text-sm text-center font-medium ${submitOk ? 'text-green-600' : 'text-red-500'}`}>{submitMsg}</p>}
@@ -750,43 +753,43 @@ export default function Page() {
             )}
 
             {reportTab === 'item' && (
-              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+              <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
                     <label className="block text-sm text-gray-600 mb-1">項目 <span className="text-red-400">*</span></label>
                     <input type="text" value={itemName} onChange={e => setItemName(e.target.value)}
                       placeholder="例：消防箱蓋板、維修門"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
                   </div>
                   <div className="col-span-2">
                     <label className="block text-sm text-gray-600 mb-1">內容</label>
                     <input type="text" value={itemContent} onChange={e => setItemContent(e.target.value)}
                       placeholder="例：戴固煥盛烤漆、單開門貼板"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
                   </div>
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">規格(cm)</label>
                     <input type="text" value={itemSpec} onChange={e => setItemSpec(e.target.value)}
                       placeholder="例：92*129、60*80"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
                   </div>
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">數量</label>
                     <input type="text" value={itemQty} onChange={e => setItemQty(e.target.value)}
                       placeholder="例：23、28"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
                   </div>
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">單位</label>
                     <input type="text" value={itemUnit} onChange={e => setItemUnit(e.target.value)}
                       placeholder="例：組、片、扇"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
                   </div>
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">備註</label>
                     <input type="text" value={itemNote} onChange={e => setItemNote(e.target.value)}
                       placeholder="其他說明"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
                   </div>
                 </div>
                 {/* Image upload */}
@@ -835,7 +838,7 @@ export default function Page() {
                 </div>
 
                 <button onClick={submitItem} disabled={submitting || !itemName.trim()}
-                  className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
+                  className="w-full bg-indigo-600 text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
                   {submitting ? '寫入中...' : '新增品項 → 寫入 Notion'}
                 </button>
                 {submitMsg && <p className={`text-sm text-center font-medium ${submitOk ? 'text-green-600' : 'text-red-500'}`}>{submitMsg}</p>}
@@ -851,9 +854,9 @@ export default function Page() {
               <input value={searchQ} onChange={e => setSearchQ(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && doSearch()}
                 placeholder="輸入專案名稱、地址或人員姓名..."
-                className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gray-400 bg-white" />
+                className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white" />
               <button onClick={doSearch} disabled={searching}
-                className="bg-gray-900 text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-gray-700 disabled:opacity-40">
+                className="bg-indigo-600 text-white shadow-sm rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
                 {searching ? '...' : '查詢'}
               </button>
             </div>
@@ -970,7 +973,7 @@ export default function Page() {
                     <p className="text-xs font-medium text-gray-400 mb-2 px-1">專案 ({searchProjectResults.length})</p>
                     {searchProjectResults.map(p => (
                       <div key={p.id} onClick={() => loadDetail(p)}
-                        className="bg-white border border-gray-200 rounded-xl p-4 mb-2 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
+                        className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-2 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 truncate">{p.name}</p>
                           <p className="text-sm text-gray-500">{p.contact}</p>
@@ -986,7 +989,7 @@ export default function Page() {
                     <p className="text-xs font-medium text-gray-400 mb-2 px-1">任務事項 ({searchTaskResults.length})</p>
                     {searchTaskResults.map(t => (
                       <a key={t.id} href={t.url} target="_blank" rel="noopener noreferrer"
-                        className="bg-white border border-gray-200 rounded-xl p-4 mb-2 flex items-start gap-3 hover:border-gray-400 transition-colors block no-underline">
+                        className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-2 flex items-start gap-3 hover:border-gray-400 transition-colors block no-underline">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 truncate">{t.taskName}</p>
                           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
@@ -1009,7 +1012,7 @@ export default function Page() {
                   <div className="mt-4">
                     <p className="text-xs font-medium text-gray-400 mb-2 px-1">今日工作項目 ({dailyTaskResults.length})</p>
                     {dailyTaskResults.map(t => (
-                      <div key={t.id} className="bg-white border border-gray-200 rounded-xl p-3 mb-2 flex items-start gap-2">
+                      <div key={t.id} className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-3 mb-2 flex items-start gap-2">
                         <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' || t.status === '已封存' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
                           {t.status}
                         </span>
@@ -1033,7 +1036,7 @@ export default function Page() {
                 <button onClick={() => setSearchDetail(null)} className="text-sm text-gray-500 hover:text-gray-800 mb-3 flex items-center gap-1">← 返回</button>
 
                 {/* Header */}
-                <div className="bg-white border border-gray-200 rounded-xl p-4 mb-3">
+                <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-3">
                   <h2 className="font-medium text-gray-900 text-base">{searchDetail.name}</h2>
                   <div className="flex gap-2 mt-1 flex-wrap">
                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[searchDetail.status] ?? 'bg-gray-100 text-gray-600'}`}>{searchDetail.status}</span>
@@ -1048,7 +1051,7 @@ export default function Page() {
                 )}
 
                 {/* 📑 進度紀錄 */}
-                <div className="bg-white border border-gray-200 rounded-xl p-4 mb-3">
+                <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-3">
                   <p className="text-xs font-medium text-gray-500 mb-3">📑 進度紀錄</p>
                   {(searchDetail.progressRows ?? []).length === 0
                     ? <p className="text-sm text-gray-400">尚無進度紀錄</p>
@@ -1089,35 +1092,35 @@ export default function Page() {
         {view === 'create' && (
           <div>
             <button onClick={() => setView('list')} className="text-sm text-gray-500 hover:text-gray-800 mb-4 flex items-center gap-1">← 返回清單</button>
-            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 space-y-4">
               <p className="text-sm font-medium text-gray-700">新增專案</p>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">專案名稱 <span className="text-red-400">*</span></label>
                 <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
                   placeholder="例：台北信義案"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
               </div>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">聯絡人</label>
                 <input type="text" value={newContact} onChange={e => setNewContact(e.target.value)}
                   placeholder="例：王先生"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
               </div>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">地址</label>
                 <input type="text" value={newAddress} onChange={e => setNewAddress(e.target.value)}
                   placeholder="例：台北市信義區..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
               </div>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">狀態</label>
                 <select value={newStatus} onChange={e => setNewStatus(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 bg-white">
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white">
                   {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <button onClick={submitCreateProject} disabled={creating || !newName.trim()}
-                className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
+                className="w-full bg-indigo-600 text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
                 {creating ? '建立中...' : '建立專案 → 寫入 Notion'}
               </button>
               {createMsg && <p className={`text-sm text-center font-medium ${createOk ? 'text-green-600' : 'text-red-500'}`}>{createMsg}</p>}
@@ -1134,24 +1137,24 @@ export default function Page() {
             </div>
 
             {/* 貼上 Plaud 內容 → Gemini 整理 */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 space-y-3">
+            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 space-y-3">
               <p className="text-sm font-medium text-gray-700">📥 貼上 Plaud 內容自動整理</p>
               <textarea value={plaudText} onChange={e => setPlaudText(e.target.value)} rows={5}
                 placeholder="把 Plaud 生成好的摘要內容貼到這裡，Gemini 會自動整理成每個人的工作項目..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400 resize-none" />
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
               <label className="flex items-center gap-2 text-sm text-gray-600">
                 <input type="checkbox" checked={sendLine} onChange={e => setSendLine(e.target.checked)} className="rounded" />
                 整理完同時發送到 LINE 群組
               </label>
               <button onClick={organizePlaud} disabled={organizing || !plaudText.trim()}
-                className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-gray-700 transition-colors">
+                className="w-full bg-indigo-600 text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
                 {organizing ? '整理中...' : '✦ 整理並寫入今日工作'}
               </button>
               {organizeMsg && <p className={`text-sm text-center font-medium ${organizeOk ? 'text-green-600' : 'text-red-500'}`}>{organizeMsg}</p>}
             </div>
 
             {/* 手動發送週報提醒 */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 flex items-center gap-3">
               <div className="flex-1">
                 <p className="text-sm font-medium text-gray-700">📣 發送本週工作回報提醒</p>
                 <p className="text-xs text-gray-400 mt-0.5">手動發送 LINE 通知，請大家確認並更新本週工作狀態</p>
@@ -1164,14 +1167,14 @@ export default function Page() {
             </div>
 
             {/* 知識庫同步 */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 flex items-center gap-3">
               <div className="flex-1">
                 <p className="text-sm font-medium text-gray-700">📚 同步檔案庫</p>
                 <p className="text-xs text-gray-400 mt-0.5">讀取 Notion「檔案庫」中待處理的檔案/圖片/PDF/網頁連結，自動萃取文字建索引（供 AI 規劃使用）</p>
                 {kbMsg && <p className={`text-xs mt-1 font-medium ${kbOk ? 'text-green-600' : 'text-red-500'}`}>{kbMsg}</p>}
               </div>
               <button onClick={syncKnowledge} disabled={kbSyncing}
-                className="shrink-0 bg-gray-900 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-700 disabled:opacity-40 transition-colors">
+                className="shrink-0 bg-indigo-600 text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 transition-colors">
                 {kbSyncing ? '同步中...' : '同步'}
               </button>
             </div>
@@ -1203,7 +1206,7 @@ export default function Page() {
                     : <div className="flex gap-1.5 flex-wrap">
                       {dates.map(d => (
                         <button key={d} onClick={() => { setSelectedDate(d); setFilterPerson(null) }}
-                          className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${selectedDate === d ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                          className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${selectedDate === d ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
                           {fmt(d)}
                         </button>
                       ))}
@@ -1224,7 +1227,7 @@ export default function Page() {
                         )}
                         {people.map(p => (
                           <button key={p} onClick={() => setFilterPerson(filterPerson === p ? null : p)}
-                            className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${filterPerson === p ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                            className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${filterPerson === p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
                             {p}
                             <span className={`ml-1 text-xs ${filterPerson === p ? 'opacity-60' : 'text-gray-400'}`}>
                               {dayTasks.filter(t => t.person === p).length}
@@ -1249,7 +1252,7 @@ export default function Page() {
             {dailyLoading ? (
               <p className="text-gray-400 text-sm py-8 text-center">載入中...</p>
             ) : dailyAll.length === 0 ? (
-              <div className="bg-white border border-gray-200 rounded-xl p-6 text-center">
+              <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-6 text-center">
                 <p className="text-sm text-gray-400">目前沒有工作項目</p>
                 <p className="text-xs text-gray-300 mt-2">貼上 Plaud 內容整理，或每天 9:30 自動生成</p>
               </div>
@@ -1271,7 +1274,7 @@ export default function Page() {
                         onDrop={e => { e.preventDefault(); setDragOverPerson(null); if (draggingId) reassignTask(draggingId, person); setDraggingId(null) }}
                         className={`bg-white border rounded-xl p-4 transition-colors ${isOver ? 'border-gray-900 bg-gray-50' : 'border-gray-200'}`}>
                         <div className="flex items-center gap-2 mb-3">
-                          <span className="w-7 h-7 rounded-full bg-gray-900 text-white text-xs flex items-center justify-center font-medium shrink-0">
+                          <span className="w-7 h-7 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-medium shrink-0">
                             {person.slice(0, 1)}
                           </span>
                           <p className="font-medium text-gray-900">{person}</p>
@@ -1307,7 +1310,7 @@ export default function Page() {
                                   <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
                                     onBlur={() => saveEdit(t.id)}
                                     onKeyDown={e => { if (e.key === 'Enter') saveEdit(t.id); if (e.key === 'Escape') { setEditingId(null); setEditText('') } }}
-                                    className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:border-gray-500" />
+                                    className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
                                 ) : (
                                   <span className="text-gray-700 flex-1 cursor-text" onClick={() => { setEditingId(t.id); setEditText(t.task) }}>{t.task}</span>
                                 )}
@@ -1322,17 +1325,17 @@ export default function Page() {
                                     <label className="text-xs text-gray-500">任務內容</label>
                                     <textarea value={detailContent} onChange={e => setDetailContent(e.target.value)} rows={3}
                                       placeholder="這個任務的背景、細節、目前狀況..."
-                                      className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-gray-400 resize-none" />
+                                      className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
                                   </div>
                                   <div>
                                     <label className="text-xs text-gray-500">希望 AI 幫你做什麼</label>
                                     <textarea value={detailDirection} onChange={e => setDetailDirection(e.target.value)} rows={4}
                                       placeholder={'清楚說明要 AI 做什麼，越具體越準：\n① 想要的產出（規劃步驟／找廠商／寫文案／比價…）\n② 限制（預算、時間、地點、規格、數量）\n③ 偏好或方向\n例：幫我規劃這支產品影片的拍攝流程，並找台中 3 家能配合的攝影團隊比價，預算 2 萬內。'}
-                                      className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-gray-400 resize-none" />
+                                      className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <button onClick={() => saveDetail(t.id)} disabled={savingDetail}
-                                      className="bg-gray-900 text-white rounded px-3 py-1 text-xs font-medium hover:bg-gray-700 disabled:opacity-40">
+                                      className="bg-indigo-600 text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:bg-indigo-700 disabled:opacity-40">
                                       {savingDetail ? '儲存中...' : '儲存'}
                                     </button>
                                     <button onClick={() => setDetailId(null)} className="text-xs text-gray-400 hover:text-gray-600 px-1">取消</button>
@@ -1351,7 +1354,7 @@ export default function Page() {
                                         aiPlanSaved
                                           ? <p className="mt-1 text-xs text-green-600">✓ 已存入 Notion「AI規劃」欄位</p>
                                           : <button onClick={() => savePlan(t)} disabled={aiPlanSaving}
-                                              className="mt-1 bg-gray-900 text-white rounded px-3 py-1 text-xs font-medium hover:bg-gray-700 disabled:opacity-40">
+                                              className="mt-1 bg-indigo-600 text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:bg-indigo-700 disabled:opacity-40">
                                               {aiPlanSaving ? '存入中...' : '存入 Notion'}
                                             </button>
                                       )}
@@ -1378,7 +1381,7 @@ export default function Page() {
 
 function SectionTable({ title, headers, rows }: { title: string; headers: string[]; rows: string[][] }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 mb-3 overflow-x-auto">
+    <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-3 overflow-x-auto">
       <p className="text-xs font-medium text-gray-500 mb-3">{title}</p>
       <table className="w-full text-sm border-collapse">
         <thead>
@@ -1405,7 +1408,7 @@ function SectionTable({ title, headers, rows }: { title: string; headers: string
 function NavBtn({ children, active, onClick }: { children: React.ReactNode; active: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${active ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+      className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-all ${active ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}>
       {children}
     </button>
   )
