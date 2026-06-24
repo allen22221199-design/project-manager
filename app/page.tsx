@@ -436,14 +436,21 @@ export default function Page() {
     setKbOk(false)
     try {
       const r = await fetch('/api/knowledge/sync', { method: 'POST' })
-      const data = await r.json()
+      const raw = await r.text()
+      let data: any
+      try { data = JSON.parse(raw) } catch {
+        setKbMsg('伺服器處理逾時或忙碌（檔案太多）。已處理的會保留，請再按一次「同步」接續處理剩下的。')
+        setKbOk(false)
+        return
+      }
       if (r.ok) {
         if (data.processed === 0) {
-          setKbMsg('沒有待處理的項目（知識庫都是最新的）')
+          setKbMsg('沒有待處理的項目（檔案庫都是最新的）')
           setKbOk(true)
         } else {
           const fails = (data.results ?? []).filter((x: any) => !x.ok)
-          setKbMsg(`已處理 ${data.success}/${data.processed} 筆${fails.length ? `；失敗 ${fails.length} 筆：${fails.map((x: any) => `${x.title}(${x.error})`).join('、')}` : ' ✓'}`)
+          const moreNote = data.more ? `；還有 ${data.remaining} 筆未處理，請再按一次「同步」接續` : ''
+          setKbMsg(`已處理 ${data.success}/${data.processed} 筆${fails.length ? `；失敗 ${fails.length} 筆：${fails.map((x: any) => `${x.title}(${x.error})`).join('、')}` : ''}${moreNote}${!fails.length && !data.more ? ' ✓' : ''}`)
           setKbOk(fails.length === 0)
         }
       } else {

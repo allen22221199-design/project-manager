@@ -31,8 +31,11 @@ export async function POST() {
   }
   try {
     const queue = await getKnowledgeQueue()
+    const started = Date.now()
     const results: any[] = []
     for (const item of queue) {
+      // 時間預算：避免單次請求超過 Vercel 函式上限而逾時
+      if (Date.now() - started > 45000) break
       try {
         let text = ''
         // 自動判斷：有附檔→辨識檔案/圖片；有連結→抓網頁；都沒有→讀頁面內文
@@ -65,7 +68,8 @@ export async function POST() {
       }
     }
     const okCount = results.filter(r => r.ok).length
-    return NextResponse.json({ ok: true, processed: results.length, success: okCount, results })
+    const remaining = queue.length - results.length
+    return NextResponse.json({ ok: true, processed: results.length, success: okCount, remaining, more: remaining > 0, results })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
