@@ -22,6 +22,13 @@ type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily'
 type DailyTask = { id: string; task: string; person: string; date: string; status: string; source: string; freq: string; content?: string; direction?: string }
 
+// 安全解析回應：伺服器逾時/出錯時回的是 HTML，不要讓 JSON.parse 噴出難懂的錯誤
+async function readJson(r: Response): Promise<any> {
+  const raw = await r.text()
+  try { return JSON.parse(raw) }
+  catch { throw new Error('伺服器忙碌或處理逾時，請稍後再試一次') }
+}
+
 export default function Page() {
   const [view, setView] = useState<View>('list')
   const [projects, setProjects] = useState<Project[]>([])
@@ -130,7 +137,7 @@ export default function Page() {
     setLoading(true)
     try {
       const r = await fetch('/api/projects')
-      const data = await r.json()
+      const data = await readJson(r)
       setProjects(Array.isArray(data) ? data : [])
     } finally { setLoading(false) }
   }
@@ -158,7 +165,7 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pageId: p.id }),
       })
-      setProjectDetail(await r.json())
+      setProjectDetail(await readJson(r))
     } catch {} finally { setProjectDetailLoading(false) }
   }
 
@@ -173,7 +180,7 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pageId: selected.id, date, description: desc, newStatus: progressStatus || undefined }),
       })
-      const data = await r.json()
+      const data = await readJson(r)
       if (r.ok) {
         setSubmitMsg('進度已寫入 Notion ✓')
         setSubmitOk(true)
@@ -198,7 +205,7 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'item', pageId: selected.id, item: itemName, content: itemContent, spec: itemSpec, qty: itemQty, unit: itemUnit, note: itemNote }),
       })
-      const data = await r.json()
+      const data = await readJson(r)
       if (r.ok) {
         setSubmitMsg('品項已寫入 Notion ✓')
         setSubmitOk(true)
@@ -225,7 +232,7 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: searchQ }),
       })
-      const data = await r.json()
+      const data = await readJson(r)
       setSearchProjectResults(data.projects ?? [])
       setSearchTaskResults(data.tasks ?? [])
       setDailyTaskResults(data.dailyTasks ?? [])
@@ -235,7 +242,7 @@ export default function Page() {
   async function fetchInProgress() {
     try {
       const r = await fetch('/api/daily-tasks')
-      const data = await r.json()
+      const data = await readJson(r)
       setInProgressTasks((data.all ?? []).filter((t: DailyTask) => t.status !== '完成' && t.status !== '已封存'))
     } catch {}
   }
@@ -245,7 +252,7 @@ export default function Page() {
     setPersonTasks([])
     try {
       const r = await fetch(`/api/daily-tasks?person=${encodeURIComponent(person)}`)
-      const data = await r.json()
+      const data = await readJson(r)
       setPersonTasks(data.tasks ?? [])
     } catch {} finally { setPersonTasksLoading(false) }
   }
@@ -258,7 +265,7 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pageId: p.id }),
       })
-      setSearchDetail(await r.json())
+      setSearchDetail(await readJson(r))
     } finally { setSearching(false) }
   }
 
@@ -279,7 +286,7 @@ export default function Page() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ base64, mediaType }),
         })
-        setAnalyzed(await r.json())
+        setAnalyzed(await readJson(r))
       } finally { setAnalyzing(false) }
     }
     reader.readAsDataURL(file)
@@ -302,7 +309,7 @@ export default function Page() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ base64, mediaType, type: 'item' }),
         })
-        const data = await r.json()
+        const data = await readJson(r)
         setItemAnalyzed(Array.isArray(data) ? data : null)
       } finally { setItemAnalyzing(false) }
     }
@@ -325,7 +332,7 @@ export default function Page() {
     setDailyLoading(true)
     try {
       const r = await fetch('/api/daily-tasks')
-      const data = await r.json()
+      const data = await readJson(r)
       const all: DailyTask[] = data.all ?? []
       setDailyAll(all)
       const dates = Array.from(new Set(all.map(t => t.date).filter(Boolean))).sort().reverse()
@@ -344,7 +351,7 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: plaudText, sendLine }),
       })
-      const data = await r.json()
+      const data = await readJson(r)
       if (r.ok && data.count > 0) {
         const lineNote = data.line?.ok ? '，已發送 LINE ✓'
           : data.line?.skipped ? '（LINE 未設定，略過）'
@@ -367,7 +374,7 @@ export default function Page() {
     setReminderOk(false)
     try {
       const r = await fetch('/api/cron/weekly-reminder')
-      const data = await r.json()
+      const data = await readJson(r)
       if (r.ok && data.ok) {
         setReminderMsg('已發送週報提醒到 LINE ✓')
         setReminderOk(true)
@@ -518,7 +525,7 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName, contact: newContact, address: newAddress, status: newStatus }),
       })
-      const data = await r.json()
+      const data = await readJson(r)
       if (r.ok) {
         setCreateMsg('專案已建立 ✓')
         setCreateOk(true)
