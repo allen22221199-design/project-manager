@@ -103,6 +103,56 @@ export async function extractTextFromYouTube(url: string) {
   return result.response.text().trim()
 }
 
+// AI 規劃：兩階段思考（初步規劃 → 結合知識庫＋上網搜尋修正並自我審視）
+export async function generateAiPlan(
+  info: { task: string; content?: string; direction?: string; goal?: string },
+  knowledge: string
+) {
+  const base = `任務名稱：${info.task}
+任務內容：${info.content?.trim() || '（未填）'}
+目前進度／方向：${info.direction?.trim() || '（未填）'}
+最終目的：${info.goal?.trim() || '（未填）'}`
+
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+
+  // 第一階段：初步思考「該如何執行」
+  const first = await withRetry(() => model.generateContent(
+    `你是一位專案執行顧問。請針對以下任務思考「該如何執行」，輸出初步規劃：建議步驟、需要的資源或廠商類型、可能的風險。用繁體中文。\n\n${base}`
+  ))
+  const firstPlan = first.response.text().trim()
+
+  // 第二階段：結合公司知識庫 + 上網搜尋，修正補強並自我審視
+  const prompt2 = `你是一位嚴謹的專案執行顧問。以下是某任務的初步規劃，請依「公司內部資料」與「網路最新資訊」修正、補強，並檢查是否有漏洞或錯誤。
+
+【任務】
+${base}
+
+【初步規劃】
+${firstPlan}
+
+【公司內部資料（知識庫，可能相關）】
+${knowledge || '（無相關內部資料）'}
+
+請用繁體中文輸出最終規劃，條列清楚，包含：
+1. 執行步驟（具體、可操作）
+2. 需要的資源／建議的廠商或店家（若上網查到具體名稱、地點、聯絡方式或網址請附上）
+3. 風險與注意事項
+4. 與公司內部資料的呼應（若用到知識庫內容請說明引用了哪一份）
+最後加一段「⚠️ 自我審視」：指出這份規劃還有哪些不確定、需要人工再確認的地方。`
+
+  let finalPlan = ''
+  try {
+    const searchModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', tools: [{ googleSearch: {} }] as any })
+    const second = await withRetry(() => searchModel.generateContent(prompt2))
+    finalPlan = second.response.text().trim()
+  } catch {
+    // 搜尋工具不可用時，退回不含網搜的修正
+    const second = await withRetry(() => model.generateContent(prompt2 + '\n\n（注意：目前無法上網搜尋，請依現有資訊盡量完整）'))
+    finalPlan = second.response.text().trim()
+  }
+  return finalPlan
+}
+
 // 只整理以下這幾位人員的工作項目
 const ALLOWED_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
 

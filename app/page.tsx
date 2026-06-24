@@ -101,6 +101,12 @@ export default function Page() {
   const [detailDirection, setDetailDirection] = useState('')
   const [savingDetail, setSavingDetail] = useState(false)
 
+  // AI 規劃
+  const [aiGoal, setAiGoal] = useState('')
+  const [aiPlanning, setAiPlanning] = useState(false)
+  const [aiPlanText, setAiPlanText] = useState('')
+  const [aiUsedKb, setAiUsedKb] = useState<string[]>([])
+
   // create project form
   const [newName, setNewName] = useState('')
   const [newContact, setNewContact] = useState('')
@@ -488,6 +494,32 @@ export default function Page() {
     setDetailId(t.id)
     setDetailContent(t.content ?? '')
     setDetailDirection(t.direction ?? '')
+    setAiGoal('')
+    setAiPlanText('')
+    setAiUsedKb([])
+  }
+
+  // AI 規劃：兩階段思考 + 查知識庫 + 上網搜尋
+  async function runAiPlan(t: DailyTask) {
+    setAiPlanning(true)
+    setAiPlanText('')
+    setAiUsedKb([])
+    try {
+      const r = await fetch('/api/ai-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: t.task, content: detailContent, direction: detailDirection, goal: aiGoal }),
+      })
+      const data = await readJson(r)
+      if (r.ok) {
+        setAiPlanText(data.plan || '（沒有產生內容）')
+        setAiUsedKb(data.usedKnowledge ?? [])
+      } else {
+        setAiPlanText('錯誤：' + (data.error ?? '規劃失敗'))
+      }
+    } catch (e: any) {
+      setAiPlanText('錯誤：' + e.message)
+    } finally { setAiPlanning(false) }
   }
 
   // 儲存任務詳情（內容 / 進度方向）
@@ -1288,7 +1320,28 @@ export default function Page() {
                                       {savingDetail ? '儲存中...' : '儲存'}
                                     </button>
                                     <button onClick={() => setDetailId(null)} className="text-xs text-gray-400 hover:text-gray-600 px-1">取消</button>
-                                    <span className="ml-auto text-xs text-gray-300 italic">AI 規劃（即將推出）</span>
+                                  </div>
+
+                                  {/* AI 規劃 */}
+                                  <div className="border-t border-gray-200 pt-2 mt-1">
+                                    <p className="text-xs font-medium text-gray-600 mb-1">🤖 AI 規劃</p>
+                                    <textarea value={aiGoal} onChange={e => setAiGoal(e.target.value)} rows={2}
+                                      placeholder="最終想達成的目的 / 補充方向（例：找到 3 家能配合的廠商並比價）"
+                                      className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-gray-400 resize-none" />
+                                    <button onClick={() => runAiPlan(t)} disabled={aiPlanning}
+                                      className="mt-1 bg-blue-600 text-white rounded px-3 py-1 text-xs font-medium hover:bg-blue-700 disabled:opacity-40">
+                                      {aiPlanning ? 'AI 思考中（兩階段＋查知識庫＋搜尋）...' : '開始 AI 規劃'}
+                                    </button>
+                                    {aiPlanText && (
+                                      <div className="mt-2">
+                                        {aiUsedKb.length > 0 && (
+                                          <p className="text-xs text-gray-400 mb-1">參考知識庫：{aiUsedKb.join('、')}</p>
+                                        )}
+                                        <div className="text-sm text-gray-700 whitespace-pre-wrap bg-white border border-gray-200 rounded p-2 max-h-80 overflow-auto">{aiPlanText}</div>
+                                        <button onClick={() => setDetailDirection(d => (d ? d + '\n\n' : '') + aiPlanText)}
+                                          className="mt-1 text-xs text-blue-600 hover:underline">↧ 填入「進度方向」（記得按上方儲存）</button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               )}
