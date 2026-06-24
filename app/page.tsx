@@ -105,6 +105,8 @@ export default function Page() {
   const [aiPlanning, setAiPlanning] = useState(false)
   const [aiPlanText, setAiPlanText] = useState('')
   const [aiUsedKb, setAiUsedKb] = useState<string[]>([])
+  const [aiPlanSaving, setAiPlanSaving] = useState(false)
+  const [aiPlanSaved, setAiPlanSaved] = useState(false)
 
   // create project form
   const [newName, setNewName] = useState('')
@@ -495,13 +497,15 @@ export default function Page() {
     setDetailDirection(t.direction ?? '')
     setAiPlanText(t.aiPlan ?? '')   // 載入已存的 AI 規劃，方便後續查看
     setAiUsedKb([])
+    setAiPlanSaved(!!(t.aiPlan ?? '').trim())   // 已有內容代表已存在 Notion
   }
 
-  // AI 規劃：兩階段思考 + 查知識庫 + 上網搜尋，完成後自動寫回 Notion
+  // AI 規劃：思考 + 查知識庫 + 上網搜尋（生成後由使用者決定是否存入 Notion）
   async function runAiPlan(t: DailyTask) {
     setAiPlanning(true)
     setAiPlanText('')
     setAiUsedKb([])
+    setAiPlanSaved(false)
     try {
       const r = await fetch('/api/ai-plan', {
         method: 'POST',
@@ -510,22 +514,28 @@ export default function Page() {
       })
       const data = await readJson(r)
       if (r.ok) {
-        const plan = data.plan || '（沒有產生內容）'
-        setAiPlanText(plan)
+        setAiPlanText(data.plan || '（沒有產生內容）')
         setAiUsedKb(data.usedKnowledge ?? [])
-        // 自動把任務內容、進度方向、AI 規劃結果一起寫回 Notion（雙向同步）
-        setDailyAll(prev => prev.map(x => x.id === t.id ? { ...x, content: detailContent, direction: detailDirection, aiPlan: plan } : x))
-        fetch('/api/daily-tasks', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: t.id, content: detailContent, direction: detailDirection, aiPlan: plan }),
-        })
       } else {
         setAiPlanText('錯誤：' + (data.error ?? '規劃失敗'))
       }
     } catch (e: any) {
       setAiPlanText('錯誤：' + e.message)
     } finally { setAiPlanning(false) }
+  }
+
+  // 使用者按下後，才把任務內容、AI需求、AI規劃結果寫回 Notion
+  async function savePlan(t: DailyTask) {
+    setAiPlanSaving(true)
+    setDailyAll(prev => prev.map(x => x.id === t.id ? { ...x, content: detailContent, direction: detailDirection, aiPlan: aiPlanText } : x))
+    try {
+      await fetch('/api/daily-tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: t.id, content: detailContent, direction: detailDirection, aiPlan: aiPlanText }),
+      })
+      setAiPlanSaved(true)
+    } finally { setAiPlanSaving(false) }
   }
 
   // 儲存任務詳情（內容 / 進度方向）
@@ -1337,7 +1347,14 @@ export default function Page() {
                                         <p className="text-xs text-gray-400 mb-1">參考知識庫：{aiUsedKb.join('、')}</p>
                                       )}
                                       <div className="text-sm text-gray-700 whitespace-pre-wrap bg-white border border-gray-200 rounded p-2 max-h-80 overflow-auto">{aiPlanText}</div>
-                                      {!aiPlanning && <p className="mt-1 text-xs text-green-600">✓ 已自動存入 Notion「AI規劃」欄位</p>}
+                                      {!aiPlanning && !aiPlanText.startsWith('錯誤：') && (
+                                        aiPlanSaved
+                                          ? <p className="mt-1 text-xs text-green-600">✓ 已存入 Notion「AI規劃」欄位</p>
+                                          : <button onClick={() => savePlan(t)} disabled={aiPlanSaving}
+                                              className="mt-1 bg-gray-900 text-white rounded px-3 py-1 text-xs font-medium hover:bg-gray-700 disabled:opacity-40">
+                                              {aiPlanSaving ? '存入中...' : '存入 Notion'}
+                                            </button>
+                                      )}
                                     </div>
                                   )}
                                 </div>
