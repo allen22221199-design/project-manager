@@ -20,7 +20,7 @@ type Project = { id: string; name: string; status: string; contact: string; addr
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily'
-type DailyTask = { id: string; task: string; person: string; date: string; status: string; source: string; freq: string; content?: string; direction?: string }
+type DailyTask = { id: string; task: string; person: string; date: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string }
 
 // 安全解析回應：伺服器逾時/出錯時回的是 HTML，不要讓 JSON.parse 噴出難懂的錯誤
 async function readJson(r: Response): Promise<any> {
@@ -495,11 +495,11 @@ export default function Page() {
     setDetailContent(t.content ?? '')
     setDetailDirection(t.direction ?? '')
     setAiGoal('')
-    setAiPlanText('')
+    setAiPlanText(t.aiPlan ?? '')   // 載入已存的 AI 規劃，方便後續查看
     setAiUsedKb([])
   }
 
-  // AI 規劃：兩階段思考 + 查知識庫 + 上網搜尋
+  // AI 規劃：兩階段思考 + 查知識庫 + 上網搜尋，完成後自動寫回 Notion
   async function runAiPlan(t: DailyTask) {
     setAiPlanning(true)
     setAiPlanText('')
@@ -512,8 +512,16 @@ export default function Page() {
       })
       const data = await readJson(r)
       if (r.ok) {
-        setAiPlanText(data.plan || '（沒有產生內容）')
+        const plan = data.plan || '（沒有產生內容）'
+        setAiPlanText(plan)
         setAiUsedKb(data.usedKnowledge ?? [])
+        // 自動把任務內容、進度方向、AI 規劃結果一起寫回 Notion（雙向同步）
+        setDailyAll(prev => prev.map(x => x.id === t.id ? { ...x, content: detailContent, direction: detailDirection, aiPlan: plan } : x))
+        fetch('/api/daily-tasks', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: t.id, content: detailContent, direction: detailDirection, aiPlan: plan }),
+        })
       } else {
         setAiPlanText('錯誤：' + (data.error ?? '規劃失敗'))
       }
@@ -1338,8 +1346,7 @@ export default function Page() {
                                           <p className="text-xs text-gray-400 mb-1">參考知識庫：{aiUsedKb.join('、')}</p>
                                         )}
                                         <div className="text-sm text-gray-700 whitespace-pre-wrap bg-white border border-gray-200 rounded p-2 max-h-80 overflow-auto">{aiPlanText}</div>
-                                        <button onClick={() => setDetailDirection(d => (d ? d + '\n\n' : '') + aiPlanText)}
-                                          className="mt-1 text-xs text-blue-600 hover:underline">↧ 填入「進度方向」（記得按上方儲存）</button>
+                                        {!aiPlanning && <p className="mt-1 text-xs text-green-600">✓ 已自動存入 Notion「AI規劃」欄位</p>}
                                       </div>
                                     )}
                                   </div>
