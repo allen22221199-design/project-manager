@@ -458,14 +458,17 @@ export async function getKnowledgeBase() {
     filter: { property: '狀態', select: { equals: '已處理' } },
     page_size: 100,
   })
-  const items = await Promise.all((res.results as any[]).map(async p => ({
-    id: p.id,
-    title: p.properties['檔案名稱']?.title?.[0]?.plain_text ?? '',
-    tags: p.properties['分類']?.select?.name ? [p.properties['分類'].select.name] : [],
-    summary: (p.properties['萃取摘要']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
-    text: await readPagePlainText(p.id),
-  })))
-  return items
+  // 用已存的「萃取摘要」即可，不逐筆讀整頁內文（快很多，避免 AI 規劃逾時）
+  return (res.results as any[]).map(p => {
+    const summary = (p.properties['萃取摘要']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
+    return {
+      id: p.id,
+      title: p.properties['檔案名稱']?.title?.[0]?.plain_text ?? '',
+      tags: p.properties['分類']?.select?.name ? [p.properties['分類'].select.name] : [],
+      summary,
+      text: summary,
+    }
+  })
 }
 
 // 寫回知識庫處理結果（摘要 + 狀態 + 全文進內文）
