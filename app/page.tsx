@@ -1084,8 +1084,8 @@ export default function Page() {
                         setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
                         fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, status: next }) })
                       }
-                      const TaskRow = ({ t }: { t: DailyTask }) => (
-                        <div className="border-b border-blue-100 last:border-0">
+                      const renderTaskRow = (t: DailyTask) => (
+                        <div key={t.id} className="border-b border-blue-100 last:border-0">
                           <div className="flex items-center gap-3 text-base py-2.5 group">
                             <button onClick={() => toggleDone(t)}
                               className={`text-sm px-2.5 py-1 rounded-md shrink-0 cursor-pointer font-medium transition-colors ${t.status === '完成' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
@@ -1159,7 +1159,7 @@ export default function Page() {
                           )}
                           {filtered.length === 0
                             ? <p className="text-xs text-gray-400 py-2 text-center">無符合的進行中任務</p>
-                            : <div>{filtered.map(t => <TaskRow key={t.id} t={t} />)}</div>
+                            : <div>{filtered.map(t => renderTaskRow(t))}</div>
                           }
                         </div>
                       )
