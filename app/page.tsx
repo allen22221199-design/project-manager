@@ -685,7 +685,7 @@ export default function Page() {
         <div className="ml-auto flex gap-1 bg-gray-100/80 rounded-xl p-1">
           <NavBtn active={view === 'list'} onClick={() => setView('list')}>案件清單</NavBtn>
           <NavBtn active={view === 'daily'} onClick={() => { setView('daily'); fetchDailyTasks() }}>今日工作</NavBtn>
-          <NavBtn active={view === 'search'} onClick={() => { setView('search'); fetchInProgress() }}>查詢</NavBtn>
+          <NavBtn active={view === 'search'} onClick={() => { setView('search'); fetchInProgress() }}>任務查詢</NavBtn>
         </div>
       </header>
 
