@@ -144,6 +144,36 @@ ${knowledge || '（無相關內部資料）'}
   }
 }
 
+// AI 助理即時對話：優先用公司知識庫；查不到內部事實就說不知道；網路資料要標註
+export async function chatWithAssistant(messages: { role: string; content: string }[], knowledge: string) {
+  const sys = `你是煌盛興業的內部 AI 助理，協助同仁處理：客戶通話的話術建議、公司機具的參數／保養查詢、製作 SOP 等工作。
+
+務必遵守以下規則：
+1. 優先使用下方「公司內部資料（知識庫）」回答。查得到就準確、具體地回答，並可說明出自哪一份資料。
+2. 若問題屬於「公司機具參數、保養數據、內部規範、報價、廠商」等公司內部事實，而知識庫中找不到，請直接回答：「這部分我在公司知識庫找不到資料，無法確定，請向相關同仁或原廠查證。」——絕對不要自行編造、猜測或填入不確定的數字。
+3. 若是一般性知識，你可用 Google 搜尋補充，但提供後必須另起一段明確標註：「（以上內容為網路查詢資料，僅供參考）」。
+4. 話術建議、SOP 這類可以發揮，但若牽涉到具體的公司數據／規格，仍以知識庫為準。
+5. 一律用繁體中文，條列清楚、口語好讀。
+
+【公司內部資料（知識庫，可能相關）】
+${knowledge || '（這次沒有找到相關的公司內部資料）'}`
+
+  const contents = messages.slice(-12).map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }))
+
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: sys, tools: [{ googleSearch: {} }] as any })
+    const res = await model.generateContent({ contents })
+    return res.response.text().trim()
+  } catch {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: sys })
+    const res = await model.generateContent({ contents })
+    return res.response.text().trim()
+  }
+}
+
 // 只整理以下這幾位人員的工作項目
 const ALLOWED_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
 

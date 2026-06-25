@@ -19,7 +19,8 @@ const DAILY_STATUS_CYCLE = ['進行中', '完成']
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
-type View = 'list' | 'report' | 'search' | 'create' | 'daily'
+type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat'
+type ChatMsg = { role: 'user' | 'assistant'; content: string }
 type DailyTask = { id: string; task: string; person: string; date: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string }
 
 // 安全解析回應：伺服器逾時/出錯時回的是 HTML，不要讓 JSON.parse 噴出難懂的錯誤
@@ -100,6 +101,11 @@ export default function Page() {
   const [emailSending, setEmailSending] = useState(false)
   const [emailMsg, setEmailMsg] = useState('')
   const [emailOk, setEmailOk] = useState(false)
+
+  // AI 助理對話
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
 
   // 任務詳情面板（內容 / 進度方向）
   const [detailId, setDetailId] = useState<string | null>(null)
@@ -497,6 +503,28 @@ export default function Page() {
     }
   }
 
+  // AI 助理：送出訊息
+  async function sendChat() {
+    const text = chatInput.trim()
+    if (!text || chatLoading) return
+    const next: ChatMsg[] = [...chatMessages, { role: 'user', content: text }]
+    setChatMessages(next)
+    setChatInput('')
+    setChatLoading(true)
+    try {
+      const r = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: next }),
+      })
+      const data = await readJson(r)
+      const reply = r.ok ? (data.reply || '（沒有回覆）') : ('錯誤：' + (data.error ?? '回覆失敗'))
+      setChatMessages([...next, { role: 'assistant', content: reply }])
+    } catch (e: any) {
+      setChatMessages([...next, { role: 'assistant', content: '錯誤：' + e.message }])
+    } finally { setChatLoading(false) }
+  }
+
   // 手動寄送本週未完成報表 email（測試用，正式由週五 cron 自動執行）
   async function sendWeeklyEmail() {
     setEmailSending(true)
@@ -780,10 +808,11 @@ export default function Page() {
           <NavBtn active={view === 'list'} onClick={() => setView('list')}>案件清單</NavBtn>
           <NavBtn active={view === 'daily'} onClick={() => { setView('daily'); fetchDailyTasks() }}>今日工作</NavBtn>
           <NavBtn active={view === 'search'} onClick={() => { setView('search'); fetchInProgress() }}>任務查詢</NavBtn>
+          <NavBtn active={view === 'chat'} onClick={() => setView('chat')}>AI 助理</NavBtn>
         </div>
       </header>
 
-      <main className={`mx-auto p-4 animate-fade-in ${view === 'search' ? 'max-w-4xl' : 'max-w-2xl'}`}>
+      <main className={`mx-auto p-4 animate-fade-in ${view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
 
         {/* LIST */}
         {view === 'list' && (
@@ -1530,6 +1559,50 @@ export default function Page() {
                 })()}
               </div>
             )}
+          </div>
+        )}
+
+        {/* AI 助理 */}
+        {view === 'chat' && (
+          <div className="flex flex-col" style={{ height: 'calc(100vh - 130px)' }}>
+            <div className="flex-1 overflow-y-auto space-y-3 pb-4">
+              {chatMessages.length === 0 && (
+                <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-5 text-sm text-gray-600">
+                  <p className="font-medium text-gray-800 mb-2">👋 我是公司 AI 助理</p>
+                  <p className="text-gray-500 mb-2">我會優先用「檔案庫」裡的公司資料回答。你可以問我：</p>
+                  <ul className="list-disc pl-5 space-y-1 text-gray-500">
+                    <li>客戶通話的話術建議</li>
+                    <li>公司機具的參數、保養方式</li>
+                    <li>幫忙整理某項作業的 SOP</li>
+                  </ul>
+                  <p className="text-xs text-gray-400 mt-3">※ 公司內部資料若查不到，我會直接說不知道、不亂編；若引用網路資料會標註清楚。</p>
+                </div>
+              )}
+              {chatMessages.map((m, i) => (
+                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${m.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200/70 shadow-sm text-gray-800'}`}>
+                    {m.content}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-white border border-gray-200/70 shadow-sm rounded-2xl px-4 py-2.5 text-sm text-gray-400">思考中…（查詢公司資料）</div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 pt-2 border-t border-gray-200">
+              <textarea value={chatInput} onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
+                rows={1} placeholder="輸入問題…（Enter 送出、Shift+Enter 換行）"
+                className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white resize-none" />
+              <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()}
+                className="bg-indigo-600 text-white shadow-sm rounded-xl px-5 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">送出</button>
+              {chatMessages.length > 0 && (
+                <button onClick={() => setChatMessages([])} title="清空對話"
+                  className="text-gray-400 hover:text-gray-700 text-sm px-2">清空</button>
+              )}
+            </div>
           </div>
         )}
       </main>
