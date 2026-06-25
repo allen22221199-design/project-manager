@@ -137,6 +137,8 @@ export default function Page() {
   const [itemAnalyzing, setItemAnalyzing] = useState(false)
   const [itemAnalyzed, setItemAnalyzed] = useState<any[] | null>(null)
   const itemFileRef = useRef<HTMLInputElement>(null)
+  // 報告頁品項分頁：批次品項列表（辨識/手動，最後一次寫入）
+  const [itemList, setItemList] = useState<any[]>([])
 
   useEffect(() => { fetchProjects() }, [])
 
@@ -171,6 +173,7 @@ export default function Page() {
     setItemQty('')
     setItemUnit('')
     setItemNote('')
+    setItemList([])
     setReportTab('progress')
     setProjectDetail(null)
     setProjectDetailLoading(true)
@@ -326,11 +329,51 @@ export default function Page() {
           body: JSON.stringify({ base64, mediaType, type: 'item' }),
         })
         const data = await readJson(r)
-        setItemAnalyzed(Array.isArray(data) ? data : null)
+        if (Array.isArray(data) && data.length > 0) {
+          setItemList(prev => [...prev, ...data.map(d => ({
+            item: d.item ?? '', content: d.content ?? '', spec: d.spec ?? '',
+            qty: d.qty ?? '', unit: d.unit ?? '', note: d.note ?? '',
+          }))])
+        } else {
+          setSubmitMsg('未從圖片辨識出品項，可手動新增')
+          setSubmitOk(false)
+        }
       } finally { setItemAnalyzing(false) }
     }
     reader.readAsDataURL(file)
     e.target.value = ''
+  }
+
+  function updateItemRow(i: number, field: string, value: string) {
+    setItemList(prev => prev.map((it, idx) => idx === i ? { ...it, [field]: value } : it))
+  }
+  function removeItemRow(i: number) {
+    setItemList(prev => prev.filter((_, idx) => idx !== i))
+  }
+
+  // 一次寫入所有品項到目前專案
+  async function submitItemBatch() {
+    if (!selected) return
+    const items = itemList.filter(it => (it.item ?? '').trim())
+    if (items.length === 0) return
+    setSubmitting(true)
+    setSubmitMsg('')
+    setSubmitOk(false)
+    let written = 0
+    for (const it of items) {
+      try {
+        const r = await fetch('/api/progress', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'item', pageId: selected.id, item: it.item, content: it.content, spec: it.spec, qty: it.qty, unit: it.unit, note: it.note }),
+        })
+        if (r.ok) written++
+      } catch {}
+    }
+    setSubmitMsg(`已寫入 ${written}/${items.length} 筆品項 ✓`)
+    setSubmitOk(written === items.length)
+    if (written > 0) setItemList([])
+    setSubmitting(false)
   }
 
   function applyItemAnalyzed(row: any) {
@@ -840,92 +883,50 @@ export default function Page() {
 
             {reportTab === 'item' && (
               <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
-                    <label className="block text-sm text-gray-600 mb-1">項目 <span className="text-red-400">*</span></label>
-                    <input type="text" value={itemName} onChange={e => setItemName(e.target.value)}
-                      placeholder="例：消防箱蓋板、維修門"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-sm text-gray-600 mb-1">內容</label>
-                    <input type="text" value={itemContent} onChange={e => setItemContent(e.target.value)}
-                      placeholder="例：戴固煥盛烤漆、單開門貼板"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">規格(cm)</label>
-                    <input type="text" value={itemSpec} onChange={e => setItemSpec(e.target.value)}
-                      placeholder="例：92*129、60*80"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">數量</label>
-                    <input type="text" value={itemQty} onChange={e => setItemQty(e.target.value)}
-                      placeholder="例：23、28"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">單位</label>
-                    <input type="text" value={itemUnit} onChange={e => setItemUnit(e.target.value)}
-                      placeholder="例：組、片、扇"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">備註</label>
-                    <input type="text" value={itemNote} onChange={e => setItemNote(e.target.value)}
-                      placeholder="其他說明"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
-                  </div>
+                {/* 上傳辨識 / 手動新增 */}
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-gray-400 flex-1">📷 上傳報價單／材料清單照片，AI 自動辨識品項；可再編輯或新增，最後一次寫入</p>
+                  <button type="button" onClick={() => itemFileRef.current?.click()} disabled={itemAnalyzing}
+                    className="shrink-0 text-xs px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40">
+                    {itemAnalyzing ? '辨識中...' : '📷 上傳辨識'}
+                  </button>
+                  <button type="button" onClick={() => setItemList(prev => [...prev, { item: '', content: '', spec: '', qty: '', unit: '', note: '' }])}
+                    className="shrink-0 text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">＋ 手動新增</button>
                 </div>
-                {/* Image upload */}
-                <div className="border-t border-gray-100 pt-3">
-                  <p className="text-xs text-gray-400 mb-2">📷 上傳圖片或 PDF 自動辨識品項（支援 PNG、JPG、PDF）</p>
-                  <div className="flex gap-2 items-center">
-                    <button type="button" onClick={() => itemFileRef.current?.click()}
-                      className="flex-1 border border-dashed border-gray-300 rounded-lg py-2 text-sm text-gray-500 hover:border-gray-500 hover:text-gray-700 transition-colors">
-                      {itemImgPreview ? '重新上傳檔案' : '選擇圖片或 PDF...'}
-                    </button>
-                    {itemImgPreview && (
-                      <button type="button" onClick={() => { setItemImgPreview(''); setItemAnalyzed(null) }}
-                        className="text-gray-400 hover:text-gray-600 px-2 py-2 text-lg leading-none">×</button>
-                    )}
+                <input ref={itemFileRef} type="file" accept="image/png,image/jpeg,image/jpg,application/pdf" onChange={handleItemImage} className="hidden" />
+
+                {itemList.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-3 text-center">尚無品項，請上傳圖片辨識或手動新增</p>
+                ) : (
+                  <div className="space-y-2">
+                    {itemList.map((it, i) => (
+                      <div key={i} className="border border-gray-200 rounded-lg p-2 bg-gray-50/60">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-xs text-gray-400 shrink-0">{i + 1}.</span>
+                          <input value={it.item} onChange={e => updateItemRow(i, 'item', e.target.value)} placeholder="品項名稱"
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-indigo-400" />
+                          <button type="button" onClick={() => removeItemRow(i)} className="text-gray-300 hover:text-red-500 px-1 leading-none shrink-0">×</button>
+                        </div>
+                        <input value={it.content} onChange={e => updateItemRow(i, 'content', e.target.value)} placeholder="內容／材質說明"
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm mb-1 focus:outline-none focus:border-indigo-400" />
+                        <div className="flex gap-1.5">
+                          <input value={it.spec} onChange={e => updateItemRow(i, 'spec', e.target.value)} placeholder="規格(cm)"
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-indigo-400" />
+                          <input value={it.qty} onChange={e => updateItemRow(i, 'qty', e.target.value)} placeholder="數量"
+                            className="w-16 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-indigo-400" />
+                          <input value={it.unit} onChange={e => updateItemRow(i, 'unit', e.target.value)} placeholder="單位"
+                            className="w-16 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-indigo-400" />
+                          <input value={it.note} onChange={e => updateItemRow(i, 'note', e.target.value)} placeholder="備註"
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-indigo-400" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <input ref={itemFileRef} type="file" accept="image/png,image/jpeg,image/jpg,application/pdf" onChange={handleItemImage} className="hidden" />
+                )}
 
-                  {itemImgPreview && !itemAnalyzing && !itemAnalyzed && (
-                    itemImgPreview.startsWith('pdf:')
-                      ? <p className="mt-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">📄 {itemImgPreview.slice(4)}</p>
-                      : <img src={itemImgPreview} className="mt-2 max-h-32 rounded-lg object-contain" alt="preview" />
-                  )}
-                  {itemAnalyzing && (
-                    <p className="text-sm text-gray-400 text-center py-3 mt-2">辨識中...</p>
-                  )}
-
-                  {/* Analyzed results — one card per detected item */}
-                  {itemAnalyzed && itemAnalyzed.length > 0 && (
-                    <div className="mt-3 space-y-2">
-                      <p className="text-xs text-gray-500 font-medium">辨識到 {itemAnalyzed.length} 筆品項，點選套用：</p>
-                      {itemAnalyzed.map((row, i) => (
-                        <button key={i} type="button" onClick={() => applyItemAnalyzed(row)}
-                          className="w-full text-left border border-gray-200 rounded-lg px-3 py-2 hover:border-gray-900 hover:bg-gray-50 transition-colors">
-                          <p className="text-sm font-medium text-gray-900">{row.item || '(未辨識)'}</p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {[row.content, row.spec, row.qty && row.unit ? `${row.qty} ${row.unit}` : row.qty, row.note]
-                              .filter(Boolean).join(' · ')}
-                          </p>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {itemAnalyzed && itemAnalyzed.length === 0 && (
-                    <p className="text-xs text-red-400 mt-2">未能從圖片辨識出品項，請手動填寫</p>
-                  )}
-                </div>
-
-                <button onClick={submitItem} disabled={submitting || !itemName.trim()}
+                <button onClick={submitItemBatch} disabled={submitting || itemList.filter(it => (it.item ?? '').trim()).length === 0}
                   className="w-full bg-indigo-600 text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
-                  {submitting ? '寫入中...' : '新增品項 → 寫入 Notion'}
+                  {submitting ? '寫入中...' : `一次新增 ${itemList.filter(it => (it.item ?? '').trim()).length} 筆品項 → 寫入 Notion`}
                 </button>
                 {submitMsg && <p className={`text-sm text-center font-medium ${submitOk ? 'text-green-600' : 'text-red-500'}`}>{submitMsg}</p>}
               </div>
