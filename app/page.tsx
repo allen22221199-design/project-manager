@@ -732,7 +732,7 @@ export default function Page() {
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto p-4 animate-fade-in">
+      <main className={`mx-auto p-4 animate-fade-in ${view === 'search' ? 'max-w-4xl' : 'max-w-2xl'}`}>
 
         {/* LIST */}
         {view === 'list' && (
@@ -937,13 +937,13 @@ export default function Page() {
         {/* SEARCH */}
         {view === 'search' && (
           <div>
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-5">
               <input value={searchQ} onChange={e => setSearchQ(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && doSearch()}
                 placeholder="輸入專案名稱、地址或人員姓名..."
-                className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white" />
+                className="flex-1 border border-gray-200 rounded-xl px-5 py-3.5 text-base focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white shadow-sm" />
               <button onClick={doSearch} disabled={searching}
-                className="bg-indigo-600 text-white shadow-sm rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                className="bg-indigo-600 text-white shadow-sm rounded-xl px-6 py-3.5 text-base font-medium hover:bg-indigo-700 disabled:opacity-40">
                 {searching ? '...' : '查詢'}
               </button>
             </div>
@@ -953,14 +953,14 @@ export default function Page() {
                 {/* 進行中任務人名標籤 */}
                 {inProgressTasks.length > 0 && (
                   <div className="mb-4">
-                    <p className="text-xs text-gray-400 mb-2">進行中任務 — 點選人名查看：</p>
-                    <div className="flex flex-wrap gap-1.5">
+                    <p className="text-sm text-gray-500 mb-2.5 font-medium">進行中任務 — 點選人名查看：</p>
+                    <div className="flex flex-wrap gap-2">
                       {Array.from(new Set(inProgressTasks.map(t => t.person))).map(person => (
                         <button key={person}
                           onClick={() => { setSelectedPersonTag(selectedPersonTag === person ? null : person); setPersonFreqFilter(null) }}
-                          className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${selectedPersonTag === person ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
+                          className={`text-sm px-4 py-2 rounded-full font-medium transition-colors ${selectedPersonTag === person ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
                           {person}
-                          <span className="ml-1 opacity-70">{inProgressTasks.filter(t => t.person === person).length}</span>
+                          <span className="ml-1.5 opacity-70">{inProgressTasks.filter(t => t.person === person).length}</span>
                         </button>
                       ))}
                     </div>
@@ -988,17 +988,17 @@ export default function Page() {
                         }
                       }
                       const TaskRow = ({ t }: { t: DailyTask }) => (
-                        <div className="flex items-center gap-2 text-sm py-1.5 border-b border-blue-100 last:border-0">
+                        <div className="flex items-center gap-3 text-base py-2.5 border-b border-blue-100 last:border-0">
                           <button onClick={() => toggleDone(t)}
-                            className={`text-xs px-1.5 py-0.5 rounded shrink-0 cursor-pointer transition-colors ${t.status === '完成' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
+                            className={`text-sm px-2.5 py-1 rounded-md shrink-0 cursor-pointer font-medium transition-colors ${t.status === '完成' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
                             {t.status}
                           </button>
                           <span className={`flex-1 ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.task}</span>
-                          <span className="text-xs text-gray-400 shrink-0">{t.date}</span>
+                          <span className="text-sm text-gray-400 shrink-0">{t.date}</span>
                         </div>
                       )
                       return (
-                        <div className="mt-3 bg-blue-50 rounded-xl p-3">
+                        <div className="mt-3 bg-blue-50 rounded-xl p-4">
                           {/* 第一層篩選 */}
                           <div className="flex items-center gap-2 mb-2">
                             <p className="text-xs font-medium text-blue-700">{selectedPersonTag}（{personAll.length} 項）</p>
