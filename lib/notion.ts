@@ -447,6 +447,7 @@ export async function getKnowledgeQueue() {
   const SKIP_EXT = [
     'mp3', 'mp4', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'mov', 'avi', 'mkv', 'webm', 'm4v', 'flv', 'wmv', // 影音
     'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', // Office
+    'xmind', 'zip', 'rar', '7z', // 心智圖／壓縮檔等無法直接辨識
   ]
   const extOf = (n: string) => (n.split('?')[0].split('.').pop() || '').toLowerCase()
   return (res.results as any[])
