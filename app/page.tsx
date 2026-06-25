@@ -149,6 +149,17 @@ export default function Page() {
 
   useEffect(() => { fetchProjects() }, [])
 
+  // AI 助理對話：重開頁面自動還原（存在瀏覽器本機）
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('chatMessages')
+      if (saved) setChatMessages(JSON.parse(saved))
+    } catch {}
+  }, [])
+  useEffect(() => {
+    try { localStorage.setItem('chatMessages', JSON.stringify(chatMessages)) } catch {}
+  }, [chatMessages])
+
   function today() {
     const d = new Date()
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
