@@ -506,6 +506,7 @@ export default function Page() {
     setEditText('')
     if (newText) {
       setDailyAll(prev => prev.map(x => x.id === taskId ? { ...x, task: newText } : x))
+      setInProgressTasks(prev => prev.map(x => x.id === taskId ? { ...x, task: newText } : x))
       fetch('/api/daily-tasks', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -1088,7 +1089,15 @@ export default function Page() {
                               className={`text-sm px-2.5 py-1 rounded-md shrink-0 cursor-pointer font-medium transition-colors ${t.status === '完成' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
                               {t.status}
                             </button>
-                            <span className={`flex-1 ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.task}</span>
+                            {editingId === t.id ? (
+                              <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
+                                onBlur={() => saveEdit(t.id)}
+                                onKeyDown={e => { if (e.key === 'Enter') saveEdit(t.id); if (e.key === 'Escape') { setEditingId(null); setEditText('') } }}
+                                className="flex-1 border border-gray-300 rounded px-2 py-1 text-base focus:outline-none focus:border-indigo-400" />
+                            ) : (
+                              <span className={`flex-1 cursor-text ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-700'}`}
+                                onClick={() => { setEditingId(t.id); setEditText(t.task) }}>{t.task}</span>
+                            )}
                             <button onClick={() => toggleDetail(t)} title="詳情 / AI 規劃"
                               className={`text-base shrink-0 px-1 rounded hover:text-blue-600 ${(t.content || t.direction || t.aiPlan) ? 'text-blue-500' : 'text-gray-300'}`}>📝</button>
                             <span className="text-sm text-gray-400 shrink-0">{t.date}</span>
