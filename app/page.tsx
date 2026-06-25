@@ -19,7 +19,7 @@ const DAILY_STATUS_CYCLE = ['進行中', '完成']
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
-type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat'
+type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard'
 type ChatMsg = { role: 'user' | 'assistant'; content: string }
 type DailyTask = { id: string; task: string; person: string; date: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string }
 
@@ -31,7 +31,7 @@ async function readJson(r: Response): Promise<any> {
 }
 
 export default function Page() {
-  const [view, setView] = useState<View>('list')
+  const [view, setView] = useState<View>('dashboard')
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Project | null>(null)
@@ -107,6 +107,11 @@ export default function Page() {
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
 
+  // 手動新增任務
+  const [newTaskText, setNewTaskText] = useState('')
+  const [newTaskPerson, setNewTaskPerson] = useState(DAILY_PEOPLE[0])
+  const [addingTask, setAddingTask] = useState(false)
+
   // 任務詳情面板（內容 / 進度方向）
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detailContent, setDetailContent] = useState('')
@@ -147,7 +152,32 @@ export default function Page() {
   // 報告頁品項分頁：批次品項列表（辨識/手動，最後一次寫入）
   const [itemList, setItemList] = useState<any[]>([])
 
-  useEffect(() => { fetchProjects() }, [])
+  useEffect(() => { fetchProjects(); fetchDailyTasks() }, [])
+
+  // 逾期 / 今天到期標記
+  function dueBadge(t: DailyTask): { label: string; cls: string } | null {
+    if (!t.date || t.status === '完成' || t.status === '已封存') return null
+    const today = todayISO()
+    if (t.date < today) return { label: '逾期', cls: 'bg-red-100 text-red-700' }
+    if (t.date === today) return { label: '今天', cls: 'bg-yellow-100 text-yellow-700' }
+    return null
+  }
+
+  // 手動新增任務並指派人員
+  async function addManualTask(dateForTask: string, after: () => void) {
+    const task = newTaskText.trim()
+    if (!task || addingTask) return
+    setAddingTask(true)
+    try {
+      await fetch('/api/daily-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ person: newTaskPerson, task, date: dateForTask }),
+      })
+      setNewTaskText('')
+      after()
+    } finally { setAddingTask(false) }
+  }
 
   // AI 助理對話：重開頁面自動還原（存在瀏覽器本機）
   useEffect(() => {
@@ -819,6 +849,7 @@ export default function Page() {
           <div className="text-base font-semibold text-gray-900 tracking-tight">專案進度管理</div>
         </div>
         <div className="ml-auto flex gap-1 bg-gray-100/80 rounded-xl p-1">
+          <NavBtn active={view === 'dashboard'} onClick={() => { setView('dashboard'); fetchProjects(); fetchDailyTasks() }}>總覽</NavBtn>
           <NavBtn active={view === 'list'} onClick={() => setView('list')}>案件清單</NavBtn>
           <NavBtn active={view === 'daily'} onClick={() => { setView('daily'); fetchDailyTasks() }}>今日工作</NavBtn>
           <NavBtn active={view === 'search'} onClick={() => { setView('search'); fetchInProgress() }}>任務查詢</NavBtn>
@@ -826,7 +857,86 @@ export default function Page() {
         </div>
       </header>
 
-      <main className={`mx-auto p-4 animate-fade-in ${view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
+      <main className={`mx-auto p-4 animate-fade-in ${view === 'search' || view === 'dashboard' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
+
+        {/* DASHBOARD */}
+        {view === 'dashboard' && (() => {
+          const today = todayISO()
+          const now = new Date(Date.now() + 8 * 3600 * 1000)
+          const dow = now.getUTCDay()
+          const mon = new Date(now); mon.setUTCDate(now.getUTCDate() - ((dow + 6) % 7))
+          const weekStart = mon.toISOString().slice(0, 10)
+          const sun = new Date(mon); sun.setUTCDate(mon.getUTCDate() + 6)
+          const weekEnd = sun.toISOString().slice(0, 10)
+          const active = (t: DailyTask) => t.status !== '完成' && t.status !== '已封存'
+          const todayTasks = dailyAll.filter(t => t.date === today && active(t))
+          const overdue = dailyAll.filter(t => t.date && t.date < today && active(t)).sort((a, b) => a.date.localeCompare(b.date))
+          const weekTasks = dailyAll.filter(t => t.date >= weekStart && t.date <= weekEnd)
+          const weekDone = weekTasks.filter(t => t.status === '完成' || t.status === '已封存')
+          const rate = weekTasks.length ? Math.round(weekDone.length / weekTasks.length * 100) : 0
+          const byStatus: Record<string, number> = {}
+          for (const p of projects) byStatus[p.status] = (byStatus[p.status] ?? 0) + 1
+          const statusList = Object.entries(byStatus).sort((a, b) => b[1] - a[1])
+          return (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <button onClick={() => { setView('daily'); fetchDailyTasks() }} className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 text-left hover:border-indigo-300 transition-colors">
+                  <p className="text-xs text-gray-400">今日待辦</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1">{todayTasks.length}</p>
+                </button>
+                <button onClick={() => { setView('search'); fetchInProgress() }} className={`border rounded-xl shadow-sm p-4 text-left transition-colors ${overdue.length > 0 ? 'bg-red-50 border-red-200 hover:border-red-300' : 'bg-white border-gray-200/70 hover:border-indigo-300'}`}>
+                  <p className={`text-xs ${overdue.length > 0 ? 'text-red-500' : 'text-gray-400'}`}>逾期任務</p>
+                  <p className={`text-3xl font-bold mt-1 ${overdue.length > 0 ? 'text-red-600' : 'text-gray-900'}`}>{overdue.length}</p>
+                </button>
+                <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+                  <p className="text-xs text-gray-400">本週完成率</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1">{rate}<span className="text-lg">%</span></p>
+                  <p className="text-xs text-gray-400 mt-0.5">{weekDone.length}/{weekTasks.length} 項</p>
+                </div>
+                <button onClick={() => setView('list')} className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 text-left hover:border-indigo-300 transition-colors">
+                  <p className="text-xs text-gray-400">進行中案件</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1">{projects.length}</p>
+                </button>
+              </div>
+
+              {/* 各狀態案件數 */}
+              <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+                <p className="text-sm font-medium text-gray-700 mb-3">案件狀態分布</p>
+                {statusList.length === 0 ? (
+                  <p className="text-sm text-gray-400">尚無案件</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {statusList.map(([s, n]) => (
+                      <button key={s} onClick={() => { setView('list'); setFilterStatus(s) }}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium ${STATUS_COLORS[s] ?? 'bg-gray-100 text-gray-600'} hover:opacity-80`}>
+                        {s} <span className="opacity-70 ml-0.5">{n}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 逾期任務 */}
+              <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+                <p className="text-sm font-medium text-gray-700 mb-3">逾期任務 {overdue.length > 0 && <span className="text-red-500">({overdue.length})</span>}</p>
+                {overdue.length === 0 ? (
+                  <p className="text-sm text-green-600">🎉 沒有逾期任務</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {overdue.slice(0, 12).map(t => (
+                      <div key={t.id} className="flex items-center gap-2 text-sm">
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 shrink-0">{t.date}</span>
+                        <span className="text-gray-700 flex-1 truncate">{t.task}</span>
+                        <span className="text-xs text-gray-400 shrink-0">{t.person}</span>
+                      </div>
+                    ))}
+                    {overdue.length > 12 && <p className="text-xs text-gray-400 pt-1">…還有 {overdue.length - 12} 項</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* LIST */}
         {view === 'list' && (
@@ -1044,6 +1154,23 @@ export default function Page() {
 
             {!searchDetail && (
               <>
+                {/* 手動新增任務並指派 */}
+                <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-3 mb-4 flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-gray-500 shrink-0">＋ 新增任務</span>
+                  <select value={newTaskPerson} onChange={e => setNewTaskPerson(e.target.value)}
+                    className="border border-gray-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-indigo-400 shrink-0">
+                    {DAILY_PEOPLE.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <input value={newTaskText} onChange={e => setNewTaskText(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') addManualTask(todayISO(), fetchInProgress) }}
+                    placeholder="任務內容…（指派給上方人員，截止日為今天）"
+                    className="flex-1 min-w-[180px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+                  <button onClick={() => addManualTask(todayISO(), fetchInProgress)} disabled={addingTask || !newTaskText.trim()}
+                    className="bg-indigo-600 text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 shrink-0">
+                    {addingTask ? '新增中…' : '新增'}
+                  </button>
+                </div>
+
                 {/* 進行中任務人名標籤 */}
                 {inProgressTasks.length > 0 && (
                   <div className="mb-4">
@@ -1104,6 +1231,7 @@ export default function Page() {
                               className={`text-base shrink-0 px-1 rounded hover:text-blue-600 ${(t.content || t.direction || t.aiPlan) ? 'text-blue-500' : 'text-gray-300'}`}>📝</button>
                             <button onClick={() => { if (window.confirm(`確定要刪除任務「${t.task}」嗎？`)) deleteTask(t.id) }} title="刪除任務"
                               className="text-gray-300 hover:text-red-500 shrink-0 leading-none px-1 text-lg">×</button>
+                            {(() => { const b = dueBadge(t); return b ? <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${b.cls}`}>{b.label}</span> : null })()}
                             <span className="text-sm text-gray-400 shrink-0">{t.date}</span>
                           </div>
                           {detailId === t.id && renderTaskDetail(t)}
@@ -1493,6 +1621,24 @@ export default function Page() {
                 </div>
               )
             })()}
+
+            {/* 手動新增任務並指派 */}
+            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-3 mb-3 flex flex-wrap items-center gap-2">
+              <span className="text-sm text-gray-500 shrink-0">＋ 新增任務</span>
+              <select value={newTaskPerson} onChange={e => setNewTaskPerson(e.target.value)}
+                className="border border-gray-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-indigo-400 shrink-0">
+                {DAILY_PEOPLE.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <input value={newTaskText} onChange={e => setNewTaskText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addManualTask(selectedDate || todayISO(), fetchDailyTasks) }}
+                placeholder="任務內容…（指派給上方人員）"
+                className="flex-1 min-w-[180px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+              <button onClick={() => addManualTask(selectedDate || todayISO(), fetchDailyTasks)} disabled={addingTask || !newTaskText.trim()}
+                className="bg-indigo-600 text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 shrink-0">
+                {addingTask ? '新增中…' : '新增'}
+              </button>
+            </div>
+
             <div className="flex items-center gap-1.5 flex-wrap mb-3">
               <p className="text-xs text-gray-400">💡 拖曳任務可換負責人；點狀態可切換；點任務文字可編輯（皆即時同步 Notion）</p>
               <div className="ml-auto flex gap-1 flex-wrap items-center">
@@ -1547,6 +1693,7 @@ export default function Page() {
                                   className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' || t.status === '已完成' ? 'bg-green-100 text-green-700' : t.status === '進行中' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
                                   {t.status}
                                 </button>
+                                {(() => { const b = dueBadge(t); return b ? <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${b.cls}`}>{b.label}</span> : null })()}
                                 {(t.freq && t.freq !== '當日') && (
                                   <button onClick={() => cycleFreq(t)} title="點擊切換頻率"
                                     className="text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 bg-purple-100 text-purple-700">

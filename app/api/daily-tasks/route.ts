@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDailyTasks, updateDailyTask, deleteDailyTask, syncHistoryForDate, getTasksByPerson } from '@/lib/notion'
+import { getDailyTasks, updateDailyTask, deleteDailyTask, syncHistoryForDate, getTasksByPerson, addDailyTask } from '@/lib/notion'
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,6 +18,19 @@ export async function GET(req: NextRequest) {
       ;(grouped[t.person] ??= []).push(t)
     }
     return NextResponse.json({ grouped, all: tasks })
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}
+
+// 手動新增任務並指派人員
+export async function POST(req: NextRequest) {
+  try {
+    const { person, task, date } = await req.json()
+    if (!task?.trim()) return NextResponse.json({ error: '缺少任務內容' }, { status: 400 })
+    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
+    await addDailyTask((person || '未分類').trim(), task.trim(), date || today, '手動新增')
+    return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
