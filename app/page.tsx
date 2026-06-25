@@ -78,6 +78,7 @@ export default function Page() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [inProgressTasks, setInProgressTasks] = useState<DailyTask[]>([])
+  const [showCompletedSearch, setShowCompletedSearch] = useState(false)
   const [selectedPersonTag, setSelectedPersonTag] = useState<string | null>(null)
   const [dailyTaskResults, setDailyTaskResults] = useState<DailyTask[]>([])
   const [weekOffset, setWeekOffset] = useState(0)
@@ -262,7 +263,8 @@ export default function Page() {
     try {
       const r = await fetch('/api/daily-tasks')
       const data = await readJson(r)
-      setInProgressTasks((data.all ?? []).filter((t: DailyTask) => t.status !== '完成' && t.status !== '已封存'))
+      // 抓全部（不含已封存）；是否顯示「完成」由切換鈕決定
+      setInProgressTasks((data.all ?? []).filter((t: DailyTask) => t.status !== '已封存'))
     } catch {}
   }
 
@@ -601,6 +603,7 @@ export default function Page() {
   async function savePlan(t: DailyTask) {
     setAiPlanSaving(true)
     setDailyAll(prev => prev.map(x => x.id === t.id ? { ...x, content: detailContent, direction: detailDirection, aiPlan: aiPlanText } : x))
+    setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, content: detailContent, direction: detailDirection, aiPlan: aiPlanText } : x))
     try {
       await fetch('/api/daily-tasks', {
         method: 'PATCH',
@@ -615,6 +618,7 @@ export default function Page() {
   async function saveDetail(taskId: string) {
     setSavingDetail(true)
     setDailyAll(prev => prev.map(x => x.id === taskId ? { ...x, content: detailContent, direction: detailDirection } : x))
+    setInProgressTasks(prev => prev.map(x => x.id === taskId ? { ...x, content: detailContent, direction: detailDirection } : x))
     try {
       await fetch('/api/daily-tasks', {
         method: 'PATCH',
@@ -716,6 +720,53 @@ export default function Page() {
         setCreateOk(false)
       }
     } finally { setCreating(false) }
+  }
+
+  // 任務詳情面板（今日工作 / 任務查詢 共用）
+  function renderTaskDetail(t: DailyTask) {
+    return (
+      <div className="mt-1 ml-1.5 mr-1 mb-2 p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
+        <div>
+          <label className="text-xs text-gray-500">任務內容</label>
+          <textarea value={detailContent} onChange={e => setDetailContent(e.target.value)} rows={3}
+            placeholder="這個任務的背景、細節、目前狀況..."
+            className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">希望 AI 幫你做什麼</label>
+          <textarea value={detailDirection} onChange={e => setDetailDirection(e.target.value)} rows={4}
+            placeholder={'清楚說明要 AI 做什麼，越具體越準：\n① 想要的產出（規劃步驟／找廠商／寫文案／比價…）\n② 限制（預算、時間、地點、規格、數量）\n③ 偏好或方向\n例：幫我規劃這支產品影片的拍攝流程，並找台中 3 家能配合的攝影團隊比價，預算 2 萬內。'}
+            className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => saveDetail(t.id)} disabled={savingDetail}
+            className="bg-indigo-600 text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:bg-indigo-700 disabled:opacity-40">
+            {savingDetail ? '儲存中...' : '儲存'}
+          </button>
+          <button onClick={() => setDetailId(null)} className="text-xs text-gray-400 hover:text-gray-600 px-1">取消</button>
+          <button onClick={() => runAiPlan(t)} disabled={aiPlanning}
+            className="ml-auto bg-blue-600 text-white rounded px-3 py-1 text-xs font-medium hover:bg-blue-700 disabled:opacity-40">
+            {aiPlanning ? 'AI 思考中…' : '🤖 開始 AI 規劃'}
+          </button>
+        </div>
+        {aiPlanText && (
+          <div className="mt-1 border-t border-gray-200 pt-2">
+            {aiUsedKb.length > 0 && (
+              <p className="text-xs text-gray-400 mb-1">參考知識庫：{aiUsedKb.join('、')}</p>
+            )}
+            <div className="text-sm text-gray-700 whitespace-pre-wrap bg-white border border-gray-200 rounded p-2 max-h-80 overflow-auto">{aiPlanText}</div>
+            {!aiPlanning && !aiPlanText.startsWith('錯誤：') && (
+              aiPlanSaved
+                ? <p className="mt-1 text-xs text-green-600">✓ 已存入 Notion「AI規劃」欄位</p>
+                : <button onClick={() => savePlan(t)} disabled={aiPlanSaving}
+                    className="mt-1 bg-indigo-600 text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:bg-indigo-700 disabled:opacity-40">
+                    {aiPlanSaving ? '存入中...' : '存入 Notion'}
+                  </button>
+            )}
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -953,19 +1004,25 @@ export default function Page() {
                 {/* 進行中任務人名標籤 */}
                 {inProgressTasks.length > 0 && (
                   <div className="mb-4">
-                    <p className="text-sm text-gray-500 mb-2.5 font-medium">進行中任務 — 點選人名查看：</p>
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <p className="text-sm text-gray-500 font-medium">{showCompletedSearch ? '全部任務' : '進行中任務'} — 點選人名查看：</p>
+                      <button onClick={() => setShowCompletedSearch(v => !v)}
+                        className={`ml-auto text-xs px-3 py-1 rounded-full transition-colors ${showCompletedSearch ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white border border-gray-200 text-gray-400 hover:border-gray-400'}`}>
+                        {showCompletedSearch ? '隱藏已完成' : '顯示已完成'}
+                      </button>
+                    </div>
                     <div className="flex flex-wrap gap-2">
-                      {Array.from(new Set(inProgressTasks.map(t => t.person))).map(person => (
+                      {Array.from(new Set(inProgressTasks.filter(t => showCompletedSearch || t.status !== '完成').map(t => t.person))).map(person => (
                         <button key={person}
                           onClick={() => { setSelectedPersonTag(selectedPersonTag === person ? null : person); setPersonFreqFilter(null) }}
                           className={`text-sm px-4 py-2 rounded-full font-medium transition-colors ${selectedPersonTag === person ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
                           {person}
-                          <span className="ml-1.5 opacity-70">{inProgressTasks.filter(t => t.person === person).length}</span>
+                          <span className="ml-1.5 opacity-70">{inProgressTasks.filter(t => (showCompletedSearch || t.status !== '完成') && t.person === person).length}</span>
                         </button>
                       ))}
                     </div>
                     {selectedPersonTag && (() => {
-                      const personAll = inProgressTasks.filter(t => t.person === selectedPersonTag)
+                      const personAll = inProgressTasks.filter(t => (showCompletedSearch || t.status !== '完成') && t.person === selectedPersonTag)
                       const getWeekKey = (d: string) => {
                         const dt = new Date(d); const dow = dt.getUTCDay()
                         const mon = new Date(dt); mon.setUTCDate(dt.getUTCDate() - ((dow + 6) % 7))
@@ -983,18 +1040,20 @@ export default function Page() {
                         const next = t.status === '完成' ? '進行中' : '完成'
                         setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
                         fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, status: next }) })
-                        if (next === '完成') {
-                          setTimeout(() => setInProgressTasks(prev => prev.filter(x => x.id !== t.id)), 600)
-                        }
                       }
                       const TaskRow = ({ t }: { t: DailyTask }) => (
-                        <div className="flex items-center gap-3 text-base py-2.5 border-b border-blue-100 last:border-0">
-                          <button onClick={() => toggleDone(t)}
-                            className={`text-sm px-2.5 py-1 rounded-md shrink-0 cursor-pointer font-medium transition-colors ${t.status === '完成' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
-                            {t.status}
-                          </button>
-                          <span className={`flex-1 ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.task}</span>
-                          <span className="text-sm text-gray-400 shrink-0">{t.date}</span>
+                        <div className="border-b border-blue-100 last:border-0">
+                          <div className="flex items-center gap-3 text-base py-2.5 group">
+                            <button onClick={() => toggleDone(t)}
+                              className={`text-sm px-2.5 py-1 rounded-md shrink-0 cursor-pointer font-medium transition-colors ${t.status === '完成' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
+                              {t.status}
+                            </button>
+                            <span className={`flex-1 ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.task}</span>
+                            <button onClick={() => toggleDetail(t)} title="詳情 / AI 規劃"
+                              className={`text-base shrink-0 px-1 rounded hover:text-blue-600 ${(t.content || t.direction || t.aiPlan) ? 'text-blue-500' : 'text-gray-300'}`}>📝</button>
+                            <span className="text-sm text-gray-400 shrink-0">{t.date}</span>
+                          </div>
+                          {detailId === t.id && renderTaskDetail(t)}
                         </div>
                       )
                       return (
@@ -1460,49 +1519,7 @@ export default function Page() {
                                 <button onClick={() => deleteTask(t.id)} title="刪除"
                                   className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 shrink-0 leading-none">×</button>
                               </div>
-                              {detailId === t.id && (
-                                <div className="mt-1 ml-1.5 mr-1 mb-2 p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
-                                  <div>
-                                    <label className="text-xs text-gray-500">任務內容</label>
-                                    <textarea value={detailContent} onChange={e => setDetailContent(e.target.value)} rows={3}
-                                      placeholder="這個任務的背景、細節、目前狀況..."
-                                      className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500">希望 AI 幫你做什麼</label>
-                                    <textarea value={detailDirection} onChange={e => setDetailDirection(e.target.value)} rows={4}
-                                      placeholder={'清楚說明要 AI 做什麼，越具體越準：\n① 想要的產出（規劃步驟／找廠商／寫文案／比價…）\n② 限制（預算、時間、地點、規格、數量）\n③ 偏好或方向\n例：幫我規劃這支產品影片的拍攝流程，並找台中 3 家能配合的攝影團隊比價，預算 2 萬內。'}
-                                      className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <button onClick={() => saveDetail(t.id)} disabled={savingDetail}
-                                      className="bg-indigo-600 text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:bg-indigo-700 disabled:opacity-40">
-                                      {savingDetail ? '儲存中...' : '儲存'}
-                                    </button>
-                                    <button onClick={() => setDetailId(null)} className="text-xs text-gray-400 hover:text-gray-600 px-1">取消</button>
-                                    <button onClick={() => runAiPlan(t)} disabled={aiPlanning}
-                                      className="ml-auto bg-blue-600 text-white rounded px-3 py-1 text-xs font-medium hover:bg-blue-700 disabled:opacity-40">
-                                      {aiPlanning ? 'AI 思考中…' : '🤖 開始 AI 規劃'}
-                                    </button>
-                                  </div>
-                                  {aiPlanText && (
-                                    <div className="mt-1 border-t border-gray-200 pt-2">
-                                      {aiUsedKb.length > 0 && (
-                                        <p className="text-xs text-gray-400 mb-1">參考知識庫：{aiUsedKb.join('、')}</p>
-                                      )}
-                                      <div className="text-sm text-gray-700 whitespace-pre-wrap bg-white border border-gray-200 rounded p-2 max-h-80 overflow-auto">{aiPlanText}</div>
-                                      {!aiPlanning && !aiPlanText.startsWith('錯誤：') && (
-                                        aiPlanSaved
-                                          ? <p className="mt-1 text-xs text-green-600">✓ 已存入 Notion「AI規劃」欄位</p>
-                                          : <button onClick={() => savePlan(t)} disabled={aiPlanSaving}
-                                              className="mt-1 bg-indigo-600 text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:bg-indigo-700 disabled:opacity-40">
-                                              {aiPlanSaving ? '存入中...' : '存入 Notion'}
-                                            </button>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                              {detailId === t.id && renderTaskDetail(t)}
                               </div>
                             ))}
                           </div>
