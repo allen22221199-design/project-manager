@@ -672,6 +672,8 @@ export default function Page() {
   // 刪除任務（optimistic）
   async function deleteTask(taskId: string) {
     setDailyAll(prev => prev.filter(x => x.id !== taskId))
+    setInProgressTasks(prev => prev.filter(x => x.id !== taskId))
+    if (detailId === taskId) setDetailId(null)
     fetch('/api/daily-tasks', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -1100,6 +1102,8 @@ export default function Page() {
                             )}
                             <button onClick={() => toggleDetail(t)} title="詳情 / AI 規劃"
                               className={`text-base shrink-0 px-1 rounded hover:text-blue-600 ${(t.content || t.direction || t.aiPlan) ? 'text-blue-500' : 'text-gray-300'}`}>📝</button>
+                            <button onClick={() => { if (window.confirm(`確定要刪除任務「${t.task}」嗎？`)) deleteTask(t.id) }} title="刪除任務"
+                              className="text-gray-300 hover:text-red-500 shrink-0 leading-none px-1 text-lg">×</button>
                             <span className="text-sm text-gray-400 shrink-0">{t.date}</span>
                           </div>
                           {detailId === t.id && renderTaskDetail(t)}
