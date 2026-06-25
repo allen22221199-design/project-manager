@@ -121,6 +121,10 @@ export default function Page() {
   const [creating, setCreating] = useState(false)
   const [createMsg, setCreateMsg] = useState('')
   const [createOk, setCreateOk] = useState(false)
+  // 新增專案時的品項（可由圖片辨識自動填入）
+  const [newItems, setNewItems] = useState<any[]>([])
+  const [newItemAnalyzing, setNewItemAnalyzing] = useState(false)
+  const createItemFileRef = useRef<HTMLInputElement>(null)
 
   // image (progress tab)
   const [imgPreview, setImgPreview] = useState('')
@@ -588,6 +592,48 @@ export default function Page() {
     })
   }
 
+  // 新增專案：上傳圖片 → 辨識品項 → 自動填入品項列
+  async function handleCreateItemImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target?.result as string
+      setNewItemAnalyzing(true)
+      const base64 = dataUrl.split(',')[1]
+      const mediaType = file.type || 'image/jpeg'
+      try {
+        const r = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base64, mediaType, type: 'item' }),
+        })
+        const data = await readJson(r)
+        if (Array.isArray(data) && data.length > 0) {
+          setNewItems(prev => [...prev, ...data.map(d => ({
+            item: d.item ?? '', content: d.content ?? '', spec: d.spec ?? '',
+            qty: d.qty ?? '', unit: d.unit ?? '', note: d.note ?? '',
+          }))])
+        } else {
+          setCreateMsg('圖片未辨識出品項，可手動新增')
+          setCreateOk(false)
+        }
+      } catch (err: any) {
+        setCreateMsg('辨識失敗：' + err.message)
+        setCreateOk(false)
+      } finally { setNewItemAnalyzing(false) }
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  function updateNewItem(i: number, field: string, value: string) {
+    setNewItems(prev => prev.map((it, idx) => idx === i ? { ...it, [field]: value } : it))
+  }
+  function removeNewItem(i: number) {
+    setNewItems(prev => prev.filter((_, idx) => idx !== i))
+  }
+
   async function submitCreateProject() {
     if (!newName.trim()) return
     setCreating(true)
@@ -601,12 +647,26 @@ export default function Page() {
       })
       const data = await readJson(r)
       if (r.ok) {
-        setCreateMsg('專案已建立 ✓')
+        // 建立成功後，把品項逐筆寫入該專案
+        const items = newItems.filter(it => (it.item ?? '').trim())
+        let written = 0
+        for (const it of items) {
+          try {
+            const ir = await fetch('/api/progress', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'item', pageId: data.id, item: it.item, content: it.content, spec: it.spec, qty: it.qty, unit: it.unit, note: it.note }),
+            })
+            if (ir.ok) written++
+          } catch {}
+        }
+        setCreateMsg(`專案已建立 ✓${items.length ? `，寫入 ${written}/${items.length} 筆品項` : ''}`)
         setCreateOk(true)
         setNewName('')
         setNewContact('')
         setNewAddress('')
         setNewStatus('報價中')
+        setNewItems([])
         fetchProjects()
       } else {
         setCreateMsg('錯誤：' + (data.error ?? '未知錯誤'))
@@ -1145,9 +1205,50 @@ export default function Page() {
                   {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
+              {/* 產品品項（圖片辨識自動填入） */}
+              <div className="border-t border-gray-200 pt-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-sm font-medium text-gray-700">產品品項</p>
+                  <span className="text-xs text-gray-400">（可選，建立專案時一起寫入）</span>
+                  <button type="button" onClick={() => createItemFileRef.current?.click()} disabled={newItemAnalyzing}
+                    className="ml-auto text-xs px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40">
+                    {newItemAnalyzing ? '辨識中...' : '📷 上傳圖片辨識'}
+                  </button>
+                  <button type="button" onClick={() => setNewItems(prev => [...prev, { item: '', content: '', spec: '', qty: '', unit: '', note: '' }])}
+                    className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">＋ 手動新增</button>
+                </div>
+                <input ref={createItemFileRef} type="file" accept="image/png,image/jpeg,image/jpg,application/pdf" onChange={handleCreateItemImage} className="hidden" />
+
+                {newItems.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-2">上傳報價單／材料清單照片，AI 會自動辨識品項填入下方。</p>
+                ) : (
+                  <div className="space-y-2">
+                    {newItems.map((it, i) => (
+                      <div key={i} className="border border-gray-200 rounded-lg p-2 bg-gray-50/60">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <input value={it.item} onChange={e => updateNewItem(i, 'item', e.target.value)} placeholder="品項名稱"
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-indigo-400" />
+                          <button type="button" onClick={() => removeNewItem(i)} className="text-gray-300 hover:text-red-500 px-1 leading-none shrink-0">×</button>
+                        </div>
+                        <input value={it.content} onChange={e => updateNewItem(i, 'content', e.target.value)} placeholder="材質／說明"
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm mb-1 focus:outline-none focus:border-indigo-400" />
+                        <div className="flex gap-1.5">
+                          <input value={it.spec} onChange={e => updateNewItem(i, 'spec', e.target.value)} placeholder="規格"
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-indigo-400" />
+                          <input value={it.qty} onChange={e => updateNewItem(i, 'qty', e.target.value)} placeholder="數量"
+                            className="w-16 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-indigo-400" />
+                          <input value={it.unit} onChange={e => updateNewItem(i, 'unit', e.target.value)} placeholder="單位"
+                            className="w-16 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-indigo-400" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <button onClick={submitCreateProject} disabled={creating || !newName.trim()}
                 className="w-full bg-indigo-600 text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
-                {creating ? '建立中...' : '建立專案 → 寫入 Notion'}
+                {creating ? '建立中...' : `建立專案${newItems.filter(it => (it.item ?? '').trim()).length ? `（含 ${newItems.filter(it => (it.item ?? '').trim()).length} 筆品項）` : ''} → 寫入 Notion`}
               </button>
               {createMsg && <p className={`text-sm text-center font-medium ${createOk ? 'text-green-600' : 'text-red-500'}`}>{createMsg}</p>}
             </div>
