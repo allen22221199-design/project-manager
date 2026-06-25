@@ -443,12 +443,22 @@ export async function getKnowledgeQueue() {
     ] },
     page_size: 100,
   })
-  return (res.results as any[]).map(p => ({
-    id: p.id,
-    title: p.properties['檔案名稱']?.title?.[0]?.plain_text ?? '(未命名)',
-    url: p.properties['連結']?.url ?? '',
-    files: (p.properties['檔案']?.files ?? []).map((f: any) => ({ name: f.name ?? '', url: f.file?.url ?? f.external?.url ?? '' })),
-  }))
+  // 影音檔（mp3／mp4 等）自動跳過：影片走「轉文字貼筆記」流程，同步時不處理也不標失敗
+  const SKIP_EXT = ['mp3', 'mp4', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'mov', 'avi', 'mkv', 'webm', 'm4v', 'flv', 'wmv']
+  const extOf = (n: string) => (n.split('?')[0].split('.').pop() || '').toLowerCase()
+  return (res.results as any[])
+    .map(p => ({
+      id: p.id,
+      title: p.properties['檔案名稱']?.title?.[0]?.plain_text ?? '(未命名)',
+      url: p.properties['連結']?.url ?? '',
+      files: (p.properties['檔案']?.files ?? []).map((f: any) => ({ name: f.name ?? '', url: f.file?.url ?? f.external?.url ?? '' })),
+    }))
+    .filter(e => {
+      if (e.url) return true // 有連結就照常處理
+      const f = e.files[0]
+      if (f && SKIP_EXT.includes(extOf(f.name || f.url))) return false // mp3／mp4 等影音檔跳過
+      return true
+    })
 }
 
 // 取出知識庫中已處理的內容（給 AI 規劃檢索用）
