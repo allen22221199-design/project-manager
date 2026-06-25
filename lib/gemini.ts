@@ -144,6 +144,17 @@ ${knowledge || '（無相關內部資料）'}
   }
 }
 
+// 文字向量嵌入（語意搜尋用）；一次批次嵌入多筆
+export async function embedTexts(texts: string[]): Promise<number[][]> {
+  const model = genAI.getGenerativeModel({ model: 'text-embedding-004' })
+  const res: any = await model.batchEmbedContents({
+    requests: texts.map(t => ({ content: { role: 'user', parts: [{ text: (t || ' ').slice(0, 8000) }] } })),
+  })
+  const out = (res.embeddings || []).map((e: any) => e.values as number[])
+  if (out.length !== texts.length) throw new Error('embedding 數量不符')
+  return out
+}
+
 // AI 助理即時對話：優先用公司知識庫；查不到內部事實就說不知道；網路資料要標註
 export async function chatWithAssistant(messages: { role: string; content: string }[], knowledge: string) {
   const sys = `你是煌盛興業的內部 AI 助理，協助同仁處理：客戶通話的話術建議、公司機具的參數／保養查詢、製作 SOP 等工作。
