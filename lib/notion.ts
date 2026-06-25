@@ -443,8 +443,11 @@ export async function getKnowledgeQueue() {
     ] },
     page_size: 100,
   })
-  // 影音檔（mp3／mp4 等）自動跳過：影片走「轉文字貼筆記」流程，同步時不處理也不標失敗
-  const SKIP_EXT = ['mp3', 'mp4', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'mov', 'avi', 'mkv', 'webm', 'm4v', 'flv', 'wmv']
+  // 同步時自動跳過：影音檔（走轉文字流程）與 Office 檔（請另存 PDF），都不處理也不標失敗
+  const SKIP_EXT = [
+    'mp3', 'mp4', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'mov', 'avi', 'mkv', 'webm', 'm4v', 'flv', 'wmv', // 影音
+    'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', // Office
+  ]
   const extOf = (n: string) => (n.split('?')[0].split('.').pop() || '').toLowerCase()
   return (res.results as any[])
     .map(p => ({
