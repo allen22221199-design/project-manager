@@ -3,20 +3,21 @@ import { Client } from '@notionhq/client'
 export const notion = new Client({ auth: process.env.NOTION_TOKEN })
 export const DATABASE_ID = process.env.NOTION_PROJECTS_DATABASE_ID || '25d2cda48d7781a6bec3f101d8c9a872'
 
-const INACTIVE_STATUSES = ['完成', '請款中含保留款']
-
 export async function getActiveProjects() {
-  const res = await notion.databases.query({
-    database_id: DATABASE_ID,
-    filter: {
-      and: INACTIVE_STATUSES.map(s => ({
-        property: '狀態',
-        status: { does_not_equal: s },
-      })),
-    },
-    sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
-  })
-  return res.results.map((page: any) => ({
+  // 回傳全部案件（含「請款中含保留款」「完成」），由前端分頁篩選
+  const results: any[] = []
+  let cursor: string | undefined = undefined
+  do {
+    const res: any = await notion.databases.query({
+      database_id: DATABASE_ID,
+      sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
+      page_size: 100,
+      ...(cursor ? { start_cursor: cursor } : {}),
+    })
+    results.push(...res.results)
+    cursor = res.has_more ? res.next_cursor : undefined
+  } while (cursor)
+  return results.map((page: any) => ({
     id: page.id,
     url: page.url,
     name: page.properties['專案名稱']?.title?.[0]?.plain_text ?? '(未命名)',

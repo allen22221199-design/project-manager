@@ -9,10 +9,12 @@ const STATUS_COLORS: Record<string, string> = {
   '等待中': 'bg-gray-100 text-gray-600',
   '報價中': 'bg-blue-100 text-blue-800',
   '請款中含保留款': 'bg-purple-100 text-purple-800',
+  '完成': 'bg-green-100 text-green-700',
 }
 
 const STATUS_OPTIONS = ['報價中', '等待中', '打樣中', '對色中', '生產中', '施工中', '請款中含保留款', '完成']
-const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中', '施工中', '等待中']
+const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中', '施工中', '等待中', '請款中含保留款', '完成']
+const INACTIVE_STATUSES = ['完成', '請款中含保留款']
 const DAILY_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
 const DAILY_STATUS_CYCLE = ['進行中', '完成']
 
@@ -895,7 +897,7 @@ export default function Page() {
                 </div>
                 <button onClick={() => setView('list')} className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 text-left hover:border-indigo-300 transition-colors">
                   <p className="text-xs text-gray-400">進行中案件</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-1">{projects.length}</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1">{projects.filter(p => !INACTIVE_STATUSES.includes(p.status)).length}</p>
                 </button>
               </div>
 
@@ -957,7 +959,7 @@ export default function Page() {
 
             <div className="flex gap-1.5 flex-wrap mb-4">
               {FILTER_TABS.map(tab => {
-                const count = tab === '全部' ? projects.length : projects.filter(p => p.status === tab).length
+                const count = tab === '全部' ? projects.filter(p => !INACTIVE_STATUSES.includes(p.status)).length : projects.filter(p => p.status === tab).length
                 return (
                   <button key={tab} onClick={() => setFilterStatus(tab)}
                     className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${filterStatus === tab ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
@@ -973,7 +975,8 @@ export default function Page() {
               <p className="text-gray-400 text-sm py-8 text-center">載入中...</p>
             ) : (() => {
               const filtered = projects.filter(p => {
-                const matchStatus = filterStatus === '全部' || p.status === filterStatus
+                // 「全部」只看進行中（排除完成/請款保留款）；點該分頁才看那些
+                const matchStatus = filterStatus === '全部' ? !INACTIVE_STATUSES.includes(p.status) : p.status === filterStatus
                 const q = searchText.toLowerCase()
                 const matchSearch = !q || p.name.toLowerCase().includes(q) || p.contact.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
                 return matchStatus && matchSearch
