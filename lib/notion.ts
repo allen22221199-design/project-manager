@@ -125,7 +125,8 @@ export async function addItemRecord(
   const tableInfo = await findSectionTable(pageId, '項目清單')
 
   // All 6 values in order: 項目 | 內容 | 規格(cm) | 數量 | 單位 | 備註
-  const allValues = [item, content, spec, qty, unit, note]
+  const S = (v: any) => String(v ?? '')
+  const allValues = [item, content, spec, qty, unit, note].map(S)
 
   if (tableInfo) {
     const width = tableInfo.width
@@ -138,7 +139,7 @@ export async function addItemRecord(
     })
   } else {
     // Auto-create 項目清單 section (6 columns)
-    const makeCell = (v: string) => [{ type: 'text', text: { content: v } }]
+    const makeCell = (v: any) => [{ type: 'text', text: { content: S(v) } }]
     await notion.blocks.children.append({
       block_id: pageId,
       children: [
@@ -168,12 +169,13 @@ export async function addItemRecords(
   pageId: string,
   items: { item: string; content?: string; spec?: string; qty?: string; unit?: string; note?: string }[],
 ) {
+  const S = (v: any) => String(v ?? '')
   const rows = items
-    .filter(it => (it.item ?? '').trim())
-    .map(it => [it.item, it.content ?? '', it.spec ?? '', it.qty ?? '', it.unit ?? '', it.note ?? ''])
+    .filter(it => S(it.item).trim())
+    .map(it => [S(it.item), S(it.content), S(it.spec), S(it.qty), S(it.unit), S(it.note)])
   if (rows.length === 0) return 0
 
-  const makeCell = (v: string) => [{ type: 'text', text: { content: v ?? '' } }]
+  const makeCell = (v: any) => [{ type: 'text', text: { content: S(v) } }]
   const tableInfo = await findSectionTable(pageId, '項目清單')
 
   if (tableInfo) {
