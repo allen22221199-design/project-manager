@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { addProgressRecord, addItemRecord, updateProjectStatus } from '@/lib/notion'
+import { addProgressRecord, addItemRecord, addItemRecords, updateProjectStatus } from '@/lib/notion'
 
 export async function POST(req: NextRequest) {
   try {
-    const { pageId, date, description, newStatus, action, item, content, spec, qty, unit, note } = await req.json()
+    const { pageId, date, description, newStatus, action, item, content, spec, qty, unit, note, items } = await req.json()
     if (!pageId) return NextResponse.json({ error: '缺少 pageId' }, { status: 400 })
 
-    if (action === 'item') {
+    if (action === 'items') {
+      if (!Array.isArray(items) || items.length === 0) return NextResponse.json({ error: '缺少品項' }, { status: 400 })
+      const written = await addItemRecords(pageId, items)
+      return NextResponse.json({ ok: true, written })
+    } else if (action === 'item') {
       if (!item?.trim()) return NextResponse.json({ error: '缺少品項名稱' }, { status: 400 })
       await addItemRecord(
         pageId,

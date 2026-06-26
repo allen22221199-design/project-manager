@@ -410,21 +410,25 @@ export default function Page() {
     setSubmitting(true)
     setSubmitMsg('')
     setSubmitOk(false)
-    let written = 0
-    for (const it of items) {
-      try {
-        const r = await fetch('/api/progress', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'item', pageId: selected.id, item: it.item, content: it.content, spec: it.spec, qty: it.qty, unit: it.unit, note: it.note }),
-        })
-        if (r.ok) written++
-      } catch {}
-    }
-    setSubmitMsg(`已寫入 ${written}/${items.length} 筆品項 ✓`)
-    setSubmitOk(written === items.length)
-    if (written > 0) setItemList([])
-    setSubmitting(false)
+    try {
+      const r = await fetch('/api/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'items', pageId: selected.id, items }),
+      })
+      const data = await readJson(r)
+      if (r.ok) {
+        setSubmitMsg(`已寫入 ${data.written ?? items.length} 筆品項 ✓`)
+        setSubmitOk(true)
+        setItemList([])
+      } else {
+        setSubmitMsg('錯誤：' + (data.error ?? '寫入失敗'))
+        setSubmitOk(false)
+      }
+    } catch (e: any) {
+      setSubmitMsg('錯誤：' + e.message)
+      setSubmitOk(false)
+    } finally { setSubmitting(false) }
   }
 
   function applyItemAnalyzed(row: any) {
@@ -768,17 +772,18 @@ export default function Page() {
       })
       const data = await readJson(r)
       if (r.ok) {
-        // 建立成功後，把品項逐筆寫入該專案
+        // 建立成功後，把品項一次全部寫入該專案
         const items = newItems.filter(it => (it.item ?? '').trim())
         let written = 0
-        for (const it of items) {
+        if (items.length > 0) {
           try {
             const ir = await fetch('/api/progress', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'item', pageId: data.id, item: it.item, content: it.content, spec: it.spec, qty: it.qty, unit: it.unit, note: it.note }),
+              body: JSON.stringify({ action: 'items', pageId: data.id, items }),
             })
-            if (ir.ok) written++
+            const idata = await readJson(ir)
+            if (ir.ok) written = idata.written ?? items.length
           } catch {}
         }
         setCreateMsg(`專案已建立 ✓${items.length ? `，寫入 ${written}/${items.length} 筆品項` : ''}`)

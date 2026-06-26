@@ -163,6 +163,49 @@ export async function addItemRecord(
   }
 }
 
+// 一次寫入多筆品項（避免逐筆呼叫時重複建表造成漏寫）
+export async function addItemRecords(
+  pageId: string,
+  items: { item: string; content?: string; spec?: string; qty?: string; unit?: string; note?: string }[],
+) {
+  const rows = items
+    .filter(it => (it.item ?? '').trim())
+    .map(it => [it.item, it.content ?? '', it.spec ?? '', it.qty ?? '', it.unit ?? '', it.note ?? ''])
+  if (rows.length === 0) return 0
+
+  const makeCell = (v: string) => [{ type: 'text', text: { content: v ?? '' } }]
+  const tableInfo = await findSectionTable(pageId, '項目清單')
+
+  if (tableInfo) {
+    const width = tableInfo.width
+    const children = rows.map(vals => ({
+      type: 'table_row',
+      table_row: { cells: Array.from({ length: width }, (_, i) => makeCell(vals[i] ?? '')) },
+    }))
+    await notion.blocks.children.append({ block_id: tableInfo.id, children: children as any })
+  } else {
+    await notion.blocks.children.append({
+      block_id: pageId,
+      children: [
+        { type: 'heading_2', heading_2: { rich_text: [{ type: 'text', text: { content: '📋項目清單' } }], color: 'default' } },
+        {
+          type: 'table',
+          table: {
+            table_width: 6,
+            has_column_header: false,
+            has_row_header: false,
+            children: [
+              { type: 'table_row', table_row: { cells: ['項目', '內容', '規格(cm)', '數量', '單位', '備註'].map(makeCell) } },
+              ...rows.map(vals => ({ type: 'table_row', table_row: { cells: vals.map(makeCell) } })),
+            ],
+          },
+        },
+      ] as any,
+    })
+  }
+  return rows.length
+}
+
 export async function createProject(name: string, contact: string, address: string, status: string) {
   return await notion.pages.create({
     parent: { database_id: DATABASE_ID },
