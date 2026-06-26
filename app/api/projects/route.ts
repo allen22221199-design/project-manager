@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getActiveProjects, createProject } from '@/lib/notion'
+import { getActiveProjects, createProject, updateProjectStatus, deleteProject } from '@/lib/notion'
 
 export async function GET() {
   try {
@@ -16,6 +16,28 @@ export async function POST(req: NextRequest) {
     if (!name?.trim()) return NextResponse.json({ error: '缺少專案名稱' }, { status: 400 })
     const page = await createProject(name.trim(), contact?.trim() ?? '', address?.trim() ?? '', status || '報價中')
     return NextResponse.json({ ok: true, id: page.id })
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const { id, status } = await req.json()
+    if (!id || !status) return NextResponse.json({ error: '缺少 id 或狀態' }, { status: 400 })
+    await updateProjectStatus(id, status)
+    return NextResponse.json({ ok: true })
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { id } = await req.json()
+    if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
+    await deleteProject(id)
+    return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }

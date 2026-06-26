@@ -227,6 +227,10 @@ export async function updateProjectStatus(pageId: string, status: string) {
   })
 }
 
+export async function deleteProject(pageId: string) {
+  await notion.pages.update({ page_id: pageId, archived: true })
+}
+
 export async function getProjectDetails(pageId: string) {
   const [page, blocksRes] = await Promise.all([
     notion.pages.retrieve({ page_id: pageId }) as any,

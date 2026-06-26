@@ -238,6 +238,50 @@ export default function Page() {
     } catch {} finally { setProjectDetailLoading(false) }
   }
 
+  // 重新抓取目前專案的明細（新增進度/品項後即時更新畫面）
+  async function refreshProjectDetail() {
+    if (!selected) return
+    try {
+      const r = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageId: selected.id }),
+      })
+      setProjectDetail(await readJson(r))
+    } catch {}
+  }
+
+  // 直接變更專案狀態（例如標記完成）
+  async function changeProjectStatus(status: string) {
+    if (!selected) return
+    setSelected({ ...selected, status })
+    setProjects(prev => prev.map(p => p.id === selected.id ? { ...p, status } : p))
+    try {
+      await fetch('/api/projects', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selected.id, status }),
+      })
+    } finally { fetchProjects() }
+  }
+
+  // 刪除（封存）專案
+  async function removeProject() {
+    if (!selected) return
+    if (!window.confirm(`確定要刪除專案「${selected.name}」嗎？（會在 Notion 封存此專案）`)) return
+    const id = selected.id
+    setProjects(prev => prev.filter(p => p.id !== id))
+    setSelected(null)
+    setView('list')
+    try {
+      await fetch('/api/projects', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+    } finally { fetchProjects() }
+  }
+
   async function submitProgress() {
     if (!selected || !desc.trim()) return
     setSubmitting(true)
@@ -256,6 +300,7 @@ export default function Page() {
         setDesc('')
         setProgressStatus('')
         fetchProjects()
+        refreshProjectDetail()
       } else {
         setSubmitMsg('錯誤：' + (data.error ?? '未知錯誤'))
         setSubmitOk(false)
@@ -421,6 +466,7 @@ export default function Page() {
         setSubmitMsg(`已寫入 ${data.written ?? items.length} 筆品項 ✓`)
         setSubmitOk(true)
         setItemList([])
+        refreshProjectDetail()
       } else {
         setSubmitMsg('錯誤：' + (data.error ?? '寫入失敗'))
         setSubmitOk(false)
@@ -1017,11 +1063,24 @@ export default function Page() {
             <button onClick={() => setView('list')} className="text-sm text-gray-500 hover:text-gray-800 mb-4 flex items-center gap-1">← 返回清單</button>
 
             <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4">
-              <p className="font-medium text-gray-900">{selected.name}</p>
-              <p className="text-sm text-gray-500 mt-0.5">{selected.contact}{selected.address ? ` · ${selected.address}` : ''}</p>
-              <span className={`inline-block mt-2 text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[selected.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                {selected.status}
-              </span>
+              <div className="flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-900">{selected.name}</p>
+                  <p className="text-sm text-gray-500 mt-0.5">{selected.contact}{selected.address ? ` · ${selected.address}` : ''}</p>
+                </div>
+                <button onClick={removeProject} title="刪除專案"
+                  className="shrink-0 text-xs text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 rounded-lg px-2 py-1">🗑 刪除</button>
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[selected.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {selected.status}
+                </span>
+                <span className="text-xs text-gray-400">改狀態：</span>
+                <select value={selected.status} onChange={e => changeProjectStatus(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400">
+                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
             </div>
 
             {/* 專案已有資訊 */}
