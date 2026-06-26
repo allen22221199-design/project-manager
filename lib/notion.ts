@@ -268,6 +268,12 @@ export async function getProjectDetails(pageId: string) {
     ? progressAllRows.slice(1)
     : progressAllRows
 
+  // 依日期由舊到新排序（最新的排在最後）
+  const dateNum = (s: string) => {
+    const m = String(s).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
+    return m ? (+m[1]) * 10000 + (+m[2]) * 100 + (+m[3]) : 0
+  }
+
   // 項目清單: use first row as header if it looks like one
   const itemHasHeader = itemAllRows.length > 0 && !/[0-9]/.test(itemAllRows[0][0])
   const itemHeaders = itemHasHeader ? itemAllRows[0] : ['品項', '規格', '數量']
@@ -289,7 +295,9 @@ export async function getProjectDetails(pageId: string) {
     status: page.properties['狀態']?.status?.name ?? '',
     contact: page.properties['聯絡人']?.rich_text?.[0]?.plain_text ?? '',
     address: page.properties['地址']?.rich_text?.[0]?.plain_text ?? '',
-    progressRows: progressData.map(r => ({ date: r[0] ?? '', desc: r[1] ?? '' })),
+    progressRows: progressData
+      .map(r => ({ date: r[0] ?? '', desc: r[1] ?? '' }))
+      .sort((a, b) => dateNum(a.date) - dateNum(b.date)),
     itemHeaders,
     itemRows: itemData,
     shippingHeaders,
