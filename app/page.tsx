@@ -251,6 +251,37 @@ export default function Page() {
     } catch {}
   }
 
+  // 專案表格列：就地編輯 / 刪除（項目清單、進度紀錄）
+  function setItemCell(ri: number, ci: number, v: string) {
+    setProjectDetail((pd: any) => ({ ...pd, itemRows: pd.itemRows.map((row: string[], i: number) => i === ri ? row.map((c, j) => j === ci ? v : c) : row) }))
+  }
+  function saveItemRow(ri: number) {
+    const rowId = projectDetail?.itemRowIds?.[ri]
+    if (!rowId) return
+    fetch('/api/project-row', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rowId, cells: projectDetail.itemRows[ri] }) })
+  }
+  function deleteItemRow(ri: number) {
+    const rowId = projectDetail?.itemRowIds?.[ri]
+    if (!rowId || !window.confirm('確定刪除這一列品項嗎？')) return
+    setProjectDetail((pd: any) => ({ ...pd, itemRows: pd.itemRows.filter((_: any, i: number) => i !== ri), itemRowIds: pd.itemRowIds.filter((_: any, i: number) => i !== ri) }))
+    fetch('/api/project-row', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rowId }) })
+  }
+  function setProgressField(ri: number, field: 'date' | 'desc', v: string) {
+    setProjectDetail((pd: any) => ({ ...pd, progressRows: pd.progressRows.map((r: any, i: number) => i === ri ? { ...r, [field]: v } : r) }))
+  }
+  function saveProgressRow(ri: number) {
+    const rowId = projectDetail?.progressRowIds?.[ri]
+    if (!rowId) return
+    const r = projectDetail.progressRows[ri]
+    fetch('/api/project-row', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rowId, cells: [r.date, r.desc] }) })
+  }
+  function deleteProgressRow(ri: number) {
+    const rowId = projectDetail?.progressRowIds?.[ri]
+    if (!rowId || !window.confirm('確定刪除這一筆進度嗎？')) return
+    setProjectDetail((pd: any) => ({ ...pd, progressRows: pd.progressRows.filter((_: any, i: number) => i !== ri), progressRowIds: pd.progressRowIds.filter((_: any, i: number) => i !== ri) }))
+    fetch('/api/project-row', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rowId }) })
+  }
+
   // 直接變更專案狀態（例如標記完成）
   async function changeProjectStatus(status: string) {
     if (!selected) return
@@ -1088,16 +1119,46 @@ export default function Page() {
             {projectDetail && (
               <div className="mb-4 space-y-3">
                 {(projectDetail.itemRows ?? []).length > 0 && (
-                  <SectionTable title="📋 項目清單" headers={projectDetail.itemHeaders} rows={projectDetail.itemRows} />
+                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 overflow-x-auto">
+                    <p className="text-xs font-medium text-gray-500 mb-3">📋 項目清單（可直接修改／✕ 刪除）</p>
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          {(projectDetail.itemHeaders ?? []).map((h: string, i: number) => (
+                            <th key={i} className="text-left text-xs text-gray-400 font-medium pb-2 pr-2 whitespace-nowrap">{h}</th>
+                          ))}
+                          <th className="w-6"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectDetail.itemRows.map((row: string[], ri: number) => (
+                          <tr key={projectDetail.itemRowIds?.[ri] ?? ri} className="border-b border-gray-50 last:border-0 group">
+                            {row.map((cell: string, ci: number) => (
+                              <td key={ci} className="py-0.5 pr-2 align-middle">
+                                <input value={cell} onChange={e => setItemCell(ri, ci, e.target.value)} onBlur={() => saveItemRow(ri)}
+                                  className="w-full min-w-[56px] border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                              </td>
+                            ))}
+                            <td className="align-middle">
+                              <button onClick={() => deleteItemRow(ri)} title="刪除此列" className="text-gray-300 hover:text-red-500 px-1 leading-none opacity-0 group-hover:opacity-100">✕</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
                 {(projectDetail.progressRows ?? []).length > 0 && (
                   <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
-                    <p className="text-xs font-medium text-gray-500 mb-3">📑 進度紀錄</p>
-                    <div className="space-y-2">
-                      {[...(projectDetail.progressRows ?? [])].reverse().slice(0, 10).map((r: any, i: number) => (
-                        <div key={i} className="flex gap-3 text-sm border-b border-gray-50 pb-2 last:border-0 last:pb-0">
-                          <span className="text-gray-400 shrink-0 w-24">{r.date}</span>
-                          <span className="text-gray-700">{r.desc}</span>
+                    <p className="text-xs font-medium text-gray-500 mb-3">📑 進度紀錄（可直接修改／✕ 刪除；最新在最下）</p>
+                    <div className="space-y-1">
+                      {projectDetail.progressRows.map((r: any, ri: number) => (
+                        <div key={projectDetail.progressRowIds?.[ri] ?? ri} className="flex items-center gap-2 text-sm border-b border-gray-50 py-0.5 last:border-0 group">
+                          <input value={r.date} onChange={e => setProgressField(ri, 'date', e.target.value)} onBlur={() => saveProgressRow(ri)}
+                            className="shrink-0 w-24 border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 text-xs text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                          <input value={r.desc} onChange={e => setProgressField(ri, 'desc', e.target.value)} onBlur={() => saveProgressRow(ri)}
+                            className="flex-1 border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                          <button onClick={() => deleteProgressRow(ri)} title="刪除此筆" className="shrink-0 text-gray-300 hover:text-red-500 px-1 leading-none opacity-0 group-hover:opacity-100">✕</button>
                         </div>
                       ))}
                     </div>

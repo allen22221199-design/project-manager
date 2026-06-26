@@ -27,12 +27,23 @@ export async function getActiveProjects() {
   }))
 }
 
-// Reads all rows from a table block as string[][]
-async function readTableRows(tableId: string): Promise<string[][]> {
+// Reads all rows from a table block, with each row's block id
+async function readTableRows(tableId: string): Promise<{ id: string; cells: string[] }[]> {
   const res = await notion.blocks.children.list({ block_id: tableId, page_size: 100 })
   return (res.results as any[])
-    .map(row => (row.table_row?.cells ?? []).map((cell: any) => cell[0]?.plain_text ?? ''))
-    .filter(row => row.some((c: string) => c.trim() !== ''))
+    .map(row => ({ id: row.id, cells: (row.table_row?.cells ?? []).map((cell: any) => cell[0]?.plain_text ?? '') }))
+    .filter(row => row.cells.some((c: string) => c.trim() !== ''))
+}
+
+// 更新 / 刪除單一表格列
+export async function updateTableRow(rowId: string, cells: string[]) {
+  await notion.blocks.update({
+    block_id: rowId,
+    table_row: { cells: cells.map(c => [{ type: 'text', text: { content: String(c ?? '') } }]) },
+  } as any)
+}
+export async function deleteTableRow(rowId: string) {
+  await notion.blocks.delete({ block_id: rowId })
 }
 
 // Section keywords → section name mapping
@@ -264,7 +275,7 @@ export async function getProjectDetails(pageId: string) {
   ])
 
   // 進度紀錄: skip header row if first row contains '日期'
-  const progressData = progressAllRows.length > 0 && (progressAllRows[0][0] === '日期' || progressAllRows[0][0] === '日 期')
+  const progressData = progressAllRows.length > 0 && (progressAllRows[0].cells[0] === '日期' || progressAllRows[0].cells[0] === '日 期')
     ? progressAllRows.slice(1)
     : progressAllRows
 
@@ -275,19 +286,23 @@ export async function getProjectDetails(pageId: string) {
   }
 
   // 項目清單: use first row as header if it looks like one
-  const itemHasHeader = itemAllRows.length > 0 && !/[0-9]/.test(itemAllRows[0][0])
-  const itemHeaders = itemHasHeader ? itemAllRows[0] : ['品項', '規格', '數量']
+  const itemHasHeader = itemAllRows.length > 0 && !/[0-9]/.test(itemAllRows[0].cells[0])
+  const itemHeaders = itemHasHeader ? itemAllRows[0].cells : ['品項', '規格', '數量']
   const itemData = itemHasHeader ? itemAllRows.slice(1) : itemAllRows
 
   // 出貨紀錄: first row as header
-  const shippingHasHeader = shippingAllRows.length > 0 && !/[0-9]/.test(shippingAllRows[0][0])
-  const shippingHeaders = shippingHasHeader ? shippingAllRows[0] : ['日期', '品項', '規格', '數量', '收件人', '備註']
+  const shippingHasHeader = shippingAllRows.length > 0 && !/[0-9]/.test(shippingAllRows[0].cells[0])
+  const shippingHeaders = shippingHasHeader ? shippingAllRows[0].cells : ['日期', '品項', '規格', '數量', '收件人', '備註']
   const shippingData = shippingHasHeader ? shippingAllRows.slice(1) : shippingAllRows
 
   // 請款紀錄: first row as header
-  const paymentHasHeader = paymentAllRows.length > 0 && !/[0-9]/.test(paymentAllRows[0][0])
-  const paymentHeaders = paymentHasHeader ? paymentAllRows[0] : ['日期', '項目', '金額', '請款方式', '付款狀態', '備註']
+  const paymentHasHeader = paymentAllRows.length > 0 && !/[0-9]/.test(paymentAllRows[0].cells[0])
+  const paymentHeaders = paymentHasHeader ? paymentAllRows[0].cells : ['日期', '項目', '金額', '請款方式', '付款狀態', '備註']
   const paymentData = paymentHasHeader ? paymentAllRows.slice(1) : paymentAllRows
+
+  const progressSorted = progressData
+    .map(r => ({ id: r.id, date: r.cells[0] ?? '', desc: r.cells[1] ?? '' }))
+    .sort((a, b) => dateNum(a.date) - dateNum(b.date))
 
   return {
     id: pageId,
@@ -295,15 +310,15 @@ export async function getProjectDetails(pageId: string) {
     status: page.properties['狀態']?.status?.name ?? '',
     contact: page.properties['聯絡人']?.rich_text?.[0]?.plain_text ?? '',
     address: page.properties['地址']?.rich_text?.[0]?.plain_text ?? '',
-    progressRows: progressData
-      .map(r => ({ date: r[0] ?? '', desc: r[1] ?? '' }))
-      .sort((a, b) => dateNum(a.date) - dateNum(b.date)),
+    progressRows: progressSorted.map(r => ({ date: r.date, desc: r.desc })),
+    progressRowIds: progressSorted.map(r => r.id),
     itemHeaders,
-    itemRows: itemData,
+    itemRows: itemData.map(r => r.cells),
+    itemRowIds: itemData.map(r => r.id),
     shippingHeaders,
-    shippingRows: shippingData,
+    shippingRows: shippingData.map(r => r.cells),
     paymentHeaders,
-    paymentRows: paymentData,
+    paymentRows: paymentData.map(r => r.cells),
   }
 }
 
