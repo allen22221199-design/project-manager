@@ -1103,16 +1103,31 @@ export default function Page() {
                     </p>
                   )}
                   {filtered.map(p => (
-                    <div key={p.id} onClick={() => selectProject(p)}
-                      className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
+                    <div key={p.id}
+                      className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 hover:border-gray-400 transition-colors flex items-center gap-3">
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => selectProject(p)}>
                         <p className="font-medium text-gray-900 truncate">{p.name}</p>
-                        <p className="text-sm text-gray-500 mt-0.5">
-                          {p.contact}{p.address ? ` · ${p.address}` : ''}
-                          {p.assignee ? <span className="ml-2 text-xs text-indigo-600 font-medium">👤 {p.assignee}</span> : null}
-                        </p>
+                        <p className="text-sm text-gray-500 mt-0.5 truncate">{p.contact}{p.address ? ` · ${p.address}` : ''}</p>
                       </div>
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${STATUS_COLORS[p.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                      {/* 負責人下拉（點擊不觸發進入案件） */}
+                      <select
+                        value={p.assignee ?? ''}
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => {
+                          e.stopPropagation()
+                          const assignee = e.target.value
+                          setProjects(prev => prev.map(x => x.id === p.id ? { ...x, assignee } : x))
+                          fetch('/api/projects', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: p.id, assignee }),
+                          })
+                        }}
+                        className={`shrink-0 text-xs border rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400 cursor-pointer ${p.assignee ? 'border-indigo-200 text-indigo-700 font-medium' : 'border-gray-200 text-gray-400'}`}>
+                        <option value="">負責人</option>
+                        {PROJECT_ASSIGNEES.filter(a => a).map(a => <option key={a} value={a}>{a}</option>)}
+                      </select>
+                      <span onClick={() => selectProject(p)} className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 cursor-pointer ${STATUS_COLORS[p.status] ?? 'bg-gray-100 text-gray-600'}`}>
                         {p.status}
                       </span>
                     </div>
