@@ -23,7 +23,8 @@ type Project = { id: string; name: string; status: string; contact: string; addr
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard'
-type ChatMsg = { role: 'user' | 'assistant'; content: string }
+type FileResult = { title: string; name: string; url: string }
+type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[] }
 type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string }
 
 // 安全解析回應：伺服器逾時/出錯時回的是 HTML，不要讓 JSON.parse 噴出難懂的錯誤
@@ -676,7 +677,8 @@ export default function Page() {
       })
       const data = await readJson(r)
       const reply = r.ok ? (data.reply || '（沒有回覆）') : ('錯誤：' + (data.error ?? '回覆失敗'))
-      setChatMessages([...next, { role: 'assistant', content: reply }])
+      const files: FileResult[] = r.ok ? (data.files ?? []) : []
+      setChatMessages([...next, { role: 'assistant', content: reply, files }])
     } catch (e: any) {
       setChatMessages([...next, { role: 'assistant', content: '錯誤：' + e.message }])
     } finally { setChatLoading(false) }
@@ -1954,6 +1956,22 @@ export default function Page() {
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${m.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200/70 shadow-sm text-gray-800'}`}>
                     {m.content}
+                    {m.files && m.files.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                        <p className="text-xs text-gray-400 font-medium">📎 相關檔案</p>
+                        {m.files.map((f, fi) => (
+                          <a key={fi} href={f.url} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 transition-colors no-underline group">
+                            <span className="text-lg leading-none">📄</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-indigo-700 truncate">{f.title}</p>
+                              {f.name !== f.title && <p className="text-xs text-indigo-400 truncate">{f.name}</p>}
+                            </div>
+                            <span className="text-xs text-indigo-500 shrink-0 group-hover:underline">下載 ↓</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

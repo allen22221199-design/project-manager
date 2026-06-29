@@ -561,15 +561,21 @@ export async function getKnowledgeBase() {
     filter: { property: '狀態', select: { equals: '已處理' } },
     page_size: 100,
   })
-  // 用已存的「萃取摘要」即可，不逐筆讀整頁內文（快很多，避免 AI 規劃逾時）
   return (res.results as any[]).map(p => {
     const summary = (p.properties['萃取摘要']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
+    // 取得可下載的連結：外部 URL 或 Notion 檔案附件（有時效性，每次即時取）
+    const externalUrl: string = p.properties['連結']?.url ?? ''
+    const attachments: { name: string; url: string }[] = (p.properties['檔案']?.files ?? [])
+      .map((f: any) => ({ name: f.name ?? '', url: f.file?.url ?? f.external?.url ?? '' }))
+      .filter((f: any) => f.url)
     return {
       id: p.id,
       title: p.properties['檔案名稱']?.title?.[0]?.plain_text ?? '',
       tags: p.properties['分類']?.select?.name ? [p.properties['分類'].select.name] : [],
       summary,
       text: summary,
+      externalUrl,   // 外部連結（永久有效）
+      attachments,   // Notion 附件（URL 約 1 小時有效，每次即時取得）
     }
   })
 }
