@@ -116,6 +116,10 @@ export default function Page() {
   const [newTaskPerson, setNewTaskPerson] = useState(DAILY_PEOPLE[0])
   const [addingTask, setAddingTask] = useState(false)
 
+  // 匯出昨日工作報告
+  const [reportPerson, setReportPerson] = useState(DAILY_PEOPLE[0])
+  const [reportMsg, setReportMsg] = useState('')
+
   // 截止日期行內編輯
   const [editingDueDateId, setEditingDueDateId] = useState<string | null>(null)
   const [editDueDateText, setEditDueDateText] = useState('')
@@ -682,6 +686,40 @@ export default function Page() {
     } catch (e: any) {
       setChatMessages([...next, { role: 'assistant', content: '錯誤：' + e.message }])
     } finally { setChatLoading(false) }
+  }
+
+  // 一鍵匯出「昨日」指定人員的工作報告（含任務內容）成檔案下載
+  function exportYesterdayReport() {
+    const y = new Date(Date.now() + 8 * 3600 * 1000)
+    y.setUTCDate(y.getUTCDate() - 1)
+    const yStr = y.toISOString().slice(0, 10)
+    const tasks = dailyAll.filter(t => t.date === yStr && t.person === reportPerson)
+    let txt = `工作進度報告\n人員：${reportPerson}\n日期：${yStr}（昨日）\n${'='.repeat(28)}\n\n`
+    if (tasks.length === 0) {
+      txt += '（昨日沒有工作項目）\n'
+    } else {
+      tasks.forEach((t, i) => {
+        txt += `${i + 1}. ${t.task}　［${t.status || '進行中'}］\n`
+        if ((t.content ?? '').trim()) txt += `   內容：${t.content}\n`
+        if ((t.direction ?? '').trim()) txt += `   方向／需求：${t.direction}\n`
+        txt += '\n'
+      })
+      txt += `共 ${tasks.length} 項。\n`
+    }
+    try {
+      const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `工作報告_${reportPerson}_${yStr}.txt`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      setReportMsg(`已匯出 ${reportPerson} ${yStr} 的工作報告（${tasks.length} 項）`)
+    } catch (e: any) {
+      setReportMsg('匯出失敗：' + e.message)
+    }
   }
 
   // 手動寄送本週未完成報表 email（測試用，正式由週五 cron 自動執行）
@@ -1732,6 +1770,20 @@ export default function Page() {
                 {kbMsg && <p className={`text-xs px-3 py-1.5 rounded-lg ${kbOk ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{kbMsg}</p>}
               </div>
             )}
+
+            {/* 一鍵匯出昨日工作報告 */}
+            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-3 mb-4 flex flex-wrap items-center gap-2">
+              <span className="text-sm text-gray-500 shrink-0">📄 匯出昨日工作報告</span>
+              <select value={reportPerson} onChange={e => setReportPerson(e.target.value)}
+                className="border border-gray-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-indigo-400 shrink-0">
+                {DAILY_PEOPLE.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <button onClick={exportYesterdayReport}
+                className="bg-indigo-600 text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 shrink-0">
+                下載報告
+              </button>
+              {reportMsg && <span className="text-xs text-gray-500 basis-full">{reportMsg}</span>}
+            </div>
 
             {/* 貼上 Plaud 內容 → Gemini 整理 */}
             <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 space-y-3">
