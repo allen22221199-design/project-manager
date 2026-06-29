@@ -24,6 +24,7 @@ export async function getActiveProjects() {
     status: page.properties['狀態']?.status?.name ?? '',
     contact: page.properties['聯絡人']?.rich_text?.[0]?.plain_text ?? '',
     address: page.properties['地址']?.rich_text?.[0]?.plain_text ?? '',
+    assignee: page.properties['負責人']?.rich_text?.[0]?.plain_text ?? '',
   }))
 }
 
@@ -219,22 +220,28 @@ export async function addItemRecords(
   return rows.length
 }
 
-export async function createProject(name: string, contact: string, address: string, status: string) {
-  return await notion.pages.create({
-    parent: { database_id: DATABASE_ID },
-    properties: {
-      專案名稱: { title: [{ text: { content: name } }] },
-      聯絡人: { rich_text: [{ text: { content: contact } }] },
-      地址: { rich_text: [{ text: { content: address } }] },
-      狀態: { status: { name: status } },
-    },
-  }) as any
+export async function createProject(name: string, contact: string, address: string, status: string, assignee?: string) {
+  const props: any = {
+    專案名稱: { title: [{ text: { content: name } }] },
+    聯絡人: { rich_text: [{ text: { content: contact } }] },
+    地址: { rich_text: [{ text: { content: address } }] },
+    狀態: { status: { name: status } },
+  }
+  if (assignee) props['負責人'] = { rich_text: [{ text: { content: assignee } }] }
+  return await notion.pages.create({ parent: { database_id: DATABASE_ID }, properties: props }) as any
 }
 
 export async function updateProjectStatus(pageId: string, status: string) {
   await notion.pages.update({
     page_id: pageId,
     properties: { 狀態: { status: { name: status } } },
+  })
+}
+
+export async function updateProjectAssignee(pageId: string, assignee: string) {
+  await notion.pages.update({
+    page_id: pageId,
+    properties: { 負責人: { rich_text: [{ text: { content: assignee } }] } },
   })
 }
 
@@ -343,6 +350,7 @@ export async function getTasksByPerson(person: string) {
     task: page.properties['任務名稱']?.title?.[0]?.plain_text ?? '',
     person: page.properties['人員']?.rich_text?.[0]?.plain_text ?? '',
     date: page.properties['截止日期']?.date?.start ?? '',
+    createdAt: page.created_time?.slice(0, 10) ?? '',
     status: page.properties['狀態']?.status?.name ?? '',
     source: page.properties['來源錄音']?.rich_text?.[0]?.plain_text ?? '',
     freq: '當日',
@@ -373,6 +381,7 @@ export async function getDailyTasks(dateStr?: string) {
     task: page.properties['任務名稱']?.title?.[0]?.plain_text ?? '',
     person: page.properties['人員']?.rich_text?.[0]?.plain_text ?? '(未分類)',
     date: page.properties['截止日期']?.date?.start ?? '',
+    createdAt: (page as any).created_time?.slice(0, 10) ?? '',
     status: page.properties['狀態']?.status?.name ?? '未開始',
     source: page.properties['來源錄音']?.rich_text?.[0]?.plain_text ?? '',
     content: (page.properties['任務內容']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
@@ -449,11 +458,12 @@ export async function syncHistoryForDate(dateStr: string) {
 }
 
 // Update a daily task (reassign person / edit text / change status)
-export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string; freq?: string; content?: string; direction?: string; aiPlan?: string }) {
+export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string; freq?: string; content?: string; direction?: string; aiPlan?: string; dueDate?: string }) {
   const properties: any = {}
   if (fields.person !== undefined) properties['人員'] = { rich_text: [{ text: { content: fields.person } }] }
   if (fields.task !== undefined) properties['任務名稱'] = { title: [{ text: { content: fields.task } }] }
   if (fields.status !== undefined) properties['狀態'] = { status: { name: fields.status } }
+  if (fields.dueDate !== undefined) properties['截止日期'] = { date: { start: fields.dueDate } }
   if (fields.content !== undefined) properties['任務內容'] = { rich_text: toRichText(fields.content) }
   if (fields.direction !== undefined) properties['AI需求'] = { rich_text: toRichText(fields.direction) }
   if (fields.aiPlan !== undefined) properties['AI規劃'] = { rich_text: toRichText(fields.aiPlan) }
@@ -485,7 +495,13 @@ export async function addDailyTask(person: string, task: string, dateStr: string
     狀態: { status: { name: '進行中' } },
     來源錄音: { rich_text: [{ text: { content: source } }] },
   }
-  await notion.pages.create({ parent: { database_id: DAILY_TASKS_DATABASE_ID }, properties })
+  const page = await notion.pages.create({ parent: { database_id: DAILY_TASKS_DATABASE_ID }, properties })
+  // 如果 Notion 資料庫有「建立日期」欄位，同步寫入（沒有欄位就靜默跳過）
+  const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
+  try {
+    await notion.pages.update({ page_id: (page as any).id, properties: { 建立日期: { date: { start: today } } } })
+  } catch {}
+  return page
 }
 
 // ===== 知識庫（使用 Notion「檔案庫」資料庫）=====

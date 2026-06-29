@@ -16,14 +16,15 @@ const STATUS_OPTIONS = ['報價中', '等待中', '打樣中', '對色中', '生
 const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中', '施工中', '等待中', '請款中含保留款', '完成']
 const INACTIVE_STATUSES = ['完成', '請款中含保留款']
 const DAILY_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
+const PROJECT_ASSIGNEES = ['', '黃文彬', '王志先', '廖淑慧', '呂理論', '呂敏紅']
 const DAILY_STATUS_CYCLE = ['進行中', '完成']
 
-type Project = { id: string; name: string; status: string; contact: string; address: string; url: string }
+type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard'
 type ChatMsg = { role: 'user' | 'assistant'; content: string }
-type DailyTask = { id: string; task: string; person: string; date: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string }
+type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string }
 
 // 安全解析回應：伺服器逾時/出錯時回的是 HTML，不要讓 JSON.parse 噴出難懂的錯誤
 async function readJson(r: Response): Promise<any> {
@@ -113,6 +114,10 @@ export default function Page() {
   const [newTaskText, setNewTaskText] = useState('')
   const [newTaskPerson, setNewTaskPerson] = useState(DAILY_PEOPLE[0])
   const [addingTask, setAddingTask] = useState(false)
+
+  // 截止日期行內編輯
+  const [editingDueDateId, setEditingDueDateId] = useState<string | null>(null)
+  const [editDueDateText, setEditDueDateText] = useState('')
 
   // 任務詳情面板（內容 / 進度方向）
   const [detailId, setDetailId] = useState<string | null>(null)
@@ -628,6 +633,33 @@ export default function Page() {
     }
   }
 
+  // 更新截止日期
+  async function saveDueDate(taskId: string) {
+    const newDate = editDueDateText.trim()
+    setEditingDueDateId(null)
+    setEditDueDateText('')
+    if (!newDate) return
+    setDailyAll(prev => prev.map(x => x.id === taskId ? { ...x, date: newDate } : x))
+    setInProgressTasks(prev => prev.map(x => x.id === taskId ? { ...x, date: newDate } : x))
+    fetch('/api/daily-tasks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: taskId, dueDate: newDate }),
+    })
+  }
+
+  // 更新案件負責人
+  async function changeProjectAssignee(assignee: string) {
+    if (!selected) return
+    setSelected({ ...selected, assignee })
+    setProjects(prev => prev.map(p => p.id === selected.id ? { ...p, assignee } : p))
+    fetch('/api/projects', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: selected.id, assignee }),
+    })
+  }
+
   // AI 助理：送出訊息
   async function sendChat() {
     const text = chatInput.trim()
@@ -1075,7 +1107,10 @@ export default function Page() {
                       className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 truncate">{p.name}</p>
-                        <p className="text-sm text-gray-500 mt-0.5">{p.contact}{p.address ? ` · ${p.address}` : ''}</p>
+                        <p className="text-sm text-gray-500 mt-0.5">
+                          {p.contact}{p.address ? ` · ${p.address}` : ''}
+                          {p.assignee ? <span className="ml-2 text-xs text-indigo-600 font-medium">👤 {p.assignee}</span> : null}
+                        </p>
                       </div>
                       <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${STATUS_COLORS[p.status] ?? 'bg-gray-100 text-gray-600'}`}>
                         {p.status}
@@ -1102,7 +1137,7 @@ export default function Page() {
                 <button onClick={removeProject} title="刪除專案"
                   className="shrink-0 text-xs text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 rounded-lg px-2 py-1">🗑 刪除</button>
               </div>
-              <div className="flex items-center gap-2 mt-3">
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[selected.status] ?? 'bg-gray-100 text-gray-600'}`}>
                   {selected.status}
                 </span>
@@ -1110,6 +1145,11 @@ export default function Page() {
                 <select value={selected.status} onChange={e => changeProjectStatus(e.target.value)}
                   className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400">
                   {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <span className="text-xs text-gray-400 ml-2">負責人：</span>
+                <select value={selected.assignee ?? ''} onChange={e => changeProjectAssignee(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400">
+                  {PROJECT_ASSIGNEES.map(a => <option key={a} value={a}>{a || '（未設定）'}</option>)}
                 </select>
               </div>
             </div>
@@ -1136,7 +1176,8 @@ export default function Page() {
                             {row.map((cell: string, ci: number) => (
                               <td key={ci} className="py-0.5 pr-2 align-middle">
                                 <input value={cell} onChange={e => setItemCell(ri, ci, e.target.value)} onBlur={() => saveItemRow(ri)}
-                                  className="w-full min-w-[56px] border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                                  style={{ width: ci === 0 ? 'auto' : '8em', minWidth: ci === 0 ? '10em' : '5em' }}
+                                  className="border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100" />
                               </td>
                             ))}
                             <td className="align-middle">
@@ -1360,7 +1401,19 @@ export default function Page() {
                             <button onClick={() => { if (window.confirm(`確定要刪除任務「${t.task}」嗎？`)) deleteTask(t.id) }} title="刪除任務"
                               className="text-gray-300 hover:text-red-500 shrink-0 leading-none px-1 text-lg">×</button>
                             {(() => { const b = dueBadge(t); return b ? <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${b.cls}`}>{b.label}</span> : null })()}
-                            <span className="text-sm text-gray-400 shrink-0">{t.date}</span>
+                            {editingDueDateId === t.id ? (
+                              <input autoFocus type="date" value={editDueDateText}
+                                onChange={e => setEditDueDateText(e.target.value)}
+                                onBlur={() => saveDueDate(t.id)}
+                                onKeyDown={e => { if (e.key === 'Enter') saveDueDate(t.id); if (e.key === 'Escape') { setEditingDueDateId(null) } }}
+                                className="text-xs border border-indigo-300 rounded px-1 py-0.5 focus:outline-none w-28 shrink-0" />
+                            ) : (
+                              <span onClick={() => { setEditingDueDateId(t.id); setEditDueDateText(t.date) }}
+                                title="點擊修改截止日期"
+                                className="text-sm text-gray-400 shrink-0 cursor-pointer hover:text-indigo-500">
+                                {t.date}
+                              </span>
+                            )}
                           </div>
                           {detailId === t.id && renderTaskDetail(t)}
                         </div>
@@ -1627,10 +1680,41 @@ export default function Page() {
         {/* DAILY */}
         {view === 'daily' && (
           <div>
-            <div className="flex items-center mb-4">
+            <div className="flex items-center mb-4 gap-2 flex-wrap">
               <p className="text-sm text-gray-500">每日工作項目（依人員分類）</p>
-              <button onClick={fetchDailyTasks} className="ml-auto text-xs text-gray-400 hover:text-gray-700 px-2">↻ 重新整理</button>
+              <div className="ml-auto flex items-center gap-1.5">
+                <button onClick={fetchDailyTasks} className="text-xs text-gray-400 hover:text-gray-700 px-2">↻ 重新整理</button>
+                <button
+                  onClick={() => { if (window.confirm('確定要發送本週工作回報提醒到 LINE 群組嗎？')) sendWeeklyReminder() }}
+                  disabled={sendingReminder}
+                  title="發送本週工作回報提醒"
+                  className="text-xs px-2.5 py-1 rounded-lg border border-green-200 text-green-700 hover:bg-green-50 disabled:opacity-40 whitespace-nowrap">
+                  {sendingReminder ? '…' : '📣 提醒'}
+                </button>
+                <button
+                  onClick={sendWeeklyEmail}
+                  disabled={emailSending}
+                  title="寄送本週未完成事項報表"
+                  className="text-xs px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 whitespace-nowrap">
+                  {emailSending ? '…' : '📧 週報'}
+                </button>
+                <button
+                  onClick={syncKnowledge}
+                  disabled={kbSyncing}
+                  title="同步檔案庫"
+                  className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 whitespace-nowrap">
+                  {kbSyncing ? '…' : '📚 同步'}
+                </button>
+              </div>
             </div>
+            {/* 操作回饋訊息 */}
+            {(reminderMsg || emailMsg || kbMsg) && (
+              <div className="mb-3 space-y-1">
+                {reminderMsg && <p className={`text-xs px-3 py-1.5 rounded-lg ${reminderOk ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{reminderMsg}</p>}
+                {emailMsg && <p className={`text-xs px-3 py-1.5 rounded-lg ${emailOk ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{emailMsg}</p>}
+                {kbMsg && <p className={`text-xs px-3 py-1.5 rounded-lg ${kbOk ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{kbMsg}</p>}
+              </div>
+            )}
 
             {/* 貼上 Plaud 內容 → Gemini 整理 */}
             <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 space-y-3">
@@ -1647,45 +1731,6 @@ export default function Page() {
                 {organizing ? '整理中...' : '✦ 整理並寫入今日工作'}
               </button>
               {organizeMsg && <p className={`text-sm text-center font-medium ${organizeOk ? 'text-green-600' : 'text-red-500'}`}>{organizeMsg}</p>}
-            </div>
-
-            {/* 手動發送週報提醒 */}
-            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 flex items-center gap-3">
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700">📣 發送本週工作回報提醒</p>
-                <p className="text-xs text-gray-400 mt-0.5">手動發送 LINE 通知，請大家確認並更新本週工作狀態</p>
-                {reminderMsg && <p className={`text-xs mt-1 font-medium ${reminderOk ? 'text-green-600' : 'text-red-500'}`}>{reminderMsg}</p>}
-              </div>
-              <button onClick={() => { if (window.confirm('確定要現在發送本週工作回報提醒到 LINE 群組嗎？')) sendWeeklyReminder() }} disabled={sendingReminder}
-                className="shrink-0 bg-green-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-40 transition-colors">
-                {sendingReminder ? '發送中...' : '發送 LINE'}
-              </button>
-            </div>
-
-            {/* 本週未完成報表 email */}
-            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 flex items-center gap-3">
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700">📧 本週未完成事項報表</p>
-                <p className="text-xs text-gray-400 mt-0.5">每週五 17:00 自動寄到 all16889@gmail.com；可在此手動測試寄送</p>
-                {emailMsg && <p className={`text-xs mt-1 font-medium ${emailOk ? 'text-green-600' : 'text-red-500'}`}>{emailMsg}</p>}
-              </div>
-              <button onClick={sendWeeklyEmail} disabled={emailSending}
-                className="shrink-0 bg-indigo-600 text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 transition-colors">
-                {emailSending ? '寄送中...' : '測試寄送'}
-              </button>
-            </div>
-
-            {/* 知識庫同步 */}
-            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 flex items-center gap-3">
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700">📚 同步檔案庫</p>
-                <p className="text-xs text-gray-400 mt-0.5">讀取 Notion「檔案庫」中待處理的檔案/圖片/PDF/網頁連結，自動萃取文字建索引（供 AI 規劃使用）</p>
-                {kbMsg && <p className={`text-xs mt-1 font-medium ${kbOk ? 'text-green-600' : 'text-red-500'}`}>{kbMsg}</p>}
-              </div>
-              <button onClick={syncKnowledge} disabled={kbSyncing}
-                className="shrink-0 bg-indigo-600 text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 transition-colors">
-                {kbSyncing ? '同步中...' : '同步'}
-              </button>
             </div>
 
             {/* 日期標籤（含週導覽） */}
@@ -1844,6 +1889,19 @@ export default function Page() {
                                 )}
                                 <button onClick={() => toggleDetail(t)} title="詳情 / 內容與進度方向"
                                   className={`text-xs shrink-0 leading-none mt-0.5 px-1 rounded hover:text-blue-600 ${(t.content || t.direction) ? 'text-blue-500' : 'text-gray-300 opacity-0 group-hover:opacity-100'}`}>📝</button>
+                                {editingDueDateId === t.id ? (
+                                  <input autoFocus type="date" value={editDueDateText}
+                                    onChange={e => setEditDueDateText(e.target.value)}
+                                    onBlur={() => saveDueDate(t.id)}
+                                    onKeyDown={e => { if (e.key === 'Enter') saveDueDate(t.id); if (e.key === 'Escape') { setEditingDueDateId(null) } }}
+                                    className="text-xs border border-indigo-300 rounded px-1 py-0.5 focus:outline-none w-28 shrink-0" />
+                                ) : (
+                                  <span onClick={() => { setEditingDueDateId(t.id); setEditDueDateText(t.date) }}
+                                    title="點擊修改截止日期"
+                                    className="text-xs text-gray-400 shrink-0 cursor-pointer hover:text-indigo-500 opacity-0 group-hover:opacity-100">
+                                    {t.date || '截止日'}
+                                  </span>
+                                )}
                                 <button onClick={() => deleteTask(t.id)} title="刪除"
                                   className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 shrink-0 leading-none">×</button>
                               </div>
