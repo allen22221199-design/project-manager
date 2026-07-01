@@ -968,6 +968,7 @@ export default function Page() {
   function renderTaskDetail(t: DailyTask) {
     return (
       <div className="mt-1 ml-1.5 mr-1 mb-2 p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
+        <div className="text-xs text-center text-red-500 font-bold">▲ TEST BUILD OK ▲</div>
         <div>
           <input ref={taskFileRef} type="file" multiple className="hidden"
             onChange={async e => {
