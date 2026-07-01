@@ -22,13 +22,14 @@ export async function POST(req: NextRequest) {
     const fileResults: FileResult[] = []
     try {
       const kb = await getKnowledgeBase()
-      const top = await rankKnowledge(lastUser, kb, 6)
+      const top = await rankKnowledge(lastUser, kb, 6)           // 知識內容門檻 0.55
+      const topFiles = await rankKnowledge(lastUser, kb, 4, 0.65) // 檔案連結門檻更高 0.65
       knowledge = top
         .map(it => `【${it.title}】${it.tags.length ? `(${it.tags.join('/')})` : ''}\n${(it.text || it.summary).slice(0, 1500)}`)
         .join('\n\n---\n\n')
 
-      // 收集有檔案的匹配項目，供前端顯示下載按鈕
-      for (const it of top) {
+      // 只有相似度 >= 0.65 的項目才附上下載按鈕
+      for (const it of topFiles) {
         const kbItem = kb.find(k => k.id === it.id) as any
         if (!kbItem) continue
         if (kbItem.externalUrl) {
