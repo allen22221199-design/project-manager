@@ -1990,7 +1990,7 @@ export default function Page() {
                       <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
                         <p className="text-xs text-gray-400 font-medium">📎 相關檔案</p>
                         {m.files.map((f, fi) => (
-                          <a key={fi} href={f.url} target="_blank" rel="noopener noreferrer"
+                          <a key={fi} href={f.url} download={f.name} target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 transition-colors no-underline group">
                             <span className="text-lg leading-none">📄</span>
                             <div className="flex-1 min-w-0">
