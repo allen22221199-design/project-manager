@@ -191,7 +191,13 @@ export default function Page() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem('chatMessages')
-      if (saved) setChatMessages(JSON.parse(saved))
+      if (saved) {
+        const parsed: (ChatMsg & { _ts?: number })[] = JSON.parse(saved)
+        const sevenDaysAgo = Date.now() - 7 * 24 * 3600 * 1000
+        // 過濾掉超過 7 天的訊息
+        const recent = parsed.filter(m => !m._ts || m._ts > sevenDaysAgo)
+        setChatMessages(recent)
+      }
     } catch {}
     chatInitialized.current = true
   }, [])
@@ -667,7 +673,7 @@ export default function Page() {
   async function sendChat() {
     const text = chatInput.trim()
     if (!text || chatLoading) return
-    const next: ChatMsg[] = [...chatMessages, { role: 'user', content: text }]
+    const next: ChatMsg[] = [...chatMessages, { role: 'user', content: text, _ts: Date.now() } as any]
     setChatMessages(next)
     setChatInput('')
     setChatLoading(true)
@@ -1969,6 +1975,14 @@ export default function Page() {
         {/* AI 助理 */}
         {view === 'chat' && (
           <div className="flex flex-col" style={{ height: 'calc(100vh - 130px)' }}>
+            {chatMessages.length > 0 && (
+              <div className="flex justify-end mb-2">
+                <button onClick={() => { if (confirm('確定清除所有對話記錄？')) setChatMessages([]) }}
+                  className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">
+                  🗑 清除對話
+                </button>
+              </div>
+            )}
             <div className="flex-1 overflow-y-auto space-y-3 pb-4">
               {chatMessages.length === 0 && (
                 <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-5 text-sm text-gray-600">
