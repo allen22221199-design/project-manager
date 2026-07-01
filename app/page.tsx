@@ -1045,7 +1045,7 @@ export default function Page() {
       <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-200/80 px-4 py-2.5 flex items-center gap-3">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-sm font-bold shadow-sm">煌</div>
-          <div className="text-base font-semibold text-gray-900 tracking-tight">專案進度管理</div>
+          <div className="text-base font-semibold text-gray-900 tracking-tight">專案進度管理 ★</div>
         </div>
         <div className="ml-auto flex gap-1 bg-gray-100/80 rounded-xl p-1">
           <NavBtn active={view === 'dashboard'} onClick={() => { setView('dashboard'); fetchProjects(); fetchDailyTasks() }}>總覽</NavBtn>
