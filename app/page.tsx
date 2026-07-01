@@ -101,11 +101,6 @@ export default function Page() {
   const [kbMsg, setKbMsg] = useState('')
   const [kbOk, setKbOk] = useState(false)
 
-  // 本週未完成報表 email
-  const [emailSending, setEmailSending] = useState(false)
-  const [emailMsg, setEmailMsg] = useState('')
-  const [emailOk, setEmailOk] = useState(false)
-
   // AI 助理對話
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([])
   const [chatInput, setChatInput] = useState('')
@@ -732,26 +727,6 @@ export default function Page() {
     }
   }
 
-  // 手動寄送本週未完成報表 email（測試用，正式由週五 cron 自動執行）
-  async function sendWeeklyEmail() {
-    setEmailSending(true)
-    setEmailMsg('')
-    setEmailOk(false)
-    try {
-      const r = await fetch('/api/cron/weekly-email')
-      const data = await readJson(r)
-      if (r.ok && data.ok) {
-        setEmailMsg(`已寄出報表到 all16889@gmail.com（${data.total} 項未完成）✓`)
-        setEmailOk(true)
-      } else {
-        setEmailMsg('寄送失敗：' + (data.error ?? '未知錯誤'))
-        setEmailOk(false)
-      }
-    } catch (e: any) {
-      setEmailMsg('寄送失敗：' + e.message)
-      setEmailOk(false)
-    } finally { setEmailSending(false) }
-  }
 
   // 同步知識庫（處理 Notion 知識庫中「待處理」的項目）
   async function syncKnowledge() {
@@ -1756,13 +1731,7 @@ export default function Page() {
                   className="text-xs px-2.5 py-1 rounded-lg border border-green-200 text-green-700 hover:bg-green-50 disabled:opacity-40 whitespace-nowrap">
                   {sendingReminder ? '…' : '📣 提醒'}
                 </button>
-                <button
-                  onClick={sendWeeklyEmail}
-                  disabled={emailSending}
-                  title="寄送本週未完成事項報表"
-                  className="text-xs px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 whitespace-nowrap">
-                  {emailSending ? '…' : '📧 週報'}
-                </button>
+
                 <button
                   onClick={syncKnowledge}
                   disabled={kbSyncing}
@@ -1773,10 +1742,9 @@ export default function Page() {
               </div>
             </div>
             {/* 操作回饋訊息 */}
-            {(reminderMsg || emailMsg || kbMsg) && (
+            {(reminderMsg || kbMsg) && (
               <div className="mb-3 space-y-1">
                 {reminderMsg && <p className={`text-xs px-3 py-1.5 rounded-lg ${reminderOk ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{reminderMsg}</p>}
-                {emailMsg && <p className={`text-xs px-3 py-1.5 rounded-lg ${emailOk ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{emailMsg}</p>}
                 {kbMsg && <p className={`text-xs px-3 py-1.5 rounded-lg ${kbOk ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{kbMsg}</p>}
               </div>
             )}
