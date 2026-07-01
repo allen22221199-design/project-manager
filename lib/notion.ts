@@ -387,6 +387,12 @@ export async function getDailyTasks(dateStr?: string) {
     content: (page.properties['任務內容']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     direction: (page.properties['AI需求']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     aiPlan: (page.properties['AI規劃']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    attachments: (() => {
+      try {
+        const raw = (page.properties['附件']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
+        return raw ? JSON.parse(raw) : []
+      } catch { return [] }
+    })(),
     freq: '當日',
   }))
 }
@@ -458,7 +464,7 @@ export async function syncHistoryForDate(dateStr: string) {
 }
 
 // Update a daily task (reassign person / edit text / change status)
-export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string; freq?: string; content?: string; direction?: string; aiPlan?: string; dueDate?: string }) {
+export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string; freq?: string; content?: string; direction?: string; aiPlan?: string; dueDate?: string; attachments?: {name: string; url: string}[] }) {
   const properties: any = {}
   if (fields.person !== undefined) properties['人員'] = { rich_text: [{ text: { content: fields.person } }] }
   if (fields.task !== undefined) properties['任務名稱'] = { title: [{ text: { content: fields.task } }] }
@@ -467,6 +473,7 @@ export async function updateDailyTask(id: string, fields: { person?: string; tas
   if (fields.content !== undefined) properties['任務內容'] = { rich_text: toRichText(fields.content) }
   if (fields.direction !== undefined) properties['AI需求'] = { rich_text: toRichText(fields.direction) }
   if (fields.aiPlan !== undefined) properties['AI規劃'] = { rich_text: toRichText(fields.aiPlan) }
+  if (fields.attachments !== undefined) properties['附件'] = { rich_text: toRichText(JSON.stringify(fields.attachments)) }
   try {
     await notion.pages.update({ page_id: id, properties })
   } catch (e: any) {

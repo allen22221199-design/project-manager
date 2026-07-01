@@ -25,7 +25,8 @@ type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard'
 type FileResult = { title: string; name: string; url: string }
 type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[] }
-type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string }
+type TaskAttachment = { name: string; url: string }
+type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[] }
 
 // 安全解析回應：伺服器逾時/出錯時回的是 HTML，不要讓 JSON.parse 噴出難懂的錯誤
 async function readJson(r: Response): Promise<any> {
@@ -125,6 +126,11 @@ export default function Page() {
   const [detailContent, setDetailContent] = useState('')
   const [detailDirection, setDetailDirection] = useState('')
   const [savingDetail, setSavingDetail] = useState(false)
+
+  // 任務附件
+  const [detailAttachments, setDetailAttachments] = useState<TaskAttachment[]>([])
+  const [uploading, setUploading] = useState(false)
+  const taskFileRef = useRef<HTMLInputElement>(null)
 
   // AI 規劃
   const [aiPlanning, setAiPlanning] = useState(false)
@@ -786,9 +792,10 @@ export default function Page() {
     setDetailId(t.id)
     setDetailContent(t.content ?? '')
     setDetailDirection(t.direction ?? '')
-    setAiPlanText(t.aiPlan ?? '')   // 載入已存的 AI 規劃，方便後續查看
+    setAiPlanText(t.aiPlan ?? '')
     setAiUsedKb([])
-    setAiPlanSaved(!!(t.aiPlan ?? '').trim())   // 已有內容代表已存在 Notion
+    setAiPlanSaved(!!(t.aiPlan ?? '').trim())
+    setDetailAttachments(t.attachments ?? [])
   }
 
   // AI 規劃：思考 + 查知識庫 + 上網搜尋（生成後由使用者決定是否存入 Notion）
@@ -830,19 +837,35 @@ export default function Page() {
     } finally { setAiPlanSaving(false) }
   }
 
-  // 儲存任務詳情（內容 / 進度方向）
+  // 儲存任務詳情（內容 / 進度方向 / 附件）
   async function saveDetail(taskId: string) {
     setSavingDetail(true)
-    setDailyAll(prev => prev.map(x => x.id === taskId ? { ...x, content: detailContent, direction: detailDirection } : x))
-    setInProgressTasks(prev => prev.map(x => x.id === taskId ? { ...x, content: detailContent, direction: detailDirection } : x))
+    setDailyAll(prev => prev.map(x => x.id === taskId ? { ...x, content: detailContent, direction: detailDirection, attachments: detailAttachments } : x))
+    setInProgressTasks(prev => prev.map(x => x.id === taskId ? { ...x, content: detailContent, direction: detailDirection, attachments: detailAttachments } : x))
     try {
       await fetch('/api/daily-tasks', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: taskId, content: detailContent, direction: detailDirection }),
+        body: JSON.stringify({ id: taskId, content: detailContent, direction: detailDirection, attachments: detailAttachments }),
       })
       setDetailId(null)
     } finally { setSavingDetail(false) }
+  }
+
+  // 上傳附件到 Vercel Blob，回傳 URL
+  async function uploadTaskFile(file: File): Promise<TaskAttachment | null> {
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const r = await fetch('/api/upload', { method: 'POST', body: form })
+      const data = await readJson(r)
+      if (!r.ok) { alert('上傳失敗：' + (data.error ?? '未知錯誤')); return null }
+      return { name: data.name, url: data.url }
+    } catch (e: any) {
+      alert('上傳失敗：' + e.message)
+      return null
+    } finally { setUploading(false) }
   }
 
   // 刪除任務（optimistic）
@@ -956,6 +979,34 @@ export default function Page() {
           <textarea value={detailDirection} onChange={e => setDetailDirection(e.target.value)} rows={4}
             placeholder={'清楚說明要 AI 做什麼，越具體越準：\n① 想要的產出（規劃步驟／找廠商／寫文案／比價…）\n② 限制（預算、時間、地點、規格、數量）\n③ 偏好或方向\n例：幫我規劃這支產品影片的拍攝流程，並找台中 3 家能配合的攝影團隊比價，預算 2 萬內。'}
             className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
+        </div>
+        {/* 附件區塊 */}
+        <div>
+          <label className="text-xs text-gray-500">附件</label>
+          <input ref={taskFileRef} type="file" multiple className="hidden"
+            onChange={async e => {
+              const files = Array.from(e.target.files ?? [])
+              for (const f of files) {
+                const att = await uploadTaskFile(f)
+                if (att) setDetailAttachments(prev => [...prev, att])
+              }
+              if (taskFileRef.current) taskFileRef.current.value = ''
+            }} />
+          <div className="mt-1 space-y-1">
+            {detailAttachments.map((att, i) => (
+              <div key={i} className="flex items-center gap-2 bg-white border border-gray-200 rounded px-2 py-1">
+                <span className="text-xs text-indigo-600 flex-1 truncate">📎 {att.name}</span>
+                <a href={att.url} download={att.name} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-indigo-500 hover:underline shrink-0">下載</a>
+                <button onClick={() => setDetailAttachments(prev => prev.filter((_, j) => j !== i))}
+                  className="text-xs text-gray-300 hover:text-red-400 shrink-0">✕</button>
+              </div>
+            ))}
+            <button onClick={() => taskFileRef.current?.click()} disabled={uploading}
+              className="text-xs text-indigo-600 hover:text-indigo-800 border border-dashed border-indigo-300 rounded px-3 py-1 w-full disabled:opacity-40">
+              {uploading ? '上傳中...' : '＋ 新增附件'}
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => saveDetail(t.id)} disabled={savingDetail}
