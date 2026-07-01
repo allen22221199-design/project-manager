@@ -980,9 +980,9 @@ export default function Page() {
             placeholder={'清楚說明要 AI 做什麼，越具體越準：\n① 想要的產出（規劃步驟／找廠商／寫文案／比價…）\n② 限制（預算、時間、地點、規格、數量）\n③ 偏好或方向\n例：幫我規劃這支產品影片的拍攝流程，並找台中 3 家能配合的攝影團隊比價，預算 2 萬內。'}
             className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
         </div>
-        {/* 附件區塊 */}
+        {/* 附件區塊 v2 */}
         <div>
-          <label className="text-xs text-gray-500">附件</label>
+          <label className="text-xs text-gray-500 font-bold text-indigo-600">📎 附件</label>
           <input ref={taskFileRef} type="file" multiple className="hidden"
             onChange={async e => {
               const files = Array.from(e.target.files ?? [])
