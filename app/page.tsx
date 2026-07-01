@@ -110,6 +110,7 @@ export default function Page() {
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
+  const chatInitialized = useRef(false)
 
   // 手動新增任務
   const [newTaskText, setNewTaskText] = useState('')
@@ -197,8 +198,10 @@ export default function Page() {
       const saved = localStorage.getItem('chatMessages')
       if (saved) setChatMessages(JSON.parse(saved))
     } catch {}
+    chatInitialized.current = true
   }, [])
   useEffect(() => {
+    if (!chatInitialized.current) return  // 避免初始空陣列覆蓋已儲存的對話
     try { localStorage.setItem('chatMessages', JSON.stringify(chatMessages)) } catch {}
   }, [chatMessages])
 
@@ -689,12 +692,19 @@ export default function Page() {
   }
 
   // 一鍵匯出「昨日」指定人員的工作報告（含任務內容）成檔案下載
+  // 若昨天是週六或週日（假日），自動往回找最近的週五
   function exportYesterdayReport() {
     const y = new Date(Date.now() + 8 * 3600 * 1000)
     y.setUTCDate(y.getUTCDate() - 1)
+    // 週日=0, 週六=6 → 往回找週五
+    const dow = y.getUTCDay()
+    if (dow === 0) y.setUTCDate(y.getUTCDate() - 2)      // 週日 → 退2天到週五
+    else if (dow === 6) y.setUTCDate(y.getUTCDate() - 1) // 週六 → 退1天到週五
     const yStr = y.toISOString().slice(0, 10)
+    const isWeekend = dow === 0 || dow === 6
+    const dayLabel = isWeekend ? `${yStr}（上週五）` : `${yStr}（昨日）`
     const tasks = dailyAll.filter(t => t.date === yStr && t.person === reportPerson)
-    let txt = `工作進度報告\n人員：${reportPerson}\n日期：${yStr}（昨日）\n${'='.repeat(28)}\n\n`
+    let txt = `工作進度報告\n人員：${reportPerson}\n日期：${dayLabel}\n${'='.repeat(28)}\n\n`
     if (tasks.length === 0) {
       txt += '（昨日沒有工作項目）\n'
     } else {
