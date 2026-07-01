@@ -969,20 +969,6 @@ export default function Page() {
     return (
       <div className="mt-1 ml-1.5 mr-1 mb-2 p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
         <div>
-          <label className="text-xs text-gray-500">任務內容</label>
-          <textarea value={detailContent} onChange={e => setDetailContent(e.target.value)} rows={3}
-            placeholder="這個任務的背景、細節、目前狀況..."
-            className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">希望 AI 幫你做什麼</label>
-          <textarea value={detailDirection} onChange={e => setDetailDirection(e.target.value)} rows={4}
-            placeholder={'清楚說明要 AI 做什麼，越具體越準：\n① 想要的產出（規劃步驟／找廠商／寫文案／比價…）\n② 限制（預算、時間、地點、規格、數量）\n③ 偏好或方向\n例：幫我規劃這支產品影片的拍攝流程，並找台中 3 家能配合的攝影團隊比價，預算 2 萬內。'}
-            className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
-        </div>
-        {/* 附件區塊 v2 */}
-        <div>
-          <label className="text-xs text-gray-500 font-bold text-indigo-600">📎 附件</label>
           <input ref={taskFileRef} type="file" multiple className="hidden"
             onChange={async e => {
               const files = Array.from(e.target.files ?? [])
@@ -992,21 +978,35 @@ export default function Page() {
               }
               if (taskFileRef.current) taskFileRef.current.value = ''
             }} />
-          <div className="mt-1 space-y-1">
-            {detailAttachments.map((att, i) => (
-              <div key={i} className="flex items-center gap-2 bg-white border border-gray-200 rounded px-2 py-1">
-                <span className="text-xs text-indigo-600 flex-1 truncate">📎 {att.name}</span>
-                <a href={att.url} download={att.name} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-indigo-500 hover:underline shrink-0">下載</a>
-                <button onClick={() => setDetailAttachments(prev => prev.filter((_, j) => j !== i))}
-                  className="text-xs text-gray-300 hover:text-red-400 shrink-0">✕</button>
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-0.5">
+            <label className="text-xs text-gray-500">任務內容</label>
             <button onClick={() => taskFileRef.current?.click()} disabled={uploading}
-              className="text-xs text-indigo-600 hover:text-indigo-800 border border-dashed border-indigo-300 rounded px-3 py-1 w-full disabled:opacity-40">
-              {uploading ? '上傳中...' : '＋ 新增附件'}
+              className="text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded px-2 py-0.5 disabled:opacity-40">
+              {uploading ? '上傳中...' : '📎 新增附件'}
             </button>
           </div>
+          <textarea value={detailContent} onChange={e => setDetailContent(e.target.value)} rows={3}
+            placeholder="這個任務的背景、細節、目前狀況..."
+            className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
+          {detailAttachments.length > 0 && (
+            <div className="mt-1 space-y-1">
+              {detailAttachments.map((att, i) => (
+                <div key={i} className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded px-2 py-1">
+                  <span className="text-xs text-indigo-600 flex-1 truncate">📎 {att.name}</span>
+                  <a href={att.url} download={att.name} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-indigo-500 hover:underline shrink-0">下載</a>
+                  <button onClick={() => setDetailAttachments(prev => prev.filter((_, j) => j !== i))}
+                    className="text-xs text-gray-300 hover:text-red-400 shrink-0">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">希望 AI 幫你做什麼</label>
+          <textarea value={detailDirection} onChange={e => setDetailDirection(e.target.value)} rows={4}
+            placeholder={'清楚說明要 AI 做什麼，越具體越準：\n① 想要的產出（規劃步驟／找廠商／寫文案／比價…）\n② 限制（預算、時間、地點、規格、數量）\n③ 偏好或方向\n例：幫我規劃這支產品影片的拍攝流程，並找台中 3 家能配合的攝影團隊比價，預算 2 萬內。'}
+            className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => saveDetail(t.id)} disabled={savingDetail}
