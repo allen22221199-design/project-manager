@@ -1188,25 +1188,6 @@ export default function Page() {
                 )
               })()}
 
-              {/* 逾期任務 */}
-              <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
-                <p className="text-sm font-medium text-gray-700 mb-3">逾期任務 {overdue.length > 0 && <span className="text-red-500">({overdue.length})</span>}</p>
-                {overdue.length === 0 ? (
-                  <p className="text-sm text-green-600">🎉 沒有逾期任務</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {overdue.slice(0, 12).map(t => (
-                      <div key={t.id} className="flex items-center gap-2 text-sm">
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 shrink-0">{t.date}</span>
-                        <span className="text-gray-700 flex-1 truncate">{t.task}</span>
-                        <span className="text-xs text-gray-400 shrink-0">{t.person}</span>
-                      </div>
-                    ))}
-                    {overdue.length > 12 && <p className="text-xs text-gray-400 pt-1">…還有 {overdue.length - 12} 項</p>}
-                  </div>
-                )}
-              </div>
-
               {/* 流程排程表（單一表格，用顏色區分案件） */}
               {(() => {
                 const [gy, gm] = ganttMonth.split('-').map(Number)
