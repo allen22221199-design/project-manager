@@ -26,8 +26,10 @@ const PROJECT_COLORS_LIST = [
   { label: '紫', bg: '#D5A6E0', text: '#6C3483' },
   { label: '紅', bg: '#F1948A', text: '#7B241C' },
   { label: '黃', bg: '#F9E79F', text: '#7D6608' },
-  { label: '灰', bg: '#D5D8DC', text: '#424949' },
-  { label: '粉', bg: '#F5CBA7', text: '#784212' },
+  { label: '青', bg: '#A3E4D7', text: '#0E6251' },
+  { label: '粉', bg: '#F5B7C4', text: '#943126' },
+  { label: '棕', bg: '#D7BDA5', text: '#6E4B2A' },
+  { label: '灰', bg: '#C5CBD1', text: '#424949' },
 ]
 
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string; ganttStart?: string; ganttEnd?: string; schedule?: string }
@@ -1408,7 +1410,7 @@ export default function Page() {
                           className="w-5 h-5 rounded-full border-2 border-white shadow transition-transform hover:scale-110"
                           style={{ background: p.color || '#D5D8DC' }} />
                         {colorPickerOpenId === p.id && (
-                          <div className="absolute left-0 top-7 z-20 bg-white border border-gray-200 rounded-xl shadow-lg p-2 grid grid-cols-4 gap-1.5 w-28">
+                          <div className="absolute left-0 top-7 z-20 bg-white border border-gray-200 rounded-xl shadow-lg p-2 grid grid-cols-5 gap-1.5 w-36">
                             {PROJECT_COLORS_LIST.map(c => (
                               <button key={c.bg} title={c.label}
                                 onClick={() => {
