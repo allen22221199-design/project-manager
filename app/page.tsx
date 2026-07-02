@@ -32,7 +32,7 @@ const PROJECT_COLORS_LIST = [
   { label: '灰', bg: '#C5CBD1', text: '#424949' },
 ]
 
-type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string; ganttStart?: string; ganttEnd?: string; schedule?: string }
+type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string; ganttStart?: string; ganttEnd?: string; schedule?: string; latestProgress?: string; latestProgressDate?: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard'
@@ -1157,6 +1157,36 @@ export default function Page() {
                   </div>
                 )}
               </div>
+
+              {/* 最新進度回報（保留兩天） */}
+              {(() => {
+                const now2 = new Date(Date.now() + 8 * 3600 * 1000)
+                const cutoff = new Date(now2); cutoff.setUTCDate(now2.getUTCDate() - 2)
+                const cutoffStr = cutoff.toISOString().slice(0, 10)
+                const recent = projects
+                  .filter(p => p.latestProgress && p.latestProgressDate && p.latestProgressDate >= cutoffStr)
+                  .sort((a, b) => (b.latestProgressDate ?? '').localeCompare(a.latestProgressDate ?? ''))
+                return (
+                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+                    <p className="text-sm font-medium text-gray-700 mb-3">最新進度回報 {recent.length > 0 && <span className="text-emerald-500">({recent.length})</span>}</p>
+                    {recent.length === 0 ? (
+                      <p className="text-sm text-gray-400">近兩天尚無進度回報</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {recent.map(p => (
+                          <button key={p.id} onClick={() => selectProject(p)}
+                            className="w-full flex items-start gap-2 text-sm text-left rounded-lg px-2 py-1.5 hover:bg-emerald-50/60 transition-colors">
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 shrink-0 mt-0.5">{p.latestProgressDate?.slice(5)}</span>
+                            {p.color && <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5" style={{ background: p.color }} />}
+                            <span className="font-medium text-gray-800 shrink-0">{p.name}</span>
+                            <span className="text-gray-500 flex-1 truncate">{p.latestProgress}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* 逾期任務 */}
               <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">

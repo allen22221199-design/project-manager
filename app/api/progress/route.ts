@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { addProgressRecord, addItemRecord, addItemRecords, updateProjectStatus } from '@/lib/notion'
+import { addProgressRecord, addItemRecord, addItemRecords, updateProjectStatus, stampLatestProgress } from '@/lib/notion'
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
     } else {
       if (!date || !description) return NextResponse.json({ error: '缺少日期或進度描述' }, { status: 400 })
       await addProgressRecord(pageId, date, description)
+      try { await stampLatestProgress(pageId, description) } catch {}
       if (newStatus) await updateProjectStatus(pageId, newStatus)
     }
 

@@ -29,6 +29,8 @@ export async function getActiveProjects() {
     ganttStart: page.properties['甘特開始']?.date?.start ?? '',
     ganttEnd: page.properties['甘特結束']?.date?.start ?? '',
     schedule: (page.properties['排程']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    latestProgress: (page.properties['最新進度']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    latestProgressDate: page.properties['最新進度日期']?.date?.start ?? '',
   }))
 }
 
@@ -85,6 +87,15 @@ async function findSectionTable(pageId: string, keyword: string): Promise<{ id: 
     }
   }
   return null
+}
+
+// 在案件本身標記「最新進度」＋回報時間（供總覽即時顯示，兩天後前端自動隱藏）
+export async function stampLatestProgress(pageId: string, description: string) {
+  const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
+  await updateProjectProps(pageId, {
+    最新進度: { rich_text: toRichText(description.slice(0, 300)) },
+    最新進度日期: { date: { start: today } },
+  })
 }
 
 export async function addProgressRecord(pageId: string, date: string, description: string) {
@@ -255,6 +266,8 @@ const PROJECT_PROP_SCHEMA: Record<string, any> = {
   排程: { rich_text: {} },
   甘特開始: { date: {} },
   甘特結束: { date: {} },
+  最新進度: { rich_text: {} },
+  最新進度日期: { date: {} },
 }
 
 // 更新案件頁面屬性；若遇到「某欄位不存在」，自動在資料庫建立該欄位再重試
