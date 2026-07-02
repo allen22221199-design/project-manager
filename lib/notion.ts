@@ -501,13 +501,29 @@ export async function updateDailyTask(id: string, fields: { person?: string; tas
   if (fields.direction !== undefined) properties['AI需求'] = { rich_text: toRichText(fields.direction) }
   if (fields.aiPlan !== undefined) properties['AI規劃'] = { rich_text: toRichText(fields.aiPlan) }
   if (fields.attachments !== undefined) properties['附件'] = { rich_text: toRichText(JSON.stringify(fields.attachments)) }
-  try {
-    await notion.pages.update({ page_id: id, properties })
-  } catch (e: any) {
-    // 任務頁面已被封存（多半是重新整理過、畫面為舊資料）——忽略，前端重抓即可
-    if (String(e?.message ?? e).includes('archived')) return
-    throw e
+
+  // 遇到「某欄位不存在」時，自動移除該欄位再重試（最多重試幾個欄位），
+  // 讓其他欄位（任務內容、AI需求等）仍能正常儲存，不會整筆失敗。
+  async function tryUpdate(props: any, attempts = 0): Promise<void> {
+    try {
+      await notion.pages.update({ page_id: id, properties: props })
+    } catch (e: any) {
+      const msg = String(e?.message ?? e)
+      // 任務頁面已被封存（多半是重新整理過、畫面為舊資料）——忽略，前端重抓即可
+      if (msg.includes('archived')) return
+      // Notion: "XXX is not a property that exists." — 移除該欄位重試
+      const m = msg.match(/(.+?) is not a property that exists/)
+      if (m && attempts < 6) {
+        const missing = m[1].trim()
+        const next = { ...props }
+        delete next[missing]
+        if (Object.keys(next).length === 0) return  // 沒有可寫入的欄位了
+        return tryUpdate(next, attempts + 1)
+      }
+      throw e
+    }
   }
+  await tryUpdate(properties)
 }
 
 // Delete (archive) a daily task
