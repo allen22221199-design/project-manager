@@ -1164,7 +1164,8 @@ export default function Page() {
                 const prevMon = () => { const d = new Date(gy, gm - 2, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
                 const nextMon = () => { const d = new Date(gy, gm, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
                 const activeProj = projects.filter(p => !INACTIVE_STATUSES.includes(p.status))
-                const CELL_W = 26
+                const CELL_W = 34
+                const NAME_W = 180
 
                 function handleGanttCell(p: Project, dateStr: string) {
                   if (!ganttSelecting || ganttSelecting.projectId !== p.id) {
@@ -1206,10 +1207,10 @@ export default function Page() {
                       <p className="text-sm text-gray-400 py-4 text-center">目前無進行中案件</p>
                     ) : (
                       <div className="overflow-x-auto -mx-1 px-1">
-                        <table className="border-collapse" style={{ minWidth: 120 + daysInMonth * CELL_W }}>
+                        <table className="border-collapse" style={{ minWidth: NAME_W + daysInMonth * CELL_W }}>
                           <thead>
                             <tr>
-                              <th className="text-left text-xs font-medium text-gray-400 pb-1 pr-3" style={{ width: 120, minWidth: 120 }}>案件</th>
+                              <th className="text-left text-xs font-medium text-gray-400 pb-2 pr-4" style={{ width: NAME_W, minWidth: NAME_W }}>案件</th>
                               {days.map(d => {
                                 const ds = `${ganttMonth}-${String(d).padStart(2,'0')}`
                                 const isToday = ds === todayStr
@@ -1217,7 +1218,7 @@ export default function Page() {
                                 const isWknd = dow === 0 || dow === 6
                                 return (
                                   <th key={d} style={{ width: CELL_W, minWidth: CELL_W }}
-                                    className={`text-center pb-1 text-xs font-medium ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-400'}`}>
+                                    className={`text-center pb-2 text-xs font-medium ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-400'}`}>
                                     {d}
                                   </th>
                                 )
@@ -1230,10 +1231,10 @@ export default function Page() {
                               const isSelectingThis = ganttSelecting?.projectId === p.id
                               return (
                                 <tr key={p.id} className={pi % 2 === 0 ? 'bg-gray-50/50' : ''}>
-                                  <td className="text-xs text-gray-700 font-medium pr-3 py-1 truncate" style={{ maxWidth: 120 }}>
-                                    <span className="inline-flex items-center gap-1.5">
-                                      {p.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />}
-                                      <span className="truncate">{p.name}</span>
+                                  <td className="text-sm text-gray-800 font-medium pr-4 py-1.5 whitespace-nowrap" style={{ width: NAME_W, minWidth: NAME_W }}>
+                                    <span className="inline-flex items-center gap-2">
+                                      {p.color && <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: p.color }} />}
+                                      {p.name}
                                     </span>
                                   </td>
                                   {days.map(d => {
@@ -1249,7 +1250,7 @@ export default function Page() {
                                     return (
                                       <td key={d} onClick={() => handleGanttCell(p, ds)}
                                         title={isSelectingThis ? `點選結束日 (起點: ${ganttSelecting!.start})` : inRange ? `${p.ganttStart} ～ ${p.ganttEnd}` : '點選設定起點'}
-                                        className={`py-1 cursor-pointer transition-opacity hover:opacity-70 ${isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
+                                        className={`py-1.5 cursor-pointer transition-opacity hover:opacity-70 ${isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
                                         style={{
                                           width: CELL_W,
                                           background: inRange
@@ -1260,7 +1261,7 @@ export default function Page() {
                                           borderRight: isEnd ? `2px solid ${barColor}` : undefined,
                                           borderRadius: isStart && isEnd ? 6 : isStart ? '6px 0 0 6px' : isEnd ? '0 6px 6px 0' : 0,
                                         }}>
-                                        <div className="h-5" />
+                                        <div className="h-6" />
                                       </td>
                                     )
                                   })}
