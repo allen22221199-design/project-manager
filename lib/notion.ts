@@ -28,6 +28,7 @@ export async function getActiveProjects() {
     color: page.properties['顏色']?.rich_text?.[0]?.plain_text ?? '',
     ganttStart: page.properties['甘特開始']?.date?.start ?? '',
     ganttEnd: page.properties['甘特結束']?.date?.start ?? '',
+    schedule: (page.properties['排程']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
   }))
 }
 
@@ -261,6 +262,13 @@ export async function updateProjectGantt(pageId: string, ganttStart: string, gan
     甘特結束: ganttEnd ? { date: { start: ganttEnd } } : { date: null },
   }
   await notion.pages.update({ page_id: pageId, properties: props })
+}
+
+export async function updateProjectSchedule(pageId: string, schedule: string) {
+  await notion.pages.update({
+    page_id: pageId,
+    properties: { 排程: { rich_text: toRichText(schedule) } },
+  })
 }
 
 export async function deleteProject(pageId: string) {
