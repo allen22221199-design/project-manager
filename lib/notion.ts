@@ -17,7 +17,9 @@ export async function getActiveProjects() {
     results.push(...res.results)
     cursor = res.has_more ? res.next_cursor : undefined
   } while (cursor)
-  return results.map((page: any) => ({
+  return results
+    .filter((page: any) => !page.archived && !page.in_trash)  // 已刪除／封存的案件不回傳
+    .map((page: any) => ({
     id: page.id,
     url: page.url,
     name: page.properties['專案名稱']?.title?.[0]?.plain_text ?? '(未命名)',
