@@ -1120,7 +1120,7 @@ export default function Page() {
           for (const p of projects) byStatus[p.status] = (byStatus[p.status] ?? 0) + 1
           const statusList = Object.entries(byStatus).sort((a, b) => b[1] - a[1])
           return (
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <button onClick={() => { setView('daily'); fetchDailyTasks() }} className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 text-left hover:border-indigo-300 transition-colors">
                   <p className="text-xs text-gray-400">今日待辦</p>
@@ -1269,7 +1269,7 @@ export default function Page() {
                 }
 
                 return (
-                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+                  <div className="order-first bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div>
                         <p className="text-sm font-medium text-gray-700">流程排程表</p>
@@ -1299,9 +1299,9 @@ export default function Page() {
                             return (
                               <button key={p.id}
                                 onClick={() => { setGanttRangeStart(null); setGanttActiveProject(sel ? null : p.id) }}
-                                className={`text-xs px-2.5 py-1 rounded-full font-medium border transition-all ${sel ? 'ring-2 ring-offset-1 ring-indigo-400 border-transparent' : 'border-gray-200 hover:border-gray-400'}`}
+                                className={`text-sm px-3 py-1.5 rounded-full font-medium border transition-all ${sel ? 'ring-2 ring-offset-1 ring-indigo-400 border-transparent' : 'border-gray-200 hover:border-gray-400'}`}
                                 style={{ background: sel ? (p.color || '#AEC6E8') : `${p.color || '#AEC6E8'}33`, color: sel ? '#1a1a1a' : '#555' }}>
-                                <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ background: p.color || '#AEC6E8' }} />
+                                <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: p.color || '#AEC6E8' }} />
                                 {p.name}
                               </button>
                             )
@@ -1309,7 +1309,7 @@ export default function Page() {
                         </div>
 
                         <div className="overflow-x-auto -mx-1 px-1">
-                          <table className="border-collapse" style={{ minWidth: NAME_W + daysInMonth * CELL_W }}>
+                          <table className="border-collapse w-full" style={{ minWidth: NAME_W + daysInMonth * CELL_W }}>
                             <thead>
                               <tr>
                                 <th className="text-left text-sm font-medium text-gray-400 pb-2 pr-2" style={{ width: NAME_W, minWidth: NAME_W }}>流程</th>
@@ -1319,7 +1319,7 @@ export default function Page() {
                                   const dow = new Date(ds).getDay()
                                   const isWknd = dow === 0 || dow === 6
                                   return (
-                                    <th key={d} style={{ width: CELL_W, minWidth: CELL_W }}
+                                    <th key={d} style={{ minWidth: CELL_W }}
                                       className={`text-center pb-2 text-sm font-medium ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-400'}`}>
                                       {d}
                                     </th>
@@ -1362,7 +1362,7 @@ export default function Page() {
                                           title={owner ? `${owner.name}${owner.text ? '：' + owner.text : ''}（點起點格再點結束格可整段清除・雙擊編輯小字）` : ganttActiveProject ? '點起點格 → 再點結束格 → 整段填色（雙擊加小字）' : '請先選擇上方案件'}
                                           className={`cursor-pointer border border-gray-100 hover:opacity-70 ${isAnchor ? 'ring-2 ring-inset ring-indigo-500' : isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
                                           style={{
-                                            width: CELL_W,
+                                            minWidth: CELL_W,
                                             background: owner ? owner.color : isAnchor ? '#C7D2FE' : isWknd ? '#F3F0FF22' : 'transparent',
                                           }}>
                                           <div className="h-8 flex items-center justify-center text-[11px] leading-none text-gray-800 overflow-hidden">{owner?.text ?? ''}</div>
