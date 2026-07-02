@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getActiveProjects, createProject, updateProjectStatus, updateProjectAssignee, updateProjectColor, deleteProject } from '@/lib/notion'
+import { getActiveProjects, createProject, updateProjectStatus, updateProjectAssignee, updateProjectColor, updateProjectGantt, deleteProject } from '@/lib/notion'
 
 export async function GET() {
   try {
@@ -23,11 +23,12 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { id, status, assignee, color } = await req.json()
+    const { id, status, assignee, color, ganttStart, ganttEnd } = await req.json()
     if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
     if (status) await updateProjectStatus(id, status)
     if (assignee !== undefined) await updateProjectAssignee(id, assignee)
     if (color !== undefined) await updateProjectColor(id, color)
+    if (ganttStart !== undefined || ganttEnd !== undefined) await updateProjectGantt(id, ganttStart ?? '', ganttEnd ?? '')
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })

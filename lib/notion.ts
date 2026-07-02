@@ -26,6 +26,8 @@ export async function getActiveProjects() {
     address: page.properties['地址']?.rich_text?.[0]?.plain_text ?? '',
     assignee: page.properties['負責人']?.rich_text?.[0]?.plain_text ?? '',
     color: page.properties['顏色']?.rich_text?.[0]?.plain_text ?? '',
+    ganttStart: page.properties['甘特開始']?.date?.start ?? '',
+    ganttEnd: page.properties['甘特結束']?.date?.start ?? '',
   }))
 }
 
@@ -251,6 +253,14 @@ export async function updateProjectColor(pageId: string, color: string) {
     page_id: pageId,
     properties: { 顏色: { rich_text: [{ text: { content: color } }] } },
   })
+}
+
+export async function updateProjectGantt(pageId: string, ganttStart: string, ganttEnd: string) {
+  const props: any = {
+    甘特開始: ganttStart ? { date: { start: ganttStart } } : { date: null },
+    甘特結束: ganttEnd ? { date: { start: ganttEnd } } : { date: null },
+  }
+  await notion.pages.update({ page_id: pageId, properties: props })
 }
 
 export async function deleteProject(pageId: string) {

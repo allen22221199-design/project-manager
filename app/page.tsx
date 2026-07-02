@@ -29,7 +29,7 @@ const PROJECT_COLORS_LIST = [
   { label: '粉', bg: '#F5CBA7', text: '#784212' },
 ]
 
-type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string }
+type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string; ganttStart?: string; ganttEnd?: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard'
@@ -107,6 +107,11 @@ export default function Page() {
   const [projectDetail, setProjectDetail] = useState<any>(null)
   const [projectDetailLoading, setProjectDetailLoading] = useState(false)
   const [colorPickerOpenId, setColorPickerOpenId] = useState<string | null>(null)
+  const [ganttMonth, setGanttMonth] = useState(() => {
+    const n = new Date(Date.now() + 8 * 3600 * 1000)
+    return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}`
+  })
+  const [ganttSelecting, setGanttSelecting] = useState<{ projectId: string; start: string } | null>(null)
 
   // 知識庫同步
   const [kbSyncing, setKbSyncing] = useState(false)
@@ -1149,6 +1154,131 @@ export default function Page() {
                   </div>
                 )}
               </div>
+
+              {/* 甘特圖 */}
+              {(() => {
+                const [gy, gm] = ganttMonth.split('-').map(Number)
+                const daysInMonth = new Date(gy, gm, 0).getDate()
+                const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+                const todayStr = todayISO()
+                const prevMon = () => { const d = new Date(gy, gm - 2, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
+                const nextMon = () => { const d = new Date(gy, gm, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
+                const activeProj = projects.filter(p => !INACTIVE_STATUSES.includes(p.status))
+                const CELL_W = 26
+
+                function handleGanttCell(p: Project, dateStr: string) {
+                  if (!ganttSelecting || ganttSelecting.projectId !== p.id) {
+                    // 第一次點：設起點
+                    setGanttSelecting({ projectId: p.id, start: dateStr })
+                  } else {
+                    // 第二次點：設終點並儲存
+                    const s = ganttSelecting.start <= dateStr ? ganttSelecting.start : dateStr
+                    const e = ganttSelecting.start <= dateStr ? dateStr : ganttSelecting.start
+                    setGanttSelecting(null)
+                    // 若點同一格 = 清除
+                    const isClear = p.ganttStart === s && p.ganttEnd === e
+                    const ns = isClear ? '' : s
+                    const ne = isClear ? '' : e
+                    setProjects(prev => prev.map(x => x.id === p.id ? { ...x, ganttStart: ns, ganttEnd: ne } : x))
+                    fetch('/api/projects', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, ganttStart: ns, ganttEnd: ne }) })
+                  }
+                }
+
+                return (
+                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">案件甘特圖</p>
+                        {ganttSelecting && (
+                          <p className="text-xs text-indigo-500 mt-0.5">點選結束日期（再次點擊同格可清除）</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => { setGanttSelecting(null); setGanttMonth(prevMon()) }}
+                          className="w-7 h-7 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 text-sm flex items-center justify-center">‹</button>
+                        <span className="text-sm font-medium text-gray-700 w-20 text-center">{gy}年{gm}月</span>
+                        <button onClick={() => { setGanttSelecting(null); setGanttMonth(nextMon()) }}
+                          className="w-7 h-7 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 text-sm flex items-center justify-center">›</button>
+                      </div>
+                    </div>
+
+                    {activeProj.length === 0 ? (
+                      <p className="text-sm text-gray-400 py-4 text-center">目前無進行中案件</p>
+                    ) : (
+                      <div className="overflow-x-auto -mx-1 px-1">
+                        <table className="border-collapse" style={{ minWidth: 120 + daysInMonth * CELL_W }}>
+                          <thead>
+                            <tr>
+                              <th className="text-left text-xs font-medium text-gray-400 pb-1 pr-3" style={{ width: 120, minWidth: 120 }}>案件</th>
+                              {days.map(d => {
+                                const ds = `${ganttMonth}-${String(d).padStart(2,'0')}`
+                                const isToday = ds === todayStr
+                                const dow = new Date(ds).getDay()
+                                const isWknd = dow === 0 || dow === 6
+                                return (
+                                  <th key={d} style={{ width: CELL_W, minWidth: CELL_W }}
+                                    className={`text-center pb-1 text-xs font-medium ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-400'}`}>
+                                    {d}
+                                  </th>
+                                )
+                              })}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {activeProj.map((p, pi) => {
+                              const barColor = p.color || '#AEC6E8'
+                              const isSelectingThis = ganttSelecting?.projectId === p.id
+                              return (
+                                <tr key={p.id} className={pi % 2 === 0 ? 'bg-gray-50/50' : ''}>
+                                  <td className="text-xs text-gray-700 font-medium pr-3 py-1 truncate" style={{ maxWidth: 120 }}>
+                                    <span className="inline-flex items-center gap-1.5">
+                                      {p.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />}
+                                      <span className="truncate">{p.name}</span>
+                                    </span>
+                                  </td>
+                                  {days.map(d => {
+                                    const ds = `${ganttMonth}-${String(d).padStart(2,'0')}`
+                                    const isToday = ds === todayStr
+                                    const dow = new Date(ds).getDay()
+                                    const isWknd = dow === 0 || dow === 6
+                                    const inRange = p.ganttStart && p.ganttEnd && ds >= p.ganttStart && ds <= p.ganttEnd
+                                    const isStart = p.ganttStart === ds
+                                    const isEnd = p.ganttEnd === ds
+                                    // 選取預覽（第一次點後懸停效果靠 title 提示即可）
+                                    const isPendingStart = isSelectingThis && ganttSelecting?.start === ds
+                                    return (
+                                      <td key={d} onClick={() => handleGanttCell(p, ds)}
+                                        title={isSelectingThis ? `點選結束日 (起點: ${ganttSelecting!.start})` : inRange ? `${p.ganttStart} ～ ${p.ganttEnd}` : '點選設定起點'}
+                                        className={`py-1 cursor-pointer transition-opacity hover:opacity-70 ${isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
+                                        style={{
+                                          width: CELL_W,
+                                          background: inRange
+                                            ? (isWknd ? `${barColor}99` : barColor)
+                                            : isPendingStart ? `${barColor}66`
+                                            : isWknd ? '#F3F0FF22' : 'transparent',
+                                          borderLeft: isStart ? `2px solid ${barColor}` : undefined,
+                                          borderRight: isEnd ? `2px solid ${barColor}` : undefined,
+                                          borderRadius: isStart && isEnd ? 6 : isStart ? '6px 0 0 6px' : isEnd ? '0 6px 6px 0' : 0,
+                                        }}>
+                                        <div className="h-5" />
+                                      </td>
+                                    )
+                                  })}
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {ganttSelecting && (
+                      <button onClick={() => setGanttSelecting(null)}
+                        className="mt-2 text-xs text-gray-400 hover:text-gray-600">取消選取</button>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           )
         })()}
