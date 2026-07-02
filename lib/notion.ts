@@ -371,6 +371,15 @@ export async function getTasksByPerson(person: string) {
     createdAt: page.created_time?.slice(0, 10) ?? '',
     status: page.properties['狀態']?.status?.name ?? '',
     source: page.properties['來源錄音']?.rich_text?.[0]?.plain_text ?? '',
+    content: (page.properties['任務內容']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    direction: (page.properties['AI需求']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    aiPlan: (page.properties['AI規劃']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    attachments: (() => {
+      try {
+        const raw = (page.properties['附件']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
+        return raw ? JSON.parse(raw) : []
+      } catch { return [] }
+    })(),
     freq: '當日',
   }))
 }

@@ -142,6 +142,8 @@ export default function Page() {
   const [detailContent, setDetailContent] = useState('')
   const [detailDirection, setDetailDirection] = useState('')
   const [savingDetail, setSavingDetail] = useState(false)
+  const [saveDetailOk, setSaveDetailOk] = useState(false)
+  const [saveDetailErr, setSaveDetailErr] = useState('')
 
   // 任務附件
   const [detailAttachments, setDetailAttachments] = useState<TaskAttachment[]>([])
@@ -810,7 +812,7 @@ export default function Page() {
 
   // 開啟/關閉任務詳情面板
   function toggleDetail(t: DailyTask) {
-    if (detailId === t.id) { setDetailId(null); return }
+    if (detailId === t.id) { setDetailId(null); setSaveDetailOk(false); setSaveDetailErr(''); return }
     setDetailId(t.id)
     setDetailContent(t.content ?? '')
     setDetailDirection(t.direction ?? '')
@@ -818,6 +820,8 @@ export default function Page() {
     setAiUsedKb([])
     setAiPlanSaved(!!(t.aiPlan ?? '').trim())
     setDetailAttachments(t.attachments ?? [])
+    setSaveDetailOk(false)
+    setSaveDetailErr('')
   }
 
   // AI 規劃：思考 + 查知識庫 + 上網搜尋（生成後由使用者決定是否存入 Notion）
@@ -862,15 +866,25 @@ export default function Page() {
   // 儲存任務詳情（內容 / 進度方向 / 附件）
   async function saveDetail(taskId: string) {
     setSavingDetail(true)
+    setSaveDetailOk(false)
+    setSaveDetailErr('')
     setDailyAll(prev => prev.map(x => x.id === taskId ? { ...x, content: detailContent, direction: detailDirection, attachments: detailAttachments } : x))
     setInProgressTasks(prev => prev.map(x => x.id === taskId ? { ...x, content: detailContent, direction: detailDirection, attachments: detailAttachments } : x))
     try {
-      await fetch('/api/daily-tasks', {
+      const r = await fetch('/api/daily-tasks', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: taskId, content: detailContent, direction: detailDirection, attachments: detailAttachments }),
       })
-      setDetailId(null)
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        setSaveDetailErr(d.error ?? '儲存失敗，請檢查 Notion 欄位是否存在')
+      } else {
+        setSaveDetailOk(true)
+        setTimeout(() => setSaveDetailOk(false), 2000)
+      }
+    } catch (e: any) {
+      setSaveDetailErr(e.message ?? '網路錯誤')
     } finally { setSavingDetail(false) }
   }
 
@@ -1030,12 +1044,14 @@ export default function Page() {
             placeholder={'清楚說明要 AI 做什麼，越具體越準：\n① 想要的產出（規劃步驟／找廠商／寫文案／比價…）\n② 限制（預算、時間、地點、規格、數量）\n③ 偏好或方向\n例：幫我規劃這支產品影片的拍攝流程，並找台中 3 家能配合的攝影團隊比價，預算 2 萬內。'}
             className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => saveDetail(t.id)} disabled={savingDetail}
             className="bg-indigo-600 text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:bg-indigo-700 disabled:opacity-40">
             {savingDetail ? '儲存中...' : '儲存'}
           </button>
-          <button onClick={() => setDetailId(null)} className="text-xs text-gray-400 hover:text-gray-600 px-1">取消</button>
+          {saveDetailOk && <span className="text-xs text-green-600 font-medium">✓ 已儲存</span>}
+          {saveDetailErr && <span className="text-xs text-red-500">{saveDetailErr}</span>}
+          <button onClick={() => { setDetailId(null); setSaveDetailOk(false); setSaveDetailErr('') }} className="text-xs text-gray-400 hover:text-gray-600 px-1">關閉</button>
           <button onClick={() => runAiPlan(t)} disabled={aiPlanning}
             className="ml-auto bg-blue-600 text-white rounded px-3 py-1 text-xs font-medium hover:bg-blue-700 disabled:opacity-40">
             {aiPlanning ? 'AI 思考中…' : '🤖 開始 AI 規劃'}
