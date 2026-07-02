@@ -18,8 +18,18 @@ const INACTIVE_STATUSES = ['完成', '請款中含保留款']
 const DAILY_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
 const PROJECT_ASSIGNEES = ['', '黃文彬', '王志先', '廖淑慧', '呂理論', '呂敏紅']
 const DAILY_STATUS_CYCLE = ['進行中', '完成']
+const PROJECT_COLORS_LIST = [
+  { label: '藍', bg: '#AEC6E8', text: '#1A5276' },
+  { label: '綠', bg: '#A8D5A2', text: '#1A5E2A' },
+  { label: '橘', bg: '#F7C59F', text: '#935116' },
+  { label: '紫', bg: '#D5A6E0', text: '#6C3483' },
+  { label: '紅', bg: '#F1948A', text: '#7B241C' },
+  { label: '黃', bg: '#F9E79F', text: '#7D6608' },
+  { label: '灰', bg: '#D5D8DC', text: '#424949' },
+  { label: '粉', bg: '#F5CBA7', text: '#784212' },
+]
 
-type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string }
+type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard'
@@ -96,6 +106,7 @@ export default function Page() {
   const [personSubFilter, setPersonSubFilter] = useState<string | null>(null)
   const [projectDetail, setProjectDetail] = useState<any>(null)
   const [projectDetailLoading, setProjectDetailLoading] = useState(false)
+  const [colorPickerOpenId, setColorPickerOpenId] = useState<string | null>(null)
 
   // 知識庫同步
   const [kbSyncing, setKbSyncing] = useState(false)
@@ -167,6 +178,12 @@ export default function Page() {
   const [itemList, setItemList] = useState<any[]>([])
 
   useEffect(() => { fetchProjects(); fetchDailyTasks() }, [])
+  useEffect(() => {
+    if (!colorPickerOpenId) return
+    const handler = () => setColorPickerOpenId(null)
+    document.addEventListener('click', handler)
+    return () => document.removeEventListener('click', handler)
+  }, [colorPickerOpenId])
 
   // 逾期 / 今天到期標記
   function dueBadge(t: DailyTask): { label: string; cls: string } | null {
@@ -1186,8 +1203,32 @@ export default function Page() {
                   )}
                   {filtered.map(p => (
                     <div key={p.id}
-                      className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 hover:border-gray-400 transition-colors flex items-center gap-3">
-                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => selectProject(p)}>
+                      className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 hover:border-gray-400 transition-colors flex items-center gap-3"
+                      style={p.color ? { borderLeftWidth: 4, borderLeftColor: p.color } : {}}>
+                      {/* 顏色圓點 + picker */}
+                      <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
+                        <button
+                          title="設定案件顏色"
+                          onClick={() => setColorPickerOpenId(colorPickerOpenId === p.id ? null : p.id)}
+                          className="w-5 h-5 rounded-full border-2 border-white shadow transition-transform hover:scale-110"
+                          style={{ background: p.color || '#D5D8DC' }} />
+                        {colorPickerOpenId === p.id && (
+                          <div className="absolute left-0 top-7 z-20 bg-white border border-gray-200 rounded-xl shadow-lg p-2 grid grid-cols-4 gap-1.5 w-28">
+                            {PROJECT_COLORS_LIST.map(c => (
+                              <button key={c.bg} title={c.label}
+                                onClick={() => {
+                                  const color = p.color === c.bg ? '' : c.bg
+                                  setProjects(prev => prev.map(x => x.id === p.id ? { ...x, color } : x))
+                                  setColorPickerOpenId(null)
+                                  fetch('/api/projects', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, color }) })
+                                }}
+                                className="w-5 h-5 rounded-full border-2 transition-transform hover:scale-125"
+                                style={{ background: c.bg, borderColor: p.color === c.bg ? '#1A1A1A' : 'transparent' }} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { setColorPickerOpenId(null); selectProject(p) }}>
                         <p className="font-medium text-gray-900 truncate">{p.name}</p>
                         <p className="text-sm text-gray-500 mt-0.5 truncate">{p.contact}{p.address ? ` · ${p.address}` : ''}</p>
                       </div>

@@ -25,6 +25,7 @@ export async function getActiveProjects() {
     contact: page.properties['聯絡人']?.rich_text?.[0]?.plain_text ?? '',
     address: page.properties['地址']?.rich_text?.[0]?.plain_text ?? '',
     assignee: page.properties['負責人']?.rich_text?.[0]?.plain_text ?? '',
+    color: page.properties['顏色']?.rich_text?.[0]?.plain_text ?? '',
   }))
 }
 
@@ -242,6 +243,13 @@ export async function updateProjectAssignee(pageId: string, assignee: string) {
   await notion.pages.update({
     page_id: pageId,
     properties: { 負責人: { rich_text: [{ text: { content: assignee } }] } },
+  })
+}
+
+export async function updateProjectColor(pageId: string, color: string) {
+  await notion.pages.update({
+    page_id: pageId,
+    properties: { 顏色: { rich_text: [{ text: { content: color } }] } },
   })
 }
 
