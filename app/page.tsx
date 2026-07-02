@@ -1186,8 +1186,8 @@ export default function Page() {
                 const prevMon = () => { const d = new Date(gy, gm - 2, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
                 const nextMon = () => { const d = new Date(gy, gm, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
                 const activeProj = projects.filter(p => !INACTIVE_STATUSES.includes(p.status))
-                const CELL_W = 26
-                const NAME_W = 96
+                const CELL_W = 30
+                const NAME_W = 120
 
                 // ── 排程資料（每個案件各自存 schedule，畫面合併成一張表）──
                 function parseSchedule(p: Project): Record<string, string> {
@@ -1312,7 +1312,7 @@ export default function Page() {
                           <table className="border-collapse" style={{ minWidth: NAME_W + daysInMonth * CELL_W }}>
                             <thead>
                               <tr>
-                                <th className="text-left text-xs font-medium text-gray-400 pb-2 pr-2" style={{ width: NAME_W, minWidth: NAME_W }}>流程</th>
+                                <th className="text-left text-sm font-medium text-gray-400 pb-2 pr-2" style={{ width: NAME_W, minWidth: NAME_W }}>流程</th>
                                 {days.map(d => {
                                   const ds = `${ganttMonth}-${String(d).padStart(2,'0')}`
                                   const isToday = ds === todayStr
@@ -1320,7 +1320,7 @@ export default function Page() {
                                   const isWknd = dow === 0 || dow === 6
                                   return (
                                     <th key={d} style={{ width: CELL_W, minWidth: CELL_W }}
-                                      className={`text-center pb-2 text-xs font-medium ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-400'}`}>
+                                      className={`text-center pb-2 text-sm font-medium ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-400'}`}>
                                       {d}
                                     </th>
                                   )
@@ -1332,13 +1332,13 @@ export default function Page() {
                                 ['AM', 'PM'].map((ampm, ai) => (
                                   <tr key={`${procIdx}-${ampm}`} className={procIdx % 2 === 0 ? 'bg-gray-50/40' : ''}>
                                     <td className="whitespace-nowrap pr-2" style={{ width: NAME_W, minWidth: NAME_W }}>
-                                      <div className="flex items-center gap-1 text-xs">
+                                      <div className="flex items-center gap-1.5 text-sm">
                                         {ai === 0 ? (
-                                          <span className="text-gray-700 font-medium" style={{ minWidth: 48, display: 'inline-block' }}>{proc}</span>
+                                          <span className="text-gray-700 font-semibold" style={{ minWidth: 56, display: 'inline-block' }}>{proc}</span>
                                         ) : (
-                                          <span style={{ minWidth: 48, display: 'inline-block' }} />
+                                          <span style={{ minWidth: 56, display: 'inline-block' }} />
                                         )}
-                                        <span className={`text-[10px] px-1 py-0.5 rounded ${ampm === 'AM' ? 'bg-sky-50 text-sky-600' : 'bg-orange-50 text-orange-600'}`}>{ampm}</span>
+                                        <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${ampm === 'AM' ? 'bg-sky-50 text-sky-600' : 'bg-orange-50 text-orange-600'}`}>{ampm}</span>
                                       </div>
                                     </td>
                                     {days.map(d => {
@@ -1365,7 +1365,7 @@ export default function Page() {
                                             width: CELL_W,
                                             background: owner ? owner.color : isAnchor ? '#C7D2FE' : isWknd ? '#F3F0FF22' : 'transparent',
                                           }}>
-                                          <div className="h-5 flex items-center justify-center text-[9px] leading-none text-gray-800 overflow-hidden">{owner?.text ?? ''}</div>
+                                          <div className="h-8 flex items-center justify-center text-[11px] leading-none text-gray-800 overflow-hidden">{owner?.text ?? ''}</div>
                                         </td>
                                       )
                                     })}
