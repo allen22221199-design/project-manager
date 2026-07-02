@@ -115,6 +115,7 @@ export default function Page() {
     return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}`
   })
   const [ganttActiveProject, setGanttActiveProject] = useState<string | null>(null)
+  const [ganttRangeStart, setGanttRangeStart] = useState<{ procIdx: number; ampm: string; date: string } | null>(null)
 
   // 知識庫同步
   const [kbSyncing, setKbSyncing] = useState(false)
@@ -1208,22 +1209,50 @@ export default function Page() {
                   for (const k in s) owners[k] = { pid: p.id, color: p.color || '#AEC6E8', name: p.name, text: s[k] }
                 }
 
-                // 點一格：用目前選取的案件上色 / 清除 / 改指派
-                function paintCell(key: string) {
+                // 點格子：第一下設起點，第二下（同一列）設終點 → 整段一次填起來
+                function handleCellClick(procIdx: number, ampm: string, ds: string) {
                   if (!ganttActiveProject) return
+                  if (!ganttRangeStart || ganttRangeStart.procIdx !== procIdx || ganttRangeStart.ampm !== ampm) {
+                    // 尚未設起點，或點到不同列 → 設為新的起點
+                    setGanttRangeStart({ procIdx, ampm, date: ds })
+                  } else {
+                    // 同一列的第二下 → 套用範圍
+                    applyRange(procIdx, ampm, ganttRangeStart.date, ds)
+                    setGanttRangeStart(null)
+                  }
+                }
+                // 對某列 [d1..d2] 整段填色 / 清除（依起點格目前狀態決定）
+                function applyRange(procIdx: number, ampm: string, d1: string, d2: string) {
                   const ap = activeProj.find(p => p.id === ganttActiveProject)
                   if (!ap) return
-                  const owner = owners[key]
-                  if (owner && owner.pid === ap.id) {
-                    // 已是此案件 → 清除
-                    const s = parseSchedule(ap); delete s[key]; saveSchedule(ap, s)
-                  } else {
-                    // 若被別的案件佔用，先移除
-                    if (owner) {
-                      const op = activeProj.find(p => p.id === owner.pid)
-                      if (op) { const os = parseSchedule(op); delete os[key]; saveSchedule(op, os) }
+                  const lo = d1 <= d2 ? d1 : d2
+                  const hi = d1 <= d2 ? d2 : d1
+                  const startKey = cellKey(procIdx, ampm, d1)
+                  const clearMode = owners[startKey]?.pid === ap.id  // 起點已是此案件 → 清除整段
+                  const apSched = parseSchedule(ap)
+                  const otherEdits: Record<string, Record<string, string>> = {}
+                  for (const d of days) {
+                    const ds = `${ganttMonth}-${String(d).padStart(2, '0')}`
+                    if (ds < lo || ds > hi) continue
+                    const key = cellKey(procIdx, ampm, ds)
+                    if (clearMode) {
+                      if (owners[key]?.pid === ap.id) delete apSched[key]
+                    } else {
+                      const ow = owners[key]
+                      if (ow && ow.pid !== ap.id) {
+                        const op = activeProj.find(p => p.id === ow.pid)
+                        if (op) {
+                          if (!otherEdits[op.id]) otherEdits[op.id] = parseSchedule(op)
+                          delete otherEdits[op.id][key]
+                        }
+                      }
+                      if (!(key in apSched)) apSched[key] = ''
                     }
-                    const s = parseSchedule(ap); s[key] = ''; saveSchedule(ap, s)
+                  }
+                  saveSchedule(ap, apSched)
+                  for (const pid in otherEdits) {
+                    const op = activeProj.find(p => p.id === pid)
+                    if (op) saveSchedule(op, otherEdits[pid])
                   }
                 }
                 // 雙擊：編輯格內小字（寫到擁有者，或目前選取案件）
@@ -1244,13 +1273,17 @@ export default function Page() {
                     <div className="flex items-center justify-between mb-3">
                       <div>
                         <p className="text-sm font-medium text-gray-700">流程排程表</p>
-                        <p className="text-xs text-gray-400 mt-0.5">先點下方案件色塊選定，再單擊格子上色、雙擊加小字</p>
+                        {ganttRangeStart ? (
+                          <p className="text-xs text-indigo-500 mt-0.5">已設起點，點選同一列的結束格 → 整段填色（雙擊格子加小字）</p>
+                        ) : (
+                          <p className="text-xs text-gray-400 mt-0.5">先選下方案件，再點「起點」格、再點「結束」格 → 一整排填起來</p>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <button onClick={() => setGanttMonth(prevMon())}
+                        <button onClick={() => { setGanttRangeStart(null); setGanttMonth(prevMon()) }}
                           className="w-7 h-7 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 text-sm flex items-center justify-center">‹</button>
                         <span className="text-sm font-medium text-gray-700 w-20 text-center">{gy}年{gm}月</span>
-                        <button onClick={() => setGanttMonth(nextMon())}
+                        <button onClick={() => { setGanttRangeStart(null); setGanttMonth(nextMon()) }}
                           className="w-7 h-7 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 text-sm flex items-center justify-center">›</button>
                       </div>
                     </div>
@@ -1265,7 +1298,7 @@ export default function Page() {
                             const sel = ganttActiveProject === p.id
                             return (
                               <button key={p.id}
-                                onClick={() => setGanttActiveProject(sel ? null : p.id)}
+                                onClick={() => { setGanttRangeStart(null); setGanttActiveProject(sel ? null : p.id) }}
                                 className={`text-xs px-2.5 py-1 rounded-full font-medium border transition-all ${sel ? 'ring-2 ring-offset-1 ring-indigo-400 border-transparent' : 'border-gray-200 hover:border-gray-400'}`}
                                 style={{ background: sel ? (p.color || '#AEC6E8') : `${p.color || '#AEC6E8'}33`, color: sel ? '#1a1a1a' : '#555' }}>
                                 <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ background: p.color || '#AEC6E8' }} />
@@ -1315,21 +1348,22 @@ export default function Page() {
                                       const isWknd = dow === 0 || dow === 6
                                       const key = cellKey(procIdx, ampm, ds)
                                       const owner = owners[key]
+                                      const isAnchor = ganttRangeStart?.procIdx === procIdx && ganttRangeStart?.ampm === ampm && ganttRangeStart?.date === ds
                                       return (
                                         <td key={d}
                                           onClick={() => {
                                             if (ganttCellTimer.current) return
-                                            ganttCellTimer.current = setTimeout(() => { ganttCellTimer.current = null; paintCell(key) }, 200)
+                                            ganttCellTimer.current = setTimeout(() => { ganttCellTimer.current = null; handleCellClick(procIdx, ampm, ds) }, 200)
                                           }}
                                           onDoubleClick={() => {
                                             if (ganttCellTimer.current) { clearTimeout(ganttCellTimer.current); ganttCellTimer.current = null }
                                             editCellText(key)
                                           }}
-                                          title={owner ? `${owner.name}${owner.text ? '：' + owner.text : ''}（單擊清除／改指派・雙擊編輯小字）` : ganttActiveProject ? '單擊上色・雙擊加小字' : '請先選擇上方案件'}
-                                          className={`cursor-pointer border border-gray-100 hover:opacity-70 ${isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
+                                          title={owner ? `${owner.name}${owner.text ? '：' + owner.text : ''}（點起點格再點結束格可整段清除・雙擊編輯小字）` : ganttActiveProject ? '點起點格 → 再點結束格 → 整段填色（雙擊加小字）' : '請先選擇上方案件'}
+                                          className={`cursor-pointer border border-gray-100 hover:opacity-70 ${isAnchor ? 'ring-2 ring-inset ring-indigo-500' : isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
                                           style={{
                                             width: CELL_W,
-                                            background: owner ? owner.color : isWknd ? '#F3F0FF22' : 'transparent',
+                                            background: owner ? owner.color : isAnchor ? '#C7D2FE' : isWknd ? '#F3F0FF22' : 'transparent',
                                           }}>
                                           <div className="h-5 flex items-center justify-center text-[9px] leading-none text-gray-800 overflow-hidden">{owner?.text ?? ''}</div>
                                         </td>
