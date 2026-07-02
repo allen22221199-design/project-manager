@@ -249,26 +249,48 @@ export async function updateProjectAssignee(pageId: string, assignee: string) {
   })
 }
 
+// 案件資料庫可能缺少的自訂欄位，其對應的建立定義（供自動補建）
+const PROJECT_PROP_SCHEMA: Record<string, any> = {
+  顏色: { rich_text: {} },
+  排程: { rich_text: {} },
+  甘特開始: { date: {} },
+  甘特結束: { date: {} },
+}
+
+// 更新案件頁面屬性；若遇到「某欄位不存在」，自動在資料庫建立該欄位再重試
+async function updateProjectProps(pageId: string, properties: any, attempts = 0): Promise<void> {
+  try {
+    await notion.pages.update({ page_id: pageId, properties })
+  } catch (e: any) {
+    const msg = String(e?.message ?? e)
+    if (msg.includes('archived')) return
+    const m = msg.match(/(.+?) is not a property that exists/)
+    if (m && attempts < 6) {
+      const missing = m[1].trim()
+      const def = PROJECT_PROP_SCHEMA[missing]
+      if (def) {
+        // 在資料庫 schema 補建該欄位，再重試整筆更新
+        await notion.databases.update({ database_id: DATABASE_ID, properties: { [missing]: def } })
+        return updateProjectProps(pageId, properties, attempts + 1)
+      }
+    }
+    throw e
+  }
+}
+
 export async function updateProjectColor(pageId: string, color: string) {
-  await notion.pages.update({
-    page_id: pageId,
-    properties: { 顏色: { rich_text: [{ text: { content: color } }] } },
-  })
+  await updateProjectProps(pageId, { 顏色: { rich_text: [{ text: { content: color } }] } })
 }
 
 export async function updateProjectGantt(pageId: string, ganttStart: string, ganttEnd: string) {
-  const props: any = {
+  await updateProjectProps(pageId, {
     甘特開始: ganttStart ? { date: { start: ganttStart } } : { date: null },
     甘特結束: ganttEnd ? { date: { start: ganttEnd } } : { date: null },
-  }
-  await notion.pages.update({ page_id: pageId, properties: props })
+  })
 }
 
 export async function updateProjectSchedule(pageId: string, schedule: string) {
-  await notion.pages.update({
-    page_id: pageId,
-    properties: { 排程: { rich_text: toRichText(schedule) } },
-  })
+  await updateProjectProps(pageId, { 排程: { rich_text: toRichText(schedule) } })
 }
 
 export async function deleteProject(pageId: string) {
