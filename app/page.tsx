@@ -35,9 +35,13 @@ function taskTags(text?: string): TaskTag[] {
   if (!text) return []
   const t = text.toLowerCase()
   const tags: TaskTag[] = []
-  if (DEPENDENCY_KEYWORDS.some(k => t.includes(k.toLowerCase()))) tags.push({ label: '🔗 協作', cls: 'bg-amber-100 text-amber-700' })
-  if (DRAWING_KEYWORDS.some(k => t.includes(k.toLowerCase()))) tags.push({ label: '📐 丈量繪圖', cls: 'bg-teal-100 text-teal-700' })
+  if (DEPENDENCY_KEYWORDS.some(k => t.includes(k.toLowerCase()))) tags.push({ label: '🔗 協作', cls: 'bg-red-100 text-red-700' })
+  if (DRAWING_KEYWORDS.some(k => t.includes(k.toLowerCase()))) tags.push({ label: '📐 丈量繪圖', cls: 'bg-red-100 text-red-700' })
   return tags
+}
+// 是否為需標紅的任務（急件 或 任一分類）
+function isFlaggedTask(text?: string): boolean {
+  return isUrgentTask(text) || taskTags(text).length > 0
 }
 const PROJECT_COLORS_LIST = [
   { label: '藍', bg: '#AEC6E8', text: '#1A5276' },
@@ -1781,7 +1785,7 @@ export default function Page() {
                         fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, status: next }) })
                       }
                       const renderTaskRow = (t: DailyTask) => (
-                        <div key={t.id} className={`border-b border-blue-100 last:border-0 ${isUrgentTask(t.task) && t.status !== '完成' ? 'bg-red-50 -mx-2 px-2 rounded' : ''}`}>
+                        <div key={t.id} className={`border-b border-blue-100 last:border-0 ${isFlaggedTask(t.task) && t.status !== '完成' ? 'bg-red-50 -mx-2 px-2 rounded' : ''}`}>
                           <div className="flex items-center gap-3 text-base py-2.5 group">
                             {isUrgentTask(t.task) && t.status !== '完成' && <span className="shrink-0" title="急件">🔥</span>}
                             {t.status !== '完成' && taskTags(t.task).map(tag => (
@@ -2272,7 +2276,7 @@ export default function Page() {
                               <div draggable={editingId !== t.id}
                                 onDragStart={() => setDraggingId(t.id)}
                                 onDragEnd={() => { setDraggingId(null); setDragOverPerson(null) }}
-                                className={`flex items-start gap-2 text-sm border rounded-lg px-1.5 py-1 group ${isUrgentTask(t.task) && t.status !== '完成' ? 'border-red-200 bg-red-50 hover:bg-red-100' : 'border-transparent hover:border-gray-200 hover:bg-gray-50'} ${editingId === t.id ? '' : 'cursor-grab active:cursor-grabbing'}`}>
+                                className={`flex items-start gap-2 text-sm border rounded-lg px-1.5 py-1 group ${isFlaggedTask(t.task) && t.status !== '完成' ? 'border-red-200 bg-red-50 hover:bg-red-100' : 'border-transparent hover:border-gray-200 hover:bg-gray-50'} ${editingId === t.id ? '' : 'cursor-grab active:cursor-grabbing'}`}>
                                 {isUrgentTask(t.task) && t.status !== '完成' && <span className="shrink-0 mt-0.5" title="急件">🔥</span>}
                                 {t.status !== '完成' && taskTags(t.task).map(tag => (
                                   <span key={tag.label} className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 mt-0.5 font-medium ${tag.cls}`}>{tag.label}</span>
