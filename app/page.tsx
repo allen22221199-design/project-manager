@@ -66,7 +66,7 @@ type Project = { id: string; name: string; status: string; contact: string; addr
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private'
-type PrivateEvent = { id: string; title: string; date: string; note?: string }
+type PrivateEvent = { id: string; title: string; date: string; note?: string; time?: string; allDay?: boolean }
 type FileResult = { title: string; name: string; url: string }
 type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[] }
 type TaskAttachment = { name: string; url: string }
@@ -137,6 +137,7 @@ export default function Page() {
     const n = new Date(Date.now() + 8 * 3600 * 1000)
     return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}`
   })
+  const [agendaDate, setAgendaDate] = useState(() => new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10))
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOverPerson, setDragOverPerson] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -2580,7 +2581,7 @@ export default function Page() {
                 <div>
                   <p className="text-base font-semibold text-gray-900">🔐 私人行事曆</p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {gcalConnected ? '已連結 Google 日曆，雙向同步 · 點日期新增、點行程可編輯／刪除' : '只有登入的你看得到'}
+                    {gcalConnected ? '已連結 Google 日曆，雙向同步 · 點日期選取當天、下方清單可新增／編輯' : '只有登入的你看得到'}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -2606,6 +2607,38 @@ export default function Page() {
                 </div>
               )}
 
+              {/* 每日行程待辦 */}
+              {gcalConnected && (
+                <div className="mb-4 border border-gray-200 rounded-xl p-3 bg-gray-50/60">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <span className="text-sm font-semibold text-gray-800">📋 每日行程待辦</span>
+                    <input type="date" value={agendaDate}
+                      onChange={e => { const v = e.target.value; if (!v) return; setAgendaDate(v); setPrivateMonth(v.slice(0, 7)) }}
+                      className="text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-400" />
+                    {gcalLoading && <span className="text-xs text-gray-400">讀取中…</span>}
+                    <button onClick={() => addPrivateEvent(agendaDate)}
+                      className="ml-auto text-xs bg-indigo-600 text-white rounded px-2.5 py-1 hover:bg-indigo-700">＋ 新增行程</button>
+                  </div>
+                  {(() => {
+                    const list = privateEvents.filter(e => e.date === agendaDate)
+                      .sort((a, b) => (a.allDay === b.allDay ? (a.time || '').localeCompare(b.time || '') : (a.allDay ? -1 : 1)))
+                    if (list.length === 0) return <p className="text-xs text-gray-400 py-2">這天還沒有行程，點「＋ 新增行程」加入</p>
+                    return (
+                      <div className="space-y-1">
+                        {list.map(ev => (
+                          <button key={ev.id} onClick={() => editPrivateEvent(ev)}
+                            className="w-full flex items-center gap-2 text-left bg-white border border-gray-100 rounded-lg px-2.5 py-1.5 hover:border-indigo-300 transition-colors">
+                            <span className={`text-xs font-medium shrink-0 w-12 text-center rounded px-1 py-0.5 ${ev.allDay ? 'bg-purple-50 text-purple-600' : 'bg-indigo-50 text-indigo-600'}`}>{ev.allDay ? '全天' : (ev.time || '—')}</span>
+                            <span className="text-sm text-gray-800 flex-1 truncate">{ev.title}</span>
+                            {ev.note && <span className="text-xs text-gray-400 shrink-0 truncate max-w-[35%]">{ev.note}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
+
               <div className={`grid grid-cols-7 gap-1 ${gcalConnected === false ? 'opacity-40 pointer-events-none' : ''}`}>
                 {['日','一','二','三','四','五','六'].map((w, i) => (
                   <div key={w} className={`text-center text-xs font-medium pb-1 ${i === 0 || i === 6 ? 'text-purple-400' : 'text-gray-400'}`}>{w}</div>
@@ -2614,19 +2647,20 @@ export default function Page() {
                   if (d === null) return <div key={i} className="min-h-[84px]" />
                   const ds = `${privateMonth}-${String(d).padStart(2,'0')}`
                   const isToday = ds === todayStr
+                  const isSelected = ds === agendaDate
                   const dow = new Date(ds).getDay()
                   const isWknd = dow === 0 || dow === 6
                   const evs = eventsOn(d)
                   return (
-                    <div key={i} onClick={() => addPrivateEvent(ds)}
-                      className={`min-h-[84px] border rounded-lg p-1 cursor-pointer transition-colors ${isToday ? 'border-indigo-300 bg-indigo-50/40' : 'border-gray-100 hover:border-gray-300'} ${isWknd ? 'bg-purple-50/30' : ''}`}>
+                    <div key={i} onClick={() => setAgendaDate(ds)}
+                      className={`min-h-[84px] border rounded-lg p-1 cursor-pointer transition-colors ${isSelected ? 'border-indigo-500 ring-1 ring-indigo-300 bg-indigo-50/60' : isToday ? 'border-indigo-300 bg-indigo-50/40' : 'border-gray-100 hover:border-gray-300'} ${isWknd && !isSelected ? 'bg-purple-50/30' : ''}`}>
                       <div className={`text-xs font-medium mb-1 ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-500'}`}>{d}</div>
                       <div className="space-y-0.5">
                         {evs.map(ev => (
                           <div key={ev.id} onClick={e => { e.stopPropagation(); editPrivateEvent(ev) }}
                             title={ev.note || ev.title}
                             className="text-[11px] leading-tight px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 truncate hover:bg-indigo-200">
-                            {ev.title}
+                            {!ev.allDay && ev.time ? `${ev.time} ` : ''}{ev.title}
                           </div>
                         ))}
                       </div>

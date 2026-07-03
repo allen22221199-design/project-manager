@@ -58,7 +58,7 @@ export async function refreshAccessToken(refreshToken: string) {
   return data.access_token as string
 }
 
-type GEvent = { id: string; title: string; date: string; note?: string }
+type GEvent = { id: string; title: string; date: string; note?: string; time?: string; allDay?: boolean }
 
 // 列出某區間的事件（timeMin/timeMax 為 ISO 日期）
 export async function listEvents(accessToken: string, timeMin: string, timeMax: string): Promise<GEvent[]> {
@@ -70,12 +70,18 @@ export async function listEvents(accessToken: string, timeMin: string, timeMax: 
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error?.message || '讀取事件失敗')
-  return (data.items ?? []).map((e: any) => ({
-    id: e.id,
-    title: e.summary ?? '(無標題)',
-    date: e.start?.date ?? (e.start?.dateTime ? e.start.dateTime.slice(0, 10) : ''),
-    note: e.description ?? '',
-  }))
+  return (data.items ?? []).map((e: any) => {
+    const allDay = !!e.start?.date
+    const dt = e.start?.dateTime as string | undefined
+    return {
+      id: e.id,
+      title: e.summary ?? '(無標題)',
+      date: e.start?.date ?? (dt ? dt.slice(0, 10) : ''),
+      time: allDay ? '' : (dt ? dt.slice(11, 16) : ''),
+      allDay,
+      note: e.description ?? '',
+    }
+  })
 }
 
 // 新增全天事件（end.date 為隔天，Google 全天事件結束日為排他）
