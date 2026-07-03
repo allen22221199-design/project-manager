@@ -26,6 +26,19 @@ function isUrgentTask(text?: string): boolean {
   const t = text.toLowerCase()
   return URGENT_KEYWORDS.some(k => t.includes(k.toLowerCase()))
 }
+
+// 其他分類：協作（需他人先完成才能接續）、丈量繪圖
+const DEPENDENCY_KEYWORDS = ['協作', '後續', '完成後', '才能', '無法執行', '無法進行', '需配合', '需要配合', '等待', '銜接', '交接', '上游', '對方', '依賴', '接續']
+const DRAWING_KEYWORDS = ['丈量', '量測', '測量', '放樣', '畫圖', '製圖', '繪圖', '出圖', '圖面', 'CAD']
+type TaskTag = { label: string; cls: string }
+function taskTags(text?: string): TaskTag[] {
+  if (!text) return []
+  const t = text.toLowerCase()
+  const tags: TaskTag[] = []
+  if (DEPENDENCY_KEYWORDS.some(k => t.includes(k.toLowerCase()))) tags.push({ label: '🔗 協作', cls: 'bg-amber-100 text-amber-700' })
+  if (DRAWING_KEYWORDS.some(k => t.includes(k.toLowerCase()))) tags.push({ label: '📐 丈量繪圖', cls: 'bg-teal-100 text-teal-700' })
+  return tags
+}
 const PROJECT_COLORS_LIST = [
   { label: '藍', bg: '#AEC6E8', text: '#1A5276' },
   { label: '綠', bg: '#A8D5A2', text: '#1A5E2A' },
@@ -1771,6 +1784,9 @@ export default function Page() {
                         <div key={t.id} className={`border-b border-blue-100 last:border-0 ${isUrgentTask(t.task) && t.status !== '完成' ? 'bg-red-50 -mx-2 px-2 rounded' : ''}`}>
                           <div className="flex items-center gap-3 text-base py-2.5 group">
                             {isUrgentTask(t.task) && t.status !== '完成' && <span className="shrink-0" title="急件">🔥</span>}
+                            {t.status !== '完成' && taskTags(t.task).map(tag => (
+                              <span key={tag.label} className={`text-xs px-1.5 py-0.5 rounded shrink-0 font-medium ${tag.cls}`}>{tag.label}</span>
+                            ))}
                             <button onClick={() => toggleDone(t)}
                               className={`text-sm px-2.5 py-1 rounded-md shrink-0 cursor-pointer font-medium transition-colors ${t.status === '完成' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
                               {t.status}
@@ -2258,6 +2274,9 @@ export default function Page() {
                                 onDragEnd={() => { setDraggingId(null); setDragOverPerson(null) }}
                                 className={`flex items-start gap-2 text-sm border rounded-lg px-1.5 py-1 group ${isUrgentTask(t.task) && t.status !== '完成' ? 'border-red-200 bg-red-50 hover:bg-red-100' : 'border-transparent hover:border-gray-200 hover:bg-gray-50'} ${editingId === t.id ? '' : 'cursor-grab active:cursor-grabbing'}`}>
                                 {isUrgentTask(t.task) && t.status !== '完成' && <span className="shrink-0 mt-0.5" title="急件">🔥</span>}
+                                {t.status !== '完成' && taskTags(t.task).map(tag => (
+                                  <span key={tag.label} className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 mt-0.5 font-medium ${tag.cls}`}>{tag.label}</span>
+                                ))}
                                 <button onClick={() => cycleStatus(t)} title="點擊切換狀態"
                                   className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' || t.status === '已完成' ? 'bg-green-100 text-green-700' : t.status === '進行中' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
                                   {t.status}
