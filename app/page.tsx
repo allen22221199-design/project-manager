@@ -1927,17 +1927,26 @@ export default function Page() {
                 {dailyTaskResults.length > 0 && (
                   <div className="mt-4">
                     <p className="text-xs font-medium text-gray-400 mb-2 px-1">今日工作項目 ({dailyTaskResults.length})</p>
-                    {dailyTaskResults.map(t => (
-                      <div key={t.id} className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-3 mb-2 flex items-start gap-2">
+                    {dailyTaskResults.map(t => {
+                      const flagged = isFlaggedTask(t.task) && t.status !== '完成' && t.status !== '已封存'
+                      return (
+                      <div key={t.id} className={`border rounded-xl shadow-sm p-3 mb-2 flex items-start gap-2 ${flagged ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200/70'}`}>
                         <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' || t.status === '已封存' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
                           {t.status}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-gray-700">{t.task}</p>
+                          <p className="text-sm text-gray-700">
+                            {flagged && isUrgentTask(t.task) && <span className="mr-1" title="急件">🔥</span>}
+                            {t.task}
+                            {flagged && taskTags(t.task).map(tag => (
+                              <span key={tag.label} className={`ml-1 text-[10px] px-1.5 py-0.5 rounded font-medium ${tag.cls}`}>{tag.label}</span>
+                            ))}
+                          </p>
                           <p className="text-xs text-gray-400 mt-0.5">{t.person} · {t.date}</p>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
 
