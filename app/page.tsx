@@ -142,6 +142,8 @@ export default function Page() {
   })
   const [agendaDate, setAgendaDate] = useState(() => new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10))
   const [privatePersonTasks, setPrivatePersonTasks] = useState<DailyTask[]>([])
+  const [showPrivateDone, setShowPrivateDone] = useState(false)
+  const [addingPrivateTask, setAddingPrivateTask] = useState(false)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOverPerson, setDragOverPerson] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -287,6 +289,24 @@ export default function Page() {
     const next = t.status === '完成' ? '進行中' : '完成'
     setPrivatePersonTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
     fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, status: next }) })
+  }
+  async function addPrivatePersonTask() {
+    const task = window.prompt(`新增 ${PRIVATE_PERSON_LABEL} 的工作項目：`)
+    if (!task?.trim() || addingPrivateTask) return
+    setAddingPrivateTask(true)
+    try {
+      const today = todayISO()
+      await fetch('/api/daily-tasks', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ person: PRIVATE_PERSON, task: task.trim(), date: today }),
+      })
+      await fetchPrivatePersonTasks()
+    } finally { setAddingPrivateTask(false) }
+  }
+  async function deletePrivatePersonTask(t: DailyTask) {
+    if (!window.confirm(`確定刪除「${t.task}」嗎？`)) return
+    setPrivatePersonTasks(prev => prev.filter(x => x.id !== t.id))
+    fetch('/api/daily-tasks', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id }) })
   }
 
   async function doLogin() {
@@ -2607,7 +2627,7 @@ export default function Page() {
           for (let d = 1; d <= daysInMonth; d++) cells.push(d)
           while (cells.length % 7 !== 0) cells.push(null)
           const eventsOn = (d: number) => privateEvents.filter(e => e.date === `${privateMonth}-${String(d).padStart(2,'0')}`)
-          const personActive = privatePersonTasks.filter(t => t.status !== '已封存')
+          const personActive = privatePersonTasks.filter(t => t.status !== '已封存' && (showPrivateDone || t.status !== '完成'))
           return (
             <div className="space-y-4">
 
@@ -2618,7 +2638,15 @@ export default function Page() {
                   <p className="text-base font-semibold text-gray-900">🙋 {PRIVATE_PERSON_LABEL} 待辦</p>
                   <p className="text-xs text-gray-400 mt-0.5">此人員的工作項目只在這裡顯示，公開的今日工作／任務查詢已隱藏</p>
                 </div>
-                <button onClick={fetchPrivatePersonTasks} className="text-xs text-gray-400 hover:text-gray-700 border border-gray-200 rounded-lg px-2 py-1">↻ 重新整理</button>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={addPrivatePersonTask} disabled={addingPrivateTask}
+                    className="text-xs bg-indigo-600 text-white rounded-lg px-2.5 py-1 hover:bg-indigo-700 disabled:opacity-40">＋ 新增任務</button>
+                  <button onClick={fetchPrivatePersonTasks} className="text-xs text-gray-400 hover:text-gray-700 border border-gray-200 rounded-lg px-2 py-1">↻ 重新整理</button>
+                  <button onClick={() => setShowPrivateDone(v => !v)}
+                    className={`text-xs rounded-lg px-2 py-1 border ${showPrivateDone ? 'bg-green-100 text-green-700 border-green-200' : 'text-gray-400 border-gray-200 hover:border-gray-400'}`}>
+                    {showPrivateDone ? '隱藏已完成' : '顯示已完成'}
+                  </button>
+                </div>
               </div>
               {personActive.length === 0 ? (
                 <p className="text-sm text-gray-400 py-2">目前沒有工作項目</p>
@@ -2627,12 +2655,14 @@ export default function Page() {
                   {personActive.map(t => {
                     const flagged = effectiveFlagged(t) && t.status !== '完成'
                     return (
-                      <div key={t.id} className={`flex items-center gap-2 text-sm border rounded-lg px-2 py-1.5 ${flagged ? 'border-red-200 bg-red-50' : 'border-gray-100'}`}>
+                      <div key={t.id} className={`group flex items-center gap-2 text-sm border rounded-lg px-2 py-1.5 ${flagged ? 'border-red-200 bg-red-50' : 'border-gray-100'}`}>
                         <button onClick={() => togglePrivatePersonDone(t)}
                           className={`text-xs px-2 py-0.5 rounded shrink-0 font-medium ${t.status === '完成' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{t.status}</button>
                         {flagged && <span className="shrink-0" title="急件">🔥</span>}
                         <span className={`flex-1 ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-800'}`}>{t.task}</span>
                         {t.date && <span className="text-xs text-gray-400 shrink-0">{t.date}</span>}
+                        <button onClick={() => deletePrivatePersonTask(t)} title="刪除"
+                          className="shrink-0 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 leading-none px-1">✕</button>
                       </div>
                     )
                   })}
