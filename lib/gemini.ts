@@ -200,12 +200,15 @@ ${ALLOWED_PEOPLE.join('、')}
 
 請以 JSON 陣列回傳，每筆是一個工作項目：
 [
-  { "person": "負責人姓名", "task": "工作項目描述（簡潔一句）" }
+  { "person": "負責人姓名", "task": "工作項目描述（簡潔一句）", "urgent": false }
 ]
 
 規則：
 - person 必須是上面名單中的其中一位，不在名單內的人完全不要列出
 - 同一個人有多項工作，就拆成多筆
+- urgent（急件判定）：若內容顯示這項工作「時間緊迫、需優先處理」就設為 true，否則 false。
+  判斷依據例如：明確提到 急/緊急/趕件/趕工/盡快/儘快/今天要/今日完成/馬上/立刻/火速、
+  被客戶或老闆催、有迫近的截止時間、影響出貨或交期等。不確定就設 false。
 - 只回傳 JSON 陣列，不要其他文字
 
 以下是內容：
@@ -217,7 +220,9 @@ ${rawText}`,
     const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
     if (!Array.isArray(parsed)) return []
     // 保險：只保留名單內人員
-    return parsed.filter((it: any) => ALLOWED_PEOPLE.includes((it.person ?? '').trim()))
+    return parsed
+      .filter((it: any) => ALLOWED_PEOPLE.includes((it.person ?? '').trim()))
+      .map((it: any) => ({ ...it, urgent: it.urgent === true }))
   } catch {
     return []
   }

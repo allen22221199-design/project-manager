@@ -44,16 +44,22 @@ export async function POST(req: NextRequest) {
       today = diffDays <= 14 ? cand : todayStr
     }
 
+    // 急件：在任務文字前加上「急件」標記，讓前端自動套紅底分類
+    const taskText = (it: any) => {
+      const base = it.task?.trim() || ''
+      return it.urgent && !base.includes('急件') ? `急件｜${base}` : base
+    }
+
     // 依人員分組（給 LINE、歷史頁面用）
     const grouped: Record<string, string[]> = {}
     for (const it of items) {
-      ;(grouped[it.person?.trim() || '未分類'] ??= []).push(it.task?.trim() || '')
+      ;(grouped[it.person?.trim() || '未分類'] ??= []).push(taskText(it))
     }
 
     // 2. 重寫當天：先刪掉今天的舊資料，再寫入新版
     await deleteDailyTasksByDate(today)
     for (const it of items) {
-      await addDailyTask(it.person?.trim() || '未分類', it.task?.trim() || '', today, 'Plaud')
+      await addDailyTask(it.person?.trim() || '未分類', taskText(it), today, 'Plaud')
     }
 
     // 3. 寫入歷史頁面（以日期分段，重寫同一天會替換）
