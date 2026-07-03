@@ -19,6 +19,13 @@ const DAILY_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳�
 const PROJECT_ASSIGNEES = ['', '黃文彬', '王志先', '廖淑慧', '呂理論', '呂敏紅']
 const DAILY_STATUS_CYCLE = ['進行中', '完成']
 const PROCESS_STEPS = ['丈量', '製圖', '訂料', '噴印檔', '前處理', '環氧白', '四色', '烘乾', '面漆', '包裝', '施工']
+// 任務文字含以下關鍵字 → 視為急件，套紅底
+const URGENT_KEYWORDS = ['急件', '緊急', '急需', '趕件', '趕工', '火速', '儘快', '盡快', '馬上', '立刻', 'ASAP', '急']
+function isUrgentTask(text?: string): boolean {
+  if (!text) return false
+  const t = text.toLowerCase()
+  return URGENT_KEYWORDS.some(k => t.includes(k.toLowerCase()))
+}
 const PROJECT_COLORS_LIST = [
   { label: '藍', bg: '#AEC6E8', text: '#1A5276' },
   { label: '綠', bg: '#A8D5A2', text: '#1A5E2A' },
@@ -1761,8 +1768,9 @@ export default function Page() {
                         fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, status: next }) })
                       }
                       const renderTaskRow = (t: DailyTask) => (
-                        <div key={t.id} className="border-b border-blue-100 last:border-0">
+                        <div key={t.id} className={`border-b border-blue-100 last:border-0 ${isUrgentTask(t.task) && t.status !== '完成' ? 'bg-red-50 -mx-2 px-2 rounded' : ''}`}>
                           <div className="flex items-center gap-3 text-base py-2.5 group">
+                            {isUrgentTask(t.task) && t.status !== '完成' && <span className="shrink-0" title="急件">🔥</span>}
                             <button onClick={() => toggleDone(t)}
                               className={`text-sm px-2.5 py-1 rounded-md shrink-0 cursor-pointer font-medium transition-colors ${t.status === '完成' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
                               {t.status}
@@ -2248,7 +2256,8 @@ export default function Page() {
                               <div draggable={editingId !== t.id}
                                 onDragStart={() => setDraggingId(t.id)}
                                 onDragEnd={() => { setDraggingId(null); setDragOverPerson(null) }}
-                                className={`flex items-start gap-2 text-sm border border-transparent rounded-lg px-1.5 py-1 hover:border-gray-200 hover:bg-gray-50 group ${editingId === t.id ? '' : 'cursor-grab active:cursor-grabbing'}`}>
+                                className={`flex items-start gap-2 text-sm border rounded-lg px-1.5 py-1 group ${isUrgentTask(t.task) && t.status !== '完成' ? 'border-red-200 bg-red-50 hover:bg-red-100' : 'border-transparent hover:border-gray-200 hover:bg-gray-50'} ${editingId === t.id ? '' : 'cursor-grab active:cursor-grabbing'}`}>
+                                {isUrgentTask(t.task) && t.status !== '完成' && <span className="shrink-0 mt-0.5" title="急件">🔥</span>}
                                 <button onClick={() => cycleStatus(t)} title="點擊切換狀態"
                                   className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' || t.status === '已完成' ? 'bg-green-100 text-green-700' : t.status === '進行中' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
                                   {t.status}
