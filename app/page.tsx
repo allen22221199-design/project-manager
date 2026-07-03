@@ -255,6 +255,8 @@ export default function Page() {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
       if (d.authed) { setIsAdmin(true); checkGcalStatus(); fetchPrivatePersonTasks() }
     }).catch(() => {})
+    // 記住上次登入帳號，自動帶入
+    try { const u = localStorage.getItem('adminUser'); if (u) setLoginUser(u) } catch {}
     // OAuth 導回後的提示
     const p = new URLSearchParams(window.location.search).get('gcal')
     if (p) {
@@ -319,7 +321,8 @@ export default function Page() {
       })
       const d = await r.json()
       if (!r.ok) { setLoginErr(d.error ?? '登入失敗'); return }
-      setIsAdmin(true); setShowLogin(false); setLoginUser(''); setLoginPass('')
+      try { localStorage.setItem('adminUser', loginUser) } catch {}
+      setIsAdmin(true); setShowLogin(false); setLoginPass('')  // 保留帳號，只清密碼
       checkGcalStatus(); fetchPrivatePersonTasks()
     } catch (e: any) { setLoginErr(e.message ?? '網路錯誤') }
     finally { setLoginLoading(false) }
