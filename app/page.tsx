@@ -21,7 +21,9 @@ const DAILY_STATUS_CYCLE = ['進行中', '完成']
 // 此人員的工作項目不在公開區顯示，只在管理者登入後的私人區可見
 const PRIVATE_PERSON = '呂理論'          // 對應 Notion 的人員名稱（勿改）
 const PRIVATE_PERSON_LABEL = 'Alen'      // 畫面上顯示的名稱
-const PROCESS_STEPS = ['丈量', '製圖', '訂料', '噴印檔', '前處理', '環氧白', '四色', '烘乾', '面漆', '包裝', '施工']
+const PROCESS_STEPS = ['打樣', '丈量', '製圖', '訂料', '噴印檔', '前處理', '環氧白', '四色', '烘乾', '面漆', '包裝', '施工']
+// 舊版排程資料是用流程「順序編號」儲存的（沒有打樣），用來把舊資料轉成用流程名稱對應
+const OLD_PROCESS_STEPS = ['丈量', '製圖', '訂料', '噴印檔', '前處理', '環氧白', '四色', '烘乾', '面漆', '包裝', '施工']
 // 任務文字含以下關鍵字 → 視為急件，套紅底
 const URGENT_KEYWORDS = ['急件', '緊急', '急需', '趕件', '趕工', '火速', '儘快', '盡快', '馬上', '立刻', 'ASAP', '急']
 function isUrgentTask(text?: string): boolean {
@@ -174,7 +176,7 @@ export default function Page() {
     return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}`
   })
   const [ganttActiveProject, setGanttActiveProject] = useState<string | null>(null)
-  const [ganttRangeStart, setGanttRangeStart] = useState<{ procIdx: number; ampm: string; date: string } | null>(null)
+  const [ganttRangeStart, setGanttRangeStart] = useState<{ proc: string; ampm: string; date: string } | null>(null)
 
   // 知識庫同步
   const [kbSyncing, setKbSyncing] = useState(false)
@@ -1474,15 +1476,27 @@ export default function Page() {
 
                 // ── 排程資料（每個案件各自存 schedule，畫面合併成一張表）──
                 function parseSchedule(p: Project): Record<string, string> {
-                  try { return p.schedule ? JSON.parse(p.schedule) : {} } catch { return {} }
+                  let obj: Record<string, string> = {}
+                  try { obj = p.schedule ? JSON.parse(p.schedule) : {} } catch { return {} }
+                  // 舊資料以流程編號存（如 "0|AM|date"）→ 轉成流程名稱（如 "丈量|AM|date"）
+                  const out: Record<string, string> = {}
+                  for (const k in obj) {
+                    const parts = k.split('|')
+                    if (/^\d+$/.test(parts[0])) {
+                      const name = OLD_PROCESS_STEPS[Number(parts[0])]
+                      if (name) { out[`${name}|${parts[1]}|${parts[2]}`] = obj[k]; continue }
+                    }
+                    out[k] = obj[k]
+                  }
+                  return out
                 }
                 function saveSchedule(p: Project, obj: Record<string, string>) {
                   const json = JSON.stringify(obj)
                   setProjects(prev => prev.map(x => x.id === p.id ? { ...x, schedule: json } : x))
                   fetch('/api/projects', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, schedule: json }) })
                 }
-                function cellKey(procIdx: number, ampm: string, dateStr: string) {
-                  return `${procIdx}|${ampm}|${dateStr}`
+                function cellKey(proc: string, ampm: string, dateStr: string) {
+                  return `${proc}|${ampm}|${dateStr}`
                 }
 
                 // 建立每格「擁有者」對照（哪個案件佔用了這格）
@@ -1493,31 +1507,31 @@ export default function Page() {
                 }
 
                 // 點格子：第一下設起點，第二下（同一列）設終點 → 整段一次填起來
-                function handleCellClick(procIdx: number, ampm: string, ds: string) {
+                function handleCellClick(proc: string, ampm: string, ds: string) {
                   if (!ganttActiveProject) return
-                  if (!ganttRangeStart || ganttRangeStart.procIdx !== procIdx || ganttRangeStart.ampm !== ampm) {
+                  if (!ganttRangeStart || ganttRangeStart.proc !== proc || ganttRangeStart.ampm !== ampm) {
                     // 尚未設起點，或點到不同列 → 設為新的起點
-                    setGanttRangeStart({ procIdx, ampm, date: ds })
+                    setGanttRangeStart({ proc, ampm, date: ds })
                   } else {
                     // 同一列的第二下 → 套用範圍
-                    applyRange(procIdx, ampm, ganttRangeStart.date, ds)
+                    applyRange(proc, ampm, ganttRangeStart.date, ds)
                     setGanttRangeStart(null)
                   }
                 }
                 // 對某列 [d1..d2] 整段填色 / 清除（依起點格目前狀態決定）
-                function applyRange(procIdx: number, ampm: string, d1: string, d2: string) {
+                function applyRange(proc: string, ampm: string, d1: string, d2: string) {
                   const ap = activeProj.find(p => p.id === ganttActiveProject)
                   if (!ap) return
                   const lo = d1 <= d2 ? d1 : d2
                   const hi = d1 <= d2 ? d2 : d1
-                  const startKey = cellKey(procIdx, ampm, d1)
+                  const startKey = cellKey(proc, ampm, d1)
                   const clearMode = owners[startKey]?.pid === ap.id  // 起點已是此案件 → 清除整段
                   const apSched = parseSchedule(ap)
                   const otherEdits: Record<string, Record<string, string>> = {}
                   for (const d of days) {
                     const ds = `${ganttMonth}-${String(d).padStart(2, '0')}`
                     if (ds < lo || ds > hi) continue
-                    const key = cellKey(procIdx, ampm, ds)
+                    const key = cellKey(proc, ampm, ds)
                     if (clearMode) {
                       if (owners[key]?.pid === ap.id) delete apSched[key]
                     } else {
@@ -1629,14 +1643,14 @@ export default function Page() {
                                       const isToday = ds === todayStr
                                       const dow = new Date(ds).getDay()
                                       const isWknd = dow === 0 || dow === 6
-                                      const key = cellKey(procIdx, ampm, ds)
+                                      const key = cellKey(proc, ampm, ds)
                                       const owner = owners[key]
-                                      const isAnchor = ganttRangeStart?.procIdx === procIdx && ganttRangeStart?.ampm === ampm && ganttRangeStart?.date === ds
+                                      const isAnchor = ganttRangeStart?.proc === proc && ganttRangeStart?.ampm === ampm && ganttRangeStart?.date === ds
                                       return (
                                         <td key={d}
                                           onClick={() => {
                                             if (ganttCellTimer.current) return
-                                            ganttCellTimer.current = setTimeout(() => { ganttCellTimer.current = null; handleCellClick(procIdx, ampm, ds) }, 200)
+                                            ganttCellTimer.current = setTimeout(() => { ganttCellTimer.current = null; handleCellClick(proc, ampm, ds) }, 200)
                                           }}
                                           onDoubleClick={() => {
                                             if (ganttCellTimer.current) { clearTimeout(ganttCellTimer.current); ganttCellTimer.current = null }
