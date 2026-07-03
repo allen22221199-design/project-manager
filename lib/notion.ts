@@ -100,6 +100,29 @@ export async function stampLatestProgress(pageId: string, description: string) {
   })
 }
 
+// 進度被刪除／修改後，用剩下的最新一筆重新標記案件的「最新進度」（沒有就清空）
+export async function recomputeLatestProgress(pageId: string) {
+  const detail = await getProjectDetails(pageId)
+  const rows = (detail.progressRows ?? []) as { date: string; desc: string }[]
+  const newest = rows.length ? rows[rows.length - 1] : null  // getProjectDetails 已由舊到新排序
+  if (!newest || !(newest.desc || '').trim()) {
+    await updateProjectProps(pageId, { 最新進度: { rich_text: [] }, 最新進度日期: { date: null } })
+    return
+  }
+  // 解析進度日期文字 → ISO；解析不出來就用今天
+  const m = String(newest.date).match(/(20\d{2})\D+(\d{1,2})\D+(\d{1,2})/) || String(newest.date).match(/(\d{1,2})\D+(\d{1,2})/)
+  const today = new Date(Date.now() + 8 * 3600 * 1000)
+  let iso = today.toISOString().slice(0, 10)
+  if (m) {
+    if (m.length === 4) iso = `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`
+    else iso = `${today.getUTCFullYear()}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`
+  }
+  await updateProjectProps(pageId, {
+    最新進度: { rich_text: toRichText(newest.desc.slice(0, 300)) },
+    最新進度日期: { date: { start: iso } },
+  })
+}
+
 export async function addProgressRecord(pageId: string, date: string, description: string) {
   const tableInfo = await findSectionTable(pageId, '進度紀錄')
 

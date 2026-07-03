@@ -468,13 +468,15 @@ export default function Page() {
     const rowId = projectDetail?.progressRowIds?.[ri]
     if (!rowId) return
     const r = projectDetail.progressRows[ri]
-    fetch('/api/project-row', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rowId, cells: [r.date, r.desc] }) })
+    fetch('/api/project-row', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rowId, cells: [r.date, r.desc], pageId: selected?.id, kind: 'progress' }) })
+      .then(() => fetchProjects())
   }
   function deleteProgressRow(ri: number) {
     const rowId = projectDetail?.progressRowIds?.[ri]
     if (!rowId || !window.confirm('確定刪除這一筆進度嗎？')) return
     setProjectDetail((pd: any) => ({ ...pd, progressRows: pd.progressRows.filter((_: any, i: number) => i !== ri), progressRowIds: pd.progressRowIds.filter((_: any, i: number) => i !== ri) }))
-    fetch('/api/project-row', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rowId }) })
+    fetch('/api/project-row', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rowId, pageId: selected?.id, kind: 'progress' }) })
+      .then(() => fetchProjects())
   }
 
   // 直接變更專案狀態（例如標記完成）
