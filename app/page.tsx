@@ -846,6 +846,7 @@ export default function Page() {
     if (newText) {
       setDailyAll(prev => prev.map(x => x.id === taskId ? { ...x, task: newText } : x))
       setInProgressTasks(prev => prev.map(x => x.id === taskId ? { ...x, task: newText } : x))
+      setPrivatePersonTasks(prev => prev.map(x => x.id === taskId ? { ...x, task: newText } : x))
       fetch('/api/daily-tasks', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -2659,7 +2660,15 @@ export default function Page() {
                         <button onClick={() => togglePrivatePersonDone(t)}
                           className={`text-xs px-2 py-0.5 rounded shrink-0 font-medium ${t.status === '完成' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{t.status}</button>
                         {flagged && <span className="shrink-0" title="急件">🔥</span>}
-                        <span className={`flex-1 ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-800'}`}>{t.task}</span>
+                        {editingId === t.id ? (
+                          <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
+                            onBlur={() => saveEdit(t.id)}
+                            onKeyDown={e => { if (e.key === 'Enter') saveEdit(t.id); if (e.key === 'Escape') { setEditingId(null); setEditText('') } }}
+                            className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+                        ) : (
+                          <span className={`flex-1 cursor-text ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-800'}`}
+                            onClick={() => { setEditingId(t.id); setEditText(t.task) }}>{t.task}</span>
+                        )}
                         {t.date && <span className="text-xs text-gray-400 shrink-0">{t.date}</span>}
                         <button onClick={() => deletePrivatePersonTask(t)} title="刪除"
                           className="shrink-0 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 leading-none px-1">✕</button>
