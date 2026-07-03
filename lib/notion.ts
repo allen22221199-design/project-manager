@@ -772,3 +772,60 @@ export async function searchProjects(query: string) {
       contact: page.properties['聯絡人']?.rich_text?.[0]?.plain_text ?? '',
     }))
 }
+
+// ── 私人行事曆（僅管理者可見）────────────────────────────────
+// 需在 Vercel 設定 NOTION_PRIVATE_DATABASE_ID；資料庫欄位：標題(title)、日期(date)、備註(rich_text)
+const PRIVATE_DATABASE_ID = process.env.NOTION_PRIVATE_DATABASE_ID || ''
+
+function ensurePrivateDb() {
+  if (!PRIVATE_DATABASE_ID) throw new Error('尚未設定 NOTION_PRIVATE_DATABASE_ID')
+}
+
+export async function getPrivateEvents() {
+  ensurePrivateDb()
+  const results: any[] = []
+  let cursor: string | undefined = undefined
+  do {
+    const res: any = await notion.databases.query({
+      database_id: PRIVATE_DATABASE_ID,
+      sorts: [{ property: '日期', direction: 'ascending' }],
+      page_size: 100,
+      ...(cursor ? { start_cursor: cursor } : {}),
+    })
+    results.push(...res.results)
+    cursor = res.has_more ? res.next_cursor : undefined
+  } while (cursor)
+  return results
+    .filter((p: any) => !p.archived && !p.in_trash)
+    .map((page: any) => ({
+      id: page.id,
+      title: page.properties['標題']?.title?.[0]?.plain_text ?? '',
+      date: page.properties['日期']?.date?.start ?? '',
+      note: (page.properties['備註']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    }))
+}
+
+export async function addPrivateEvent(title: string, date: string, note = '') {
+  ensurePrivateDb()
+  const res: any = await notion.pages.create({
+    parent: { database_id: PRIVATE_DATABASE_ID },
+    properties: {
+      標題: { title: [{ text: { content: title } }] },
+      日期: { date: { start: date } },
+      備註: { rich_text: toRichText(note) },
+    },
+  })
+  return { id: res.id }
+}
+
+export async function updatePrivateEvent(id: string, fields: { title?: string; date?: string; note?: string }) {
+  const properties: any = {}
+  if (fields.title !== undefined) properties['標題'] = { title: [{ text: { content: fields.title } }] }
+  if (fields.date !== undefined) properties['日期'] = { date: { start: fields.date } }
+  if (fields.note !== undefined) properties['備註'] = { rich_text: toRichText(fields.note) }
+  await notion.pages.update({ page_id: id, properties })
+}
+
+export async function deletePrivateEvent(id: string) {
+  await notion.pages.update({ page_id: id, archived: true })
+}

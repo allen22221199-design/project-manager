@@ -65,7 +65,8 @@ const PROJECT_COLORS_LIST = [
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string; ganttStart?: string; ganttEnd?: string; schedule?: string; latestProgress?: string; latestProgressDate?: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
-type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard'
+type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private'
+type PrivateEvent = { id: string; title: string; date: string; note?: string }
 type FileResult = { title: string; name: string; url: string }
 type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[] }
 type TaskAttachment = { name: string; url: string }
@@ -122,6 +123,18 @@ export default function Page() {
   const [sendingReminder, setSendingReminder] = useState(false)
   const [reminderMsg, setReminderMsg] = useState('')
   const [reminderOk, setReminderOk] = useState(false)
+  // 管理者登入 / 私人行事曆
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [showLogin, setShowLogin] = useState(false)
+  const [loginUser, setLoginUser] = useState('')
+  const [loginPass, setLoginPass] = useState('')
+  const [loginErr, setLoginErr] = useState('')
+  const [loginLoading, setLoginLoading] = useState(false)
+  const [privateEvents, setPrivateEvents] = useState<PrivateEvent[]>([])
+  const [privateMonth, setPrivateMonth] = useState(() => {
+    const n = new Date(Date.now() + 8 * 3600 * 1000)
+    return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}`
+  })
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOverPerson, setDragOverPerson] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -227,6 +240,66 @@ export default function Page() {
     document.addEventListener('click', handler)
     return () => document.removeEventListener('click', handler)
   }, [colorPickerOpenId])
+
+  // 開站檢查是否已登入管理者
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (d.authed) { setIsAdmin(true); fetchPrivateEvents() }
+    }).catch(() => {})
+  }, [])
+
+  async function doLogin() {
+    if (loginLoading) return
+    setLoginLoading(true); setLoginErr('')
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loginUser, password: loginPass }),
+      })
+      const d = await r.json()
+      if (!r.ok) { setLoginErr(d.error ?? '登入失敗'); return }
+      setIsAdmin(true); setShowLogin(false); setLoginUser(''); setLoginPass('')
+      fetchPrivateEvents()
+    } catch (e: any) { setLoginErr(e.message ?? '網路錯誤') }
+    finally { setLoginLoading(false) }
+  }
+  async function doLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+    setIsAdmin(false); setPrivateEvents([])
+    if (view === 'private') setView('dashboard')
+  }
+  async function fetchPrivateEvents() {
+    try {
+      const r = await fetch('/api/private-events')
+      if (!r.ok) return
+      const d = await r.json()
+      setPrivateEvents(d.events ?? [])
+    } catch {}
+  }
+  async function addPrivateEvent(date: string) {
+    const title = window.prompt(`新增私人行程（${date}）：`)
+    if (!title?.trim()) return
+    const tmpId = 'tmp-' + Date.now()
+    setPrivateEvents(prev => [...prev, { id: tmpId, title: title.trim(), date }])
+    const r = await fetch('/api/private-events', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title.trim(), date }),
+    })
+    const d = await r.json().catch(() => ({}))
+    if (r.ok && d.id) setPrivateEvents(prev => prev.map(e => e.id === tmpId ? { ...e, id: d.id } : e))
+    else { setPrivateEvents(prev => prev.filter(e => e.id !== tmpId)); alert(d.error ?? '新增失敗') }
+  }
+  async function editPrivateEvent(ev: PrivateEvent) {
+    const title = window.prompt('編輯私人行程（清空並確定＝刪除）：', ev.title)
+    if (title === null) return
+    if (!title.trim()) {
+      setPrivateEvents(prev => prev.filter(e => e.id !== ev.id))
+      fetch('/api/private-events', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ev.id }) })
+      return
+    }
+    setPrivateEvents(prev => prev.map(e => e.id === ev.id ? { ...e, title: title.trim() } : e))
+    fetch('/api/private-events', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ev.id, title: title.trim() }) })
+  }
 
   // 逾期 / 今天到期標記
   function dueBadge(t: DailyTask): { label: string; cls: string } | null {
@@ -1135,10 +1208,41 @@ export default function Page() {
           <NavBtn active={view === 'daily'} onClick={() => { setView('daily'); fetchDailyTasks() }}>今日工作</NavBtn>
           <NavBtn active={view === 'search'} onClick={() => { setView('search'); fetchInProgress() }}>任務查詢</NavBtn>
           <NavBtn active={view === 'chat'} onClick={() => setView('chat')}>AI 助理</NavBtn>
+          {isAdmin && <NavBtn active={view === 'private'} onClick={() => { setView('private'); fetchPrivateEvents() }}>🔐 私人行事曆</NavBtn>}
         </div>
+        {isAdmin ? (
+          <button onClick={doLogout} title="登出管理者"
+            className="ml-2 text-xs text-gray-400 hover:text-gray-700 border border-gray-200 rounded-lg px-2 py-1.5">登出</button>
+        ) : (
+          <button onClick={() => { setShowLogin(true); setLoginErr('') }} title="管理者登入"
+            className="ml-2 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-2 py-1.5">🔒 登入</button>
+        )}
       </header>
 
-      <main className={`mx-auto p-4 animate-fade-in ${view === 'dashboard' ? 'max-w-7xl' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
+      {/* 管理者登入視窗 */}
+      {showLogin && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setShowLogin(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-5" onClick={e => e.stopPropagation()}>
+            <p className="text-base font-semibold text-gray-900 mb-1">管理者登入</p>
+            <p className="text-xs text-gray-400 mb-4">登入後可管理只有你看得到的私人行事曆</p>
+            <input value={loginUser} onChange={e => setLoginUser(e.target.value)} placeholder="帳號" autoFocus
+              className="w-full mb-2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+            <input value={loginPass} onChange={e => setLoginPass(e.target.value)} placeholder="密碼" type="password"
+              onKeyDown={e => { if (e.key === 'Enter') doLogin() }}
+              className="w-full mb-2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+            {loginErr && <p className="text-xs text-red-500 mb-2">{loginErr}</p>}
+            <div className="flex gap-2 mt-2">
+              <button onClick={doLogin} disabled={loginLoading}
+                className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                {loginLoading ? '登入中…' : '登入'}
+              </button>
+              <button onClick={() => setShowLogin(false)} className="px-3 text-sm text-gray-400 hover:text-gray-600">取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <main className={`mx-auto p-4 animate-fade-in ${view === 'dashboard' ? 'max-w-7xl' : view === 'search' || view === 'private' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
@@ -2433,6 +2537,66 @@ export default function Page() {
             </div>
           </div>
         )}
+
+        {/* PRIVATE CALENDAR（僅管理者） */}
+        {view === 'private' && isAdmin && (() => {
+          const [py, pm] = privateMonth.split('-').map(Number)
+          const daysInMonth = new Date(py, pm, 0).getDate()
+          const firstDow = new Date(py, pm - 1, 1).getDay() // 0=日
+          const todayStr = todayISO()
+          const prevMon = () => { const d = new Date(py, pm - 2, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
+          const nextMon = () => { const d = new Date(py, pm, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
+          const cells: (number | null)[] = []
+          for (let i = 0; i < firstDow; i++) cells.push(null)
+          for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+          while (cells.length % 7 !== 0) cells.push(null)
+          const eventsOn = (d: number) => privateEvents.filter(e => e.date === `${privateMonth}-${String(d).padStart(2,'0')}`)
+          return (
+            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-base font-semibold text-gray-900">🔐 私人行事曆</p>
+                  <p className="text-xs text-gray-400 mt-0.5">只有登入的你看得到 · 點日期新增、點行程可編輯／刪除</p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setPrivateMonth(prevMon())}
+                    className="w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 flex items-center justify-center">‹</button>
+                  <span className="text-sm font-medium text-gray-700 w-24 text-center">{py}年{pm}月</span>
+                  <button onClick={() => setPrivateMonth(nextMon())}
+                    className="w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 flex items-center justify-center">›</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {['日','一','二','三','四','五','六'].map((w, i) => (
+                  <div key={w} className={`text-center text-xs font-medium pb-1 ${i === 0 || i === 6 ? 'text-purple-400' : 'text-gray-400'}`}>{w}</div>
+                ))}
+                {cells.map((d, i) => {
+                  if (d === null) return <div key={i} className="min-h-[84px]" />
+                  const ds = `${privateMonth}-${String(d).padStart(2,'0')}`
+                  const isToday = ds === todayStr
+                  const dow = new Date(ds).getDay()
+                  const isWknd = dow === 0 || dow === 6
+                  const evs = eventsOn(d)
+                  return (
+                    <div key={i} onClick={() => addPrivateEvent(ds)}
+                      className={`min-h-[84px] border rounded-lg p-1 cursor-pointer transition-colors ${isToday ? 'border-indigo-300 bg-indigo-50/40' : 'border-gray-100 hover:border-gray-300'} ${isWknd ? 'bg-purple-50/30' : ''}`}>
+                      <div className={`text-xs font-medium mb-1 ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-500'}`}>{d}</div>
+                      <div className="space-y-0.5">
+                        {evs.map(ev => (
+                          <div key={ev.id} onClick={e => { e.stopPropagation(); editPrivateEvent(ev) }}
+                            title={ev.note || ev.title}
+                            className="text-[11px] leading-tight px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 truncate hover:bg-indigo-200">
+                            {ev.title}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
       </main>
     </div>
   )
