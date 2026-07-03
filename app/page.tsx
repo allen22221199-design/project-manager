@@ -43,6 +43,12 @@ function taskTags(text?: string): TaskTag[] {
 function isFlaggedTask(text?: string): boolean {
   return isUrgentTask(text) || taskTags(text).length > 0
 }
+// 綜合手動標記（優先）與關鍵字自動判定：'on'=強制紅、'off'=強制不紅、其他=依關鍵字
+function effectiveFlagged(t: { flag?: string; task: string }): boolean {
+  if (t.flag === 'on') return true
+  if (t.flag === 'off') return false
+  return isFlaggedTask(t.task)
+}
 const PROJECT_COLORS_LIST = [
   { label: '藍', bg: '#AEC6E8', text: '#1A5276' },
   { label: '綠', bg: '#A8D5A2', text: '#1A5E2A' },
@@ -63,7 +69,7 @@ type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashbo
 type FileResult = { title: string; name: string; url: string }
 type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[] }
 type TaskAttachment = { name: string; url: string }
-type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[] }
+type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[]; flag?: string }
 
 // 安全解析回應：伺服器逾時/出錯時回的是 HTML，不要讓 JSON.parse 噴出難懂的錯誤
 async function readJson(r: Response): Promise<any> {
@@ -891,6 +897,15 @@ export default function Page() {
       })
       setAiPlanSaved(true)
     } finally { setAiPlanSaving(false) }
+  }
+
+  // 手動切換紅標（急件）：on=強制紅、off=強制不紅
+  function toggleFlag(t: DailyTask) {
+    const nextFlag = effectiveFlagged(t) ? 'off' : 'on'
+    setDailyAll(prev => prev.map(x => x.id === t.id ? { ...x, flag: nextFlag } : x))
+    setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, flag: nextFlag } : x))
+    setDailyTaskResults(prev => prev.map(x => x.id === t.id ? { ...x, flag: nextFlag } : x))
+    fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, flag: nextFlag }) })
   }
 
   // 儲存任務詳情（內容 / 進度方向 / 附件）
@@ -1785,8 +1800,10 @@ export default function Page() {
                         fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, status: next }) })
                       }
                       const renderTaskRow = (t: DailyTask) => (
-                        <div key={t.id} className={`border-b border-blue-100 last:border-0 ${isFlaggedTask(t.task) && t.status !== '完成' ? 'bg-red-50 -mx-2 px-2 rounded' : ''}`}>
+                        <div key={t.id} className={`border-b border-blue-100 last:border-0 ${effectiveFlagged(t) && t.status !== '完成' ? 'bg-red-50 -mx-2 px-2 rounded' : ''}`}>
                           <div className="flex items-center gap-3 text-base py-2.5 group">
+                            <button onClick={() => toggleFlag(t)} title={effectiveFlagged(t) ? '取消紅標' : '標為急件（紅標）'}
+                              className={`shrink-0 leading-none ${effectiveFlagged(t) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 grayscale'}`}>🚩</button>
                             {isUrgentTask(t.task) && t.status !== '完成' && <span className="shrink-0" title="急件">🔥</span>}
                             {t.status !== '完成' && taskTags(t.task).map(tag => (
                               <span key={tag.label} className={`text-xs px-1.5 py-0.5 rounded shrink-0 font-medium ${tag.cls}`}>{tag.label}</span>
@@ -1928,7 +1945,7 @@ export default function Page() {
                   <div className="mt-4">
                     <p className="text-xs font-medium text-gray-400 mb-2 px-1">今日工作項目 ({dailyTaskResults.length})</p>
                     {dailyTaskResults.map(t => {
-                      const flagged = isFlaggedTask(t.task) && t.status !== '完成' && t.status !== '已封存'
+                      const flagged = effectiveFlagged(t) && t.status !== '完成' && t.status !== '已封存'
                       return (
                       <div key={t.id} className={`border rounded-xl shadow-sm p-3 mb-2 flex items-start gap-2 ${flagged ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200/70'}`}>
                         <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' || t.status === '已封存' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
@@ -2285,7 +2302,9 @@ export default function Page() {
                               <div draggable={editingId !== t.id}
                                 onDragStart={() => setDraggingId(t.id)}
                                 onDragEnd={() => { setDraggingId(null); setDragOverPerson(null) }}
-                                className={`flex items-start gap-2 text-sm border rounded-lg px-1.5 py-1 group ${isFlaggedTask(t.task) && t.status !== '完成' ? 'border-red-200 bg-red-50 hover:bg-red-100' : 'border-transparent hover:border-gray-200 hover:bg-gray-50'} ${editingId === t.id ? '' : 'cursor-grab active:cursor-grabbing'}`}>
+                                className={`flex items-start gap-2 text-sm border rounded-lg px-1.5 py-1 group ${effectiveFlagged(t) && t.status !== '完成' ? 'border-red-200 bg-red-50 hover:bg-red-100' : 'border-transparent hover:border-gray-200 hover:bg-gray-50'} ${editingId === t.id ? '' : 'cursor-grab active:cursor-grabbing'}`}>
+                                <button onClick={() => toggleFlag(t)} title={effectiveFlagged(t) ? '取消紅標' : '標為急件（紅標）'}
+                                  className={`shrink-0 mt-0.5 text-xs leading-none ${effectiveFlagged(t) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 grayscale'}`}>🚩</button>
                                 {isUrgentTask(t.task) && t.status !== '完成' && <span className="shrink-0 mt-0.5" title="急件">🔥</span>}
                                 {t.status !== '完成' && taskTags(t.task).map(tag => (
                                   <span key={tag.label} className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 mt-0.5 font-medium ${tag.cls}`}>{tag.label}</span>

@@ -419,6 +419,7 @@ export async function getTasksByPerson(person: string) {
     content: (page.properties['任務內容']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     direction: (page.properties['AI需求']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     aiPlan: (page.properties['AI規劃']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    flag: (page.properties['急件標記']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     attachments: (() => {
       try {
         const raw = (page.properties['附件']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
@@ -459,6 +460,7 @@ export async function getDailyTasks(dateStr?: string) {
     content: (page.properties['任務內容']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     direction: (page.properties['AI需求']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     aiPlan: (page.properties['AI規劃']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    flag: (page.properties['急件標記']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     attachments: (() => {
       try {
         const raw = (page.properties['附件']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
@@ -535,8 +537,17 @@ export async function syncHistoryForDate(dateStr: string) {
   await writeHistorySection(dateStr, grouped)
 }
 
+// 每日工作資料庫可自動補建的自訂欄位
+const DAILY_PROP_SCHEMA: Record<string, any> = {
+  任務內容: { rich_text: {} },
+  AI需求: { rich_text: {} },
+  AI規劃: { rich_text: {} },
+  附件: { rich_text: {} },
+  急件標記: { rich_text: {} },
+}
+
 // Update a daily task (reassign person / edit text / change status)
-export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string; freq?: string; content?: string; direction?: string; aiPlan?: string; dueDate?: string; attachments?: {name: string; url: string}[] }) {
+export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string; freq?: string; content?: string; direction?: string; aiPlan?: string; dueDate?: string; attachments?: {name: string; url: string}[]; flag?: string }) {
   const properties: any = {}
   if (fields.person !== undefined) properties['人員'] = { rich_text: [{ text: { content: fields.person } }] }
   if (fields.task !== undefined) properties['任務名稱'] = { title: [{ text: { content: fields.task } }] }
@@ -546,9 +557,10 @@ export async function updateDailyTask(id: string, fields: { person?: string; tas
   if (fields.direction !== undefined) properties['AI需求'] = { rich_text: toRichText(fields.direction) }
   if (fields.aiPlan !== undefined) properties['AI規劃'] = { rich_text: toRichText(fields.aiPlan) }
   if (fields.attachments !== undefined) properties['附件'] = { rich_text: toRichText(JSON.stringify(fields.attachments)) }
+  if (fields.flag !== undefined) properties['急件標記'] = { rich_text: toRichText(fields.flag) }
 
-  // 遇到「某欄位不存在」時，自動移除該欄位再重試（最多重試幾個欄位），
-  // 讓其他欄位（任務內容、AI需求等）仍能正常儲存，不會整筆失敗。
+  // 遇到「某欄位不存在」：若在 schema 內就自動建立該欄位再重試，否則移除該欄位重試，
+  // 讓其他欄位仍能正常儲存，不會整筆失敗。
   async function tryUpdate(props: any, attempts = 0): Promise<void> {
     try {
       await notion.pages.update({ page_id: id, properties: props })
@@ -556,13 +568,17 @@ export async function updateDailyTask(id: string, fields: { person?: string; tas
       const msg = String(e?.message ?? e)
       // 任務頁面已被封存（多半是重新整理過、畫面為舊資料）——忽略，前端重抓即可
       if (msg.includes('archived')) return
-      // Notion: "XXX is not a property that exists." — 移除該欄位重試
       const m = msg.match(/(.+?) is not a property that exists/)
       if (m && attempts < 6) {
         const missing = m[1].trim()
+        const def = DAILY_PROP_SCHEMA[missing]
+        if (def) {
+          await notion.databases.update({ database_id: DAILY_TASKS_DATABASE_ID, properties: { [missing]: def } })
+          return tryUpdate(props, attempts + 1)
+        }
         const next = { ...props }
         delete next[missing]
-        if (Object.keys(next).length === 0) return  // 沒有可寫入的欄位了
+        if (Object.keys(next).length === 0) return
         return tryUpdate(next, attempts + 1)
       }
       throw e
