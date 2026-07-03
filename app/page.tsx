@@ -479,6 +479,14 @@ export default function Page() {
       .then(() => fetchProjects())
   }
 
+  // 從「最新進度回報」移除某案件（重算其最新進度標記；沒有紀錄就清空）
+  async function dismissProgress(p: Project) {
+    setProjects(prev => prev.map(x => x.id === p.id ? { ...x, latestProgress: '', latestProgressDate: '' } : x))
+    try {
+      await fetch('/api/projects', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, recomputeProgress: true }) })
+    } finally { fetchProjects() }
+  }
+
   // 直接變更專案狀態（例如標記完成）
   async function changeProjectStatus(status: string) {
     if (!selected) return
@@ -1361,13 +1369,16 @@ export default function Page() {
                     ) : (
                       <div className="space-y-2">
                         {recent.map(p => (
-                          <button key={p.id} onClick={() => selectProject(p)}
-                            className="w-full flex items-start gap-2 text-sm text-left rounded-lg px-2 py-1.5 hover:bg-emerald-50/60 transition-colors">
-                            <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 shrink-0 mt-0.5">{p.latestProgressDate?.slice(5)}</span>
-                            {p.color && <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5" style={{ background: p.color }} />}
-                            <span className="font-medium text-gray-800 shrink-0">{p.name}</span>
-                            <span className="text-gray-500 flex-1 truncate">{p.latestProgress}</span>
-                          </button>
+                          <div key={p.id} className="group w-full flex items-start gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-emerald-50/60 transition-colors">
+                            <button onClick={() => selectProject(p)} className="flex items-start gap-2 flex-1 min-w-0 text-left">
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 shrink-0 mt-0.5">{p.latestProgressDate?.slice(5)}</span>
+                              {p.color && <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5" style={{ background: p.color }} />}
+                              <span className="font-medium text-gray-800 shrink-0">{p.name}</span>
+                              <span className="text-gray-500 flex-1 truncate">{p.latestProgress}</span>
+                            </button>
+                            <button onClick={() => dismissProgress(p)} title="移除此筆（清掉最新進度標記）"
+                              className="shrink-0 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 leading-none px-1">✕</button>
+                          </div>
                         ))}
                       </div>
                     )}
