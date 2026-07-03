@@ -2611,7 +2611,7 @@ export default function Page() {
               {personActive.length === 0 ? (
                 <p className="text-sm text-gray-400 py-2">目前沒有工作項目</p>
               ) : (
-                <div className="space-y-1.5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-3 gap-y-1.5">
                   {personActive.map(t => {
                     const flagged = effectiveFlagged(t) && t.status !== '完成'
                     return (
