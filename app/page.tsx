@@ -2689,7 +2689,7 @@ export default function Page() {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="text-base font-semibold text-gray-900">🙋 {PRIVATE_PERSON_LABEL} 待辦</p>
-                  <p className="text-xs text-gray-400 mt-0.5">此人員的工作項目只在這裡顯示，公開的今日工作／任務查詢已隱藏</p>
+                  <p className="text-xs text-gray-400 mt-0.5">🔴 紅色底色＝急件或需優先處理的項目（急件／協作／丈量繪圖）</p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button onClick={addPrivatePersonTask} disabled={addingPrivateTask}
