@@ -1299,23 +1299,25 @@ export default function Page() {
       {/* 管理者登入視窗 */}
       {showLogin && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setShowLogin(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-5" onClick={e => e.stopPropagation()}>
+          <form className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-5" onClick={e => e.stopPropagation()}
+            onSubmit={e => { e.preventDefault(); doLogin() }}>
             <p className="text-base font-semibold text-gray-900 mb-1">管理者登入</p>
             <p className="text-xs text-gray-400 mb-4">登入後可管理只有你看得到的私人行事曆</p>
-            <input value={loginUser} onChange={e => setLoginUser(e.target.value)} placeholder="帳號" autoFocus
+            <input value={loginUser} onChange={e => setLoginUser(e.target.value)} placeholder="帳號" autoFocus={!loginUser}
+              name="username" autoComplete="username"
               className="w-full mb-2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
             <input value={loginPass} onChange={e => setLoginPass(e.target.value)} placeholder="密碼" type="password"
-              onKeyDown={e => { if (e.key === 'Enter') doLogin() }}
+              name="password" autoComplete="current-password" autoFocus={!!loginUser}
               className="w-full mb-2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
             {loginErr && <p className="text-xs text-red-500 mb-2">{loginErr}</p>}
             <div className="flex gap-2 mt-2">
-              <button onClick={doLogin} disabled={loginLoading}
+              <button type="submit" disabled={loginLoading}
                 className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
                 {loginLoading ? '登入中…' : '登入'}
               </button>
-              <button onClick={() => setShowLogin(false)} className="px-3 text-sm text-gray-400 hover:text-gray-600">取消</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="px-3 text-sm text-gray-400 hover:text-gray-600">取消</button>
             </div>
-          </div>
+          </form>
         </div>
       )}
 
