@@ -1266,7 +1266,7 @@ export default function Page() {
         </div>
       )}
 
-      <main className={`mx-auto p-4 animate-fade-in ${view === 'dashboard' ? 'max-w-7xl' : view === 'search' || view === 'private' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
+      <main className={`mx-auto p-4 animate-fade-in ${view === 'dashboard' || view === 'private' ? 'max-w-7xl' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
@@ -2644,7 +2644,7 @@ export default function Page() {
                   <div key={w} className={`text-center text-xs font-medium pb-1 ${i === 0 || i === 6 ? 'text-purple-400' : 'text-gray-400'}`}>{w}</div>
                 ))}
                 {cells.map((d, i) => {
-                  if (d === null) return <div key={i} className="min-h-[84px]" />
+                  if (d === null) return <div key={i} className="min-h-[112px]" />
                   const ds = `${privateMonth}-${String(d).padStart(2,'0')}`
                   const isToday = ds === todayStr
                   const isSelected = ds === agendaDate
@@ -2653,7 +2653,7 @@ export default function Page() {
                   const evs = eventsOn(d)
                   return (
                     <div key={i} onClick={() => setAgendaDate(ds)}
-                      className={`min-h-[84px] border rounded-lg p-1 cursor-pointer transition-colors ${isSelected ? 'border-indigo-500 ring-1 ring-indigo-300 bg-indigo-50/60' : isToday ? 'border-indigo-300 bg-indigo-50/40' : 'border-gray-100 hover:border-gray-300'} ${isWknd && !isSelected ? 'bg-purple-50/30' : ''}`}>
+                      className={`min-h-[112px] border rounded-lg p-1.5 cursor-pointer transition-colors ${isSelected ? 'border-indigo-500 ring-1 ring-indigo-300 bg-indigo-50/60' : isToday ? 'border-indigo-300 bg-indigo-50/40' : 'border-gray-100 hover:border-gray-300'} ${isWknd && !isSelected ? 'bg-purple-50/30' : ''}`}>
                       <div className={`text-xs font-medium mb-1 ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-500'}`}>{d}</div>
                       <div className="space-y-0.5">
                         {evs.map(ev => (
