@@ -131,6 +131,8 @@ export default function Page() {
   const [loginErr, setLoginErr] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
   const [privateEvents, setPrivateEvents] = useState<PrivateEvent[]>([])
+  const [gcalConnected, setGcalConnected] = useState<boolean | null>(null)
+  const [gcalLoading, setGcalLoading] = useState(false)
   const [privateMonth, setPrivateMonth] = useState(() => {
     const n = new Date(Date.now() + 8 * 3600 * 1000)
     return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}`
@@ -241,12 +243,31 @@ export default function Page() {
     return () => document.removeEventListener('click', handler)
   }, [colorPickerOpenId])
 
-  // 開站檢查是否已登入管理者
+  // 開站檢查是否已登入管理者（並檢查 Google 日曆連結狀態）
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
-      if (d.authed) { setIsAdmin(true); fetchPrivateEvents() }
+      if (d.authed) { setIsAdmin(true); checkGcalStatus() }
     }).catch(() => {})
+    // OAuth 導回後的提示
+    const p = new URLSearchParams(window.location.search).get('gcal')
+    if (p) {
+      if (p === 'ok') { setIsAdmin(true); checkGcalStatus() }
+      window.history.replaceState({}, '', window.location.pathname)
+    }
   }, [])
+
+  // 切換私人行事曆月份時，重新讀取該月 Google 事件
+  useEffect(() => {
+    if (isAdmin && gcalConnected && view === 'private') fetchPrivateEvents()
+  }, [privateMonth, gcalConnected, view])
+
+  async function checkGcalStatus() {
+    try {
+      const r = await fetch('/api/gcal?status=1')
+      const d = await r.json()
+      setGcalConnected(!!d.connected)
+    } catch { setGcalConnected(false) }
+  }
 
   async function doLogin() {
     if (loginLoading) return
@@ -265,40 +286,42 @@ export default function Page() {
   }
   async function doLogout() {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
-    setIsAdmin(false); setPrivateEvents([])
+    setIsAdmin(false); setPrivateEvents([]); setGcalConnected(null)
     if (view === 'private') setView('dashboard')
   }
+  // 私人行事曆＝直接讀寫 Google 日曆
   async function fetchPrivateEvents() {
+    setGcalLoading(true)
     try {
-      const r = await fetch('/api/private-events')
-      if (!r.ok) return
+      const r = await fetch(`/api/gcal?month=${privateMonth}`)
       const d = await r.json()
-      setPrivateEvents(d.events ?? [])
-    } catch {}
+      if (r.ok) { setPrivateEvents(d.events ?? []); setGcalConnected(true) }
+      else if (d.connected === false) setGcalConnected(false)
+    } catch {} finally { setGcalLoading(false) }
   }
   async function addPrivateEvent(date: string) {
-    const title = window.prompt(`新增私人行程（${date}）：`)
+    const title = window.prompt(`新增行程到 Google 日曆（${date}）：`)
     if (!title?.trim()) return
     const tmpId = 'tmp-' + Date.now()
     setPrivateEvents(prev => [...prev, { id: tmpId, title: title.trim(), date }])
-    const r = await fetch('/api/private-events', {
+    const r = await fetch('/api/gcal', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: title.trim(), date }),
     })
     const d = await r.json().catch(() => ({}))
-    if (r.ok && d.id) setPrivateEvents(prev => prev.map(e => e.id === tmpId ? { ...e, id: d.id } : e))
+    if (r.ok && d.event?.id) setPrivateEvents(prev => prev.map(e => e.id === tmpId ? { ...e, id: d.event.id } : e))
     else { setPrivateEvents(prev => prev.filter(e => e.id !== tmpId)); alert(d.error ?? '新增失敗') }
   }
   async function editPrivateEvent(ev: PrivateEvent) {
-    const title = window.prompt('編輯私人行程（清空並確定＝刪除）：', ev.title)
+    const title = window.prompt('編輯行程（清空並確定＝從 Google 日曆刪除）：', ev.title)
     if (title === null) return
     if (!title.trim()) {
       setPrivateEvents(prev => prev.filter(e => e.id !== ev.id))
-      fetch('/api/private-events', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ev.id }) })
+      fetch('/api/gcal', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ev.id }) })
       return
     }
     setPrivateEvents(prev => prev.map(e => e.id === ev.id ? { ...e, title: title.trim() } : e))
-    fetch('/api/private-events', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ev.id, title: title.trim() }) })
+    fetch('/api/gcal', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ev.id, title: title.trim() }) })
   }
 
   // 逾期 / 今天到期標記
@@ -2556,9 +2579,14 @@ export default function Page() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-base font-semibold text-gray-900">🔐 私人行事曆</p>
-                  <p className="text-xs text-gray-400 mt-0.5">只有登入的你看得到 · 點日期新增、點行程可編輯／刪除</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {gcalConnected ? '已連結 Google 日曆，雙向同步 · 點日期新增、點行程可編輯／刪除' : '只有登入的你看得到'}
+                  </p>
                 </div>
                 <div className="flex items-center gap-1.5">
+                  {gcalConnected && (
+                    <span className="text-xs text-green-600 bg-green-50 border border-green-200 rounded-full px-2 py-1 mr-1">✓ Google 已連結</span>
+                  )}
                   <button onClick={() => setPrivateMonth(prevMon())}
                     className="w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 flex items-center justify-center">‹</button>
                   <span className="text-sm font-medium text-gray-700 w-24 text-center">{py}年{pm}月</span>
@@ -2566,7 +2594,19 @@ export default function Page() {
                     className="w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 flex items-center justify-center">›</button>
                 </div>
               </div>
-              <div className="grid grid-cols-7 gap-1">
+
+              {gcalConnected === false && (
+                <div className="mb-4 bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-center">
+                  <p className="text-sm text-gray-700 mb-1">尚未連結 Google 日曆</p>
+                  <p className="text-xs text-gray-400 mb-3">連結後，這裡新增的行程會直接同步到你的 Google 日曆（雙向）</p>
+                  <a href="/api/google/auth"
+                    className="inline-block bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700">
+                    🔗 連結 Google 日曆
+                  </a>
+                </div>
+              )}
+
+              <div className={`grid grid-cols-7 gap-1 ${gcalConnected === false ? 'opacity-40 pointer-events-none' : ''}`}>
                 {['日','一','二','三','四','五','六'].map((w, i) => (
                   <div key={w} className={`text-center text-xs font-medium pb-1 ${i === 0 || i === 6 ? 'text-purple-400' : 'text-gray-400'}`}>{w}</div>
                 ))}
