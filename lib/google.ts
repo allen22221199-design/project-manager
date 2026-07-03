@@ -84,31 +84,42 @@ export async function listEvents(accessToken: string, timeMin: string, timeMax: 
   })
 }
 
-// 新增全天事件（end.date 為隔天，Google 全天事件結束日為排他）
-export async function insertEvent(accessToken: string, title: string, date: string, note = ''): Promise<GEvent> {
+const pad = (n: number) => String(n).padStart(2, '0')
+// 依日期＋時間組出 Google 事件的 start/end（有時間＝定時 1 小時；無時間＝全天）
+function buildStartEnd(date: string, time?: string) {
+  if (time) {
+    const [hh, mm] = time.split(':').map(Number)
+    let endDate = date
+    const total = hh * 60 + mm + 60 // 預設 1 小時
+    let eh = Math.floor(total / 60), em = total % 60
+    if (eh >= 24) { const nd = new Date(date + 'T00:00:00Z'); nd.setUTCDate(nd.getUTCDate() + 1); endDate = nd.toISOString().slice(0, 10); eh -= 24 }
+    return {
+      start: { dateTime: `${date}T${time}:00+08:00`, timeZone: 'Asia/Taipei' },
+      end: { dateTime: `${endDate}T${pad(eh)}:${pad(em)}:00+08:00`, timeZone: 'Asia/Taipei' },
+    }
+  }
   const next = new Date(date + 'T00:00:00Z')
   next.setUTCDate(next.getUTCDate() + 1)
-  const endDate = next.toISOString().slice(0, 10)
+  return { start: { date }, end: { date: next.toISOString().slice(0, 10) } }
+}
+
+// 新增事件（有 time 就是定時，沒有就是全天）
+export async function insertEvent(accessToken: string, title: string, date: string, note = '', time = ''): Promise<GEvent> {
   const res = await fetch(CAL_BASE, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ summary: title, description: note, start: { date }, end: { date: endDate } }),
+    body: JSON.stringify({ summary: title, description: note, ...buildStartEnd(date, time) }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error?.message || '新增事件失敗')
-  return { id: data.id, title, date, note }
+  return { id: data.id, title, date, note, time, allDay: !time }
 }
 
-export async function patchEvent(accessToken: string, id: string, fields: { title?: string; date?: string; note?: string }) {
+export async function patchEvent(accessToken: string, id: string, fields: { title?: string; date?: string; note?: string; time?: string }) {
   const body: any = {}
   if (fields.title !== undefined) body.summary = fields.title
   if (fields.note !== undefined) body.description = fields.note
-  if (fields.date !== undefined) {
-    const next = new Date(fields.date + 'T00:00:00Z')
-    next.setUTCDate(next.getUTCDate() + 1)
-    body.start = { date: fields.date }
-    body.end = { date: next.toISOString().slice(0, 10) }
-  }
+  if (fields.date !== undefined) Object.assign(body, buildStartEnd(fields.date, fields.time))
   const res = await fetch(`${CAL_BASE}/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },

@@ -35,10 +35,10 @@ export async function POST(req: NextRequest) {
   const rt = refreshToken(req)
   if (!rt) return NextResponse.json({ error: '尚未連結 Google 日曆' }, { status: 400 })
   try {
-    const { title, date, note } = await req.json()
+    const { title, date, note, time } = await req.json()
     if (!title?.trim() || !date) return NextResponse.json({ error: '缺少標題或日期' }, { status: 400 })
     const access = await refreshAccessToken(rt)
-    const ev = await insertEvent(access, title.trim(), date, (note ?? '').trim())
+    const ev = await insertEvent(access, title.trim(), date, (note ?? '').trim(), (time ?? '').trim())
     return NextResponse.json({ ok: true, event: ev })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
@@ -50,10 +50,10 @@ export async function PATCH(req: NextRequest) {
   const rt = refreshToken(req)
   if (!rt) return NextResponse.json({ error: '尚未連結 Google 日曆' }, { status: 400 })
   try {
-    const { id, title, date, note } = await req.json()
+    const { id, title, date, note, time } = await req.json()
     if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
     const access = await refreshAccessToken(rt)
-    await patchEvent(access, id, { title, date, note })
+    await patchEvent(access, id, { title, date, note, time })
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })

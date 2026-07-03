@@ -141,6 +141,13 @@ export default function Page() {
     return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}`
   })
   const [agendaDate, setAgendaDate] = useState(() => new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10))
+  // 新增／編輯行程表單
+  const [showEventForm, setShowEventForm] = useState(false)
+  const [evId, setEvId] = useState<string | null>(null)
+  const [evTitle, setEvTitle] = useState('')
+  const [evDate, setEvDate] = useState('')
+  const [evTime, setEvTime] = useState('')
+  const [evSaving, setEvSaving] = useState(false)
   const [privatePersonTasks, setPrivatePersonTasks] = useState<DailyTask[]>([])
   const [showPrivateDone, setShowPrivateDone] = useState(false)
   const [addingPrivateTask, setAddingPrivateTask] = useState(false)
@@ -342,29 +349,35 @@ export default function Page() {
       else if (d.connected === false) setGcalConnected(false)
     } catch {} finally { setGcalLoading(false) }
   }
-  async function addPrivateEvent(date: string) {
-    const title = window.prompt(`新增行程到 Google 日曆（${date}）：`)
-    if (!title?.trim()) return
-    const tmpId = 'tmp-' + Date.now()
-    setPrivateEvents(prev => [...prev, { id: tmpId, title: title.trim(), date }])
-    const r = await fetch('/api/gcal', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title.trim(), date }),
-    })
-    const d = await r.json().catch(() => ({}))
-    if (r.ok && d.event?.id) setPrivateEvents(prev => prev.map(e => e.id === tmpId ? { ...e, id: d.event.id } : e))
-    else { setPrivateEvents(prev => prev.filter(e => e.id !== tmpId)); alert(d.error ?? '新增失敗') }
+  function openAddEvent(date: string) {
+    setEvId(null); setEvTitle(''); setEvDate(date); setEvTime(''); setShowEventForm(true)
   }
-  async function editPrivateEvent(ev: PrivateEvent) {
-    const title = window.prompt('編輯行程（清空並確定＝從 Google 日曆刪除）：', ev.title)
-    if (title === null) return
-    if (!title.trim()) {
-      setPrivateEvents(prev => prev.filter(e => e.id !== ev.id))
-      fetch('/api/gcal', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ev.id }) })
-      return
-    }
-    setPrivateEvents(prev => prev.map(e => e.id === ev.id ? { ...e, title: title.trim() } : e))
-    fetch('/api/gcal', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ev.id, title: title.trim() }) })
+  function openEditEvent(ev: PrivateEvent) {
+    setEvId(ev.id); setEvTitle(ev.title); setEvDate(ev.date); setEvTime(ev.allDay ? '' : (ev.time ?? '')); setShowEventForm(true)
+  }
+  async function saveEventForm() {
+    if (!evTitle.trim() || !evDate || evSaving) return
+    setEvSaving(true)
+    try {
+      const body = { id: evId ?? undefined, title: evTitle.trim(), date: evDate, time: evTime }
+      const r = await fetch('/api/gcal', {
+        method: evId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { alert(d.error ?? '儲存失敗'); return }
+      setShowEventForm(false)
+      fetchPrivateEvents()
+    } finally { setEvSaving(false) }
+  }
+  async function deleteEventForm() {
+    if (!evId) { setShowEventForm(false); return }
+    if (!window.confirm('確定刪除這筆行程嗎？（同步從 Google 日曆刪除）')) return
+    setPrivateEvents(prev => prev.filter(e => e.id !== evId))
+    setShowEventForm(false)
+    await fetch('/api/gcal', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: evId }) })
+    fetchPrivateEvents()
   }
 
   // 逾期 / 今天到期標記
@@ -1318,6 +1331,40 @@ export default function Page() {
               <button type="button" onClick={() => setShowLogin(false)} className="px-3 text-sm text-gray-400 hover:text-gray-600">取消</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* 新增／編輯行程表單 */}
+      {showEventForm && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setShowEventForm(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-5" onClick={e => e.stopPropagation()}>
+            <p className="text-base font-semibold text-gray-900 mb-4">{evId ? '編輯行程' : '新增行程'}</p>
+            <label className="text-xs text-gray-500">內容</label>
+            <input value={evTitle} onChange={e => setEvTitle(e.target.value)} placeholder="行程內容" autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') saveEventForm() }}
+              className="w-full mt-0.5 mb-3 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+            <div className="flex gap-2 mb-1">
+              <div className="flex-1">
+                <label className="text-xs text-gray-500">日期</label>
+                <input type="date" value={evDate} onChange={e => setEvDate(e.target.value)}
+                  className="w-full mt-0.5 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+              </div>
+              <div className="w-28">
+                <label className="text-xs text-gray-500">時間</label>
+                <input type="time" value={evTime} onChange={e => setEvTime(e.target.value)}
+                  className="w-full mt-0.5 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 mb-3">留空時間＝全天行程；填時間＝該時段（預設 1 小時）</p>
+            <div className="flex items-center gap-2">
+              <button onClick={saveEventForm} disabled={evSaving || !evTitle.trim()}
+                className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                {evSaving ? '儲存中…' : '儲存'}
+              </button>
+              {evId && <button onClick={deleteEventForm} className="text-xs text-red-500 hover:text-red-600 border border-red-200 rounded-lg px-2.5 py-2">刪除</button>}
+              <button onClick={() => setShowEventForm(false)} className="text-sm text-gray-400 hover:text-gray-600 px-2">取消</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2724,7 +2771,7 @@ export default function Page() {
                       onChange={e => { const v = e.target.value; if (!v) return; setAgendaDate(v); setPrivateMonth(v.slice(0, 7)) }}
                       className="text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-400" />
                     {gcalLoading && <span className="text-xs text-gray-400">讀取中…</span>}
-                    <button onClick={() => addPrivateEvent(agendaDate)}
+                    <button onClick={() => openAddEvent(agendaDate)}
                       className="ml-auto text-xs bg-indigo-600 text-white rounded px-2.5 py-1 hover:bg-indigo-700">＋ 新增行程</button>
                   </div>
                   {(() => {
@@ -2734,7 +2781,7 @@ export default function Page() {
                     return (
                       <div className="space-y-1">
                         {list.map(ev => (
-                          <button key={ev.id} onClick={() => editPrivateEvent(ev)}
+                          <button key={ev.id} onClick={() => openEditEvent(ev)}
                             className="w-full flex items-center gap-2 text-left bg-white border border-gray-100 rounded-lg px-2.5 py-1.5 hover:border-indigo-300 transition-colors">
                             <span className={`text-xs font-medium shrink-0 w-12 text-center rounded px-1 py-0.5 ${ev.allDay ? 'bg-purple-50 text-purple-600' : 'bg-indigo-50 text-indigo-600'}`}>{ev.allDay ? '全天' : (ev.time || '—')}</span>
                             <span className="text-sm text-gray-800 flex-1 truncate">{ev.title}</span>
@@ -2765,7 +2812,7 @@ export default function Page() {
                       <div className={`text-xs font-medium mb-1 ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-500'}`}>{d}</div>
                       <div className="space-y-0.5">
                         {evs.map(ev => (
-                          <div key={ev.id} onClick={e => { e.stopPropagation(); editPrivateEvent(ev) }}
+                          <div key={ev.id} onClick={e => { e.stopPropagation(); openEditEvent(ev) }}
                             title={ev.note || ev.title}
                             className="text-[11px] leading-tight px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 truncate hover:bg-indigo-200">
                             {!ev.allDay && ev.time ? `${ev.time} ` : ''}{ev.title}
