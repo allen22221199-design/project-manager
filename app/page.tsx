@@ -18,6 +18,8 @@ const INACTIVE_STATUSES = ['完成', '請款中含保留款']
 const DAILY_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
 const PROJECT_ASSIGNEES = ['', '黃文彬', '王志先', '廖淑慧', '呂理論', '呂敏紅']
 const DAILY_STATUS_CYCLE = ['進行中', '完成']
+// 此人員的工作項目不在公開區顯示，只在管理者登入後的私人區可見
+const PRIVATE_PERSON = '呂理論'
 const PROCESS_STEPS = ['丈量', '製圖', '訂料', '噴印檔', '前處理', '環氧白', '四色', '烘乾', '面漆', '包裝', '施工']
 // 任務文字含以下關鍵字 → 視為急件，套紅底
 const URGENT_KEYWORDS = ['急件', '緊急', '急需', '趕件', '趕工', '火速', '儘快', '盡快', '馬上', '立刻', 'ASAP', '急']
@@ -138,6 +140,7 @@ export default function Page() {
     return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}`
   })
   const [agendaDate, setAgendaDate] = useState(() => new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10))
+  const [privatePersonTasks, setPrivatePersonTasks] = useState<DailyTask[]>([])
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOverPerson, setDragOverPerson] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -247,7 +250,7 @@ export default function Page() {
   // 開站檢查是否已登入管理者（並檢查 Google 日曆連結狀態）
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
-      if (d.authed) { setIsAdmin(true); checkGcalStatus() }
+      if (d.authed) { setIsAdmin(true); checkGcalStatus(); fetchPrivatePersonTasks() }
     }).catch(() => {})
     // OAuth 導回後的提示
     const p = new URLSearchParams(window.location.search).get('gcal')
@@ -270,6 +273,21 @@ export default function Page() {
     } catch { setGcalConnected(false) }
   }
 
+  // 抓「私人人員」(呂理論) 的工作項目，只在管理者私人區顯示
+  async function fetchPrivatePersonTasks() {
+    try {
+      const r = await fetch(`/api/daily-tasks?person=${encodeURIComponent(PRIVATE_PERSON)}`)
+      if (!r.ok) return
+      const d = await r.json()
+      setPrivatePersonTasks(d.tasks ?? [])
+    } catch {}
+  }
+  async function togglePrivatePersonDone(t: DailyTask) {
+    const next = t.status === '完成' ? '進行中' : '完成'
+    setPrivatePersonTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
+    fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, status: next }) })
+  }
+
   async function doLogin() {
     if (loginLoading) return
     setLoginLoading(true); setLoginErr('')
@@ -281,7 +299,7 @@ export default function Page() {
       const d = await r.json()
       if (!r.ok) { setLoginErr(d.error ?? '登入失敗'); return }
       setIsAdmin(true); setShowLogin(false); setLoginUser(''); setLoginPass('')
-      fetchPrivateEvents()
+      checkGcalStatus(); fetchPrivatePersonTasks()
     } catch (e: any) { setLoginErr(e.message ?? '網路錯誤') }
     finally { setLoginLoading(false) }
   }
@@ -1232,7 +1250,7 @@ export default function Page() {
           <NavBtn active={view === 'daily'} onClick={() => { setView('daily'); fetchDailyTasks() }}>今日工作</NavBtn>
           <NavBtn active={view === 'search'} onClick={() => { setView('search'); fetchInProgress() }}>任務查詢</NavBtn>
           <NavBtn active={view === 'chat'} onClick={() => setView('chat')}>AI 助理</NavBtn>
-          {isAdmin && <NavBtn active={view === 'private'} onClick={() => { setView('private'); fetchPrivateEvents() }}>🔐 私人行事曆</NavBtn>}
+          {isAdmin && <NavBtn active={view === 'private'} onClick={() => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() }}>🔐 私人行事曆</NavBtn>}
         </div>
         {isAdmin ? (
           <button onClick={doLogout} title="登出管理者"
@@ -1898,7 +1916,7 @@ export default function Page() {
                       </button>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {Array.from(new Set(inProgressTasks.filter(t => showCompletedSearch || t.status !== '完成').map(t => t.person))).map(person => (
+                      {Array.from(new Set(inProgressTasks.filter(t => (showCompletedSearch || t.status !== '完成') && t.person !== PRIVATE_PERSON).map(t => t.person))).map(person => (
                         <button key={person}
                           onClick={() => { setSelectedPersonTag(selectedPersonTag === person ? null : person); setPersonFreqFilter(null) }}
                           className={`text-sm px-4 py-2 rounded-full font-medium transition-colors ${selectedPersonTag === person ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
@@ -2069,10 +2087,10 @@ export default function Page() {
                   </div>
                 )}
 
-                {dailyTaskResults.length > 0 && (
+                {dailyTaskResults.filter(t => t.person !== PRIVATE_PERSON).length > 0 && (
                   <div className="mt-4">
-                    <p className="text-xs font-medium text-gray-400 mb-2 px-1">今日工作項目 ({dailyTaskResults.length})</p>
-                    {dailyTaskResults.map(t => {
+                    <p className="text-xs font-medium text-gray-400 mb-2 px-1">今日工作項目 ({dailyTaskResults.filter(t => t.person !== PRIVATE_PERSON).length})</p>
+                    {dailyTaskResults.filter(t => t.person !== PRIVATE_PERSON).map(t => {
                       const flagged = effectiveFlagged(t) && t.status !== '完成' && t.status !== '已封存'
                       return (
                       <div key={t.id} className={`border rounded-xl shadow-sm p-3 mb-2 flex items-start gap-2 ${flagged ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200/70'}`}>
@@ -2404,7 +2422,7 @@ export default function Page() {
                   const dailyGrouped: Record<string, DailyTask[]> = {}
                   for (const t of dayTasks) (dailyGrouped[t.person] ??= []).push(t)
                   const extraPeople = Object.keys(dailyGrouped).filter(p => !DAILY_PEOPLE.includes(p))
-                  const allPeople = [...DAILY_PEOPLE, ...extraPeople].filter(p => !filterPerson || p === filterPerson)
+                  const allPeople = [...DAILY_PEOPLE, ...extraPeople].filter(p => p !== PRIVATE_PERSON && (!filterPerson || p === filterPerson))
                   return allPeople.map(person => {
                     const tasks = dailyGrouped[person] ?? []
                     const isOver = dragOverPerson === person
@@ -2575,7 +2593,39 @@ export default function Page() {
           for (let d = 1; d <= daysInMonth; d++) cells.push(d)
           while (cells.length % 7 !== 0) cells.push(null)
           const eventsOn = (d: number) => privateEvents.filter(e => e.date === `${privateMonth}-${String(d).padStart(2,'0')}`)
+          const personActive = privatePersonTasks.filter(t => t.status !== '已封存')
           return (
+            <div className="space-y-4">
+
+            {/* 呂理論待辦（只有管理者看得到，公開區已隱藏） */}
+            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-base font-semibold text-gray-900">🙋 {PRIVATE_PERSON} 待辦</p>
+                  <p className="text-xs text-gray-400 mt-0.5">此人員的工作項目只在這裡顯示，公開的今日工作／任務查詢已隱藏</p>
+                </div>
+                <button onClick={fetchPrivatePersonTasks} className="text-xs text-gray-400 hover:text-gray-700 border border-gray-200 rounded-lg px-2 py-1">↻ 重新整理</button>
+              </div>
+              {personActive.length === 0 ? (
+                <p className="text-sm text-gray-400 py-2">目前沒有工作項目</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {personActive.map(t => {
+                    const flagged = effectiveFlagged(t) && t.status !== '完成'
+                    return (
+                      <div key={t.id} className={`flex items-center gap-2 text-sm border rounded-lg px-2 py-1.5 ${flagged ? 'border-red-200 bg-red-50' : 'border-gray-100'}`}>
+                        <button onClick={() => togglePrivatePersonDone(t)}
+                          className={`text-xs px-2 py-0.5 rounded shrink-0 font-medium ${t.status === '完成' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{t.status}</button>
+                        {flagged && <span className="shrink-0" title="急件">🔥</span>}
+                        <span className={`flex-1 ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-800'}`}>{t.task}</span>
+                        {t.date && <span className="text-xs text-gray-400 shrink-0">{t.date}</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
             <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
@@ -2668,6 +2718,7 @@ export default function Page() {
                   )
                 })}
               </div>
+            </div>
             </div>
           )
         })()}
