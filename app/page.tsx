@@ -1395,7 +1395,7 @@ export default function Page() {
         </div>
       )}
 
-      <main className={`mx-auto p-4 animate-fade-in ${view === 'dashboard' ? 'max-w-[1800px]' : view === 'private' ? 'max-w-[1500px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
+      <main className={`mx-auto p-4 animate-fade-in ${view === 'dashboard' || view === 'private' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
