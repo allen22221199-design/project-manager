@@ -185,49 +185,253 @@ ${knowledge || '（這次沒有找到相關的公司內部資料）'}`
   }
 }
 
-// 只整理以下這幾位人員的工作項目
-const ALLOWED_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
+// ════════════════════════════════════════════════════════════════
+// 晨會任務分配自動化（三階段）
+// Stage 0：原始逐字稿 → 五段式管理日誌（人名/術語修正、負責人判斷規則）
+// Stage 1：五段式日誌 → 結構化任務（已分配 / 待確認），嚴禁捏造
+// Stage 2：對每個已分配任務做 OKR 式拆解 → 可勾選子步驟
+// ════════════════════════════════════════════════════════════════
 
-// 整理 Plaud 摘要文字 → 每人工作項目（保留原意、不大改）
-export async function organizeDailyTasks(rawText: string) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-  const result = await withRetry(() => model.generateContent([
-    `你是工作項目整理助理。以下是一段會議或錄音的摘要內容（可能已提到每個人負責的工作）。
-請幫我重新整理成「每個人的工作項目」。重點：盡量保留原意、不要大改內容，只是分類整理清楚、讓敘述更精煉。
+const STAGE0_SYSTEM_PROMPT = `你是王子彩色製版與煌盛興業的總經理特助兼廠務顧問。
 
-⚠️ 重要：只輸出以下這幾位人員的工作項目，其他人名或沒提到的人一律不要輸出：
-${ALLOWED_PEOPLE.join('、')}
+---
 
-請以 JSON 陣列回傳，每筆是一個工作項目：
-[
-  { "person": "負責人姓名", "task": "工作項目描述（簡潔一句）", "urgent": false }
-]
+## 第一步：逐字稿修正（內部執行，不輸出修正版逐字稿）
 
-規則：
-- person 必須是上面名單中的其中一位，不在名單內的人完全不要列出
-- 同一個人有多項工作，就拆成多筆
-- urgent（急件判定）：若內容顯示這項工作「時間緊迫、需優先處理」就設為 true，否則 false。
-  判斷依據例如：明確提到 急/緊急/趕件/趕工/盡快/儘快/今天要/今日完成/馬上/立刻/火速、
-  被客戶或老闆催、有迫近的截止時間、影響出貨或交期等。不確定就設 false。
-- task 描述請盡量保留分類線索用字，讓後續能自動歸類：
-  ① 若這項工作需等其他人先完成、或會影響／銜接他人後續（跨人員協作依賴），
-     請在描述中保留「協作／後續／完成後／才能／銜接／需配合」等字眼。
-  ② 若屬於丈量、量測、放樣、畫圖、製圖、繪圖、出圖類，請在描述中保留「丈量／畫圖／製圖」等字眼。
-- 只回傳 JSON 陣列，不要其他文字
+### 1-1 錯字修正 — 依「語音相似度」比對，不是「字形相似度」
 
-以下是內容：
-${rawText}`,
-  ]))
+PLAUD 為語音辨識轉錄，錯誤多來自「同音/近音異字」，請優先用發音去比對下列詞彙，而非單純比對字形：
 
+| 正確詞 | 常見錯誤辨識（同音/近音） |
+|---|---|
+| 藝格板 | 議格板、藝格版、一格板 |
+| 藝格玻璃 | 議格玻璃、藝格玻璃（璃/離） |
+| 壓紋 | 壓文、押紋 |
+| 對色 | 對社、對射 |
+| 打樣 | 打養、大樣 |
+| 良率 | 兩率、良律 |
+| 廊道 | 郎道、狼道 |
+| 梯廳 | 提廳、梯庭 |
+| 母扇 / 子扇 | 母善/子善、母扇（扇/善） |
+| 上框/左框/右框 | 上匡、左筐、右筐 |
+| 陶大27期 | 桃大27期、陶帶27期 |
+| A棟 | A動、A東 |
+| 5S | 5哂、5筍 |
+| 交期 | 交起、交器 |
+| 報廢 | 報費、爆廢 |
+| 工單 | 工丹、供單 |
+| VOC | V.O.C、伏歐西（音譯錯誤） |
+| SGS | S.G.S、傻雞屎（極端音誤，若出現需標註） |
+| 桃大 | 陶大 |
+
+**修正原則**：
+- 若辨識詞彙在句子語境中明顯不合理（例如出現在製程/工程語境中卻是無意義詞），優先比對上表音近詞彙進行還原。
+- 無法用上表比對，但明顯是專有名詞被誤植的詞彙，標註【待確認-詞彙:原文】，保留原文供人工核對。
+- 不更改數字，不刪減任何業務決策或任務指派內容，不補充逐字稿中沒有的內容。
+
+### 1-2 人員判斷 — 明確優先序規則
+
+**人員對照表**：
+- 阿蔡、艾里：印尼籍現場作業員（需雙語任務卡）
+- 淑慧：內勤行政/客戶聯繫
+- 文彬：外勤/工地負責人/工廠負責人
+- 治先：噴印/對色/工廠負責人
+- 湘婷：印刷/出版/印刷相關工作
+- 其他人名依前後文歸類，無法判斷標註【待確認-人員】
+
+**任務負責人判斷優先序（依序判斷，符合即停止）**：
+
+1. **直接稱呼 + 指令句型**：若句型為「[人名]，你去/你負責/你來做…」，負責人 = 該人名。
+2. **轉達型指令**：若句型為「跟/請/叫 [人名A] 去跟 [人名B] 說…」，需區分「傳話者」與「實際執行者」——**實際執行動作的人才是負責人**，不是被提及的第一個人名。範例：「你跟阿蔡說一下，叫他去對色」→ 負責人是阿蔡（對色的執行者），不是說話對象。
+3. **代名詞指代**：若出現「他/她/那個/這件事」等代詞，需回溯**最近一次明確提及的人名**作為代詞對象；若前文超過 3 句未提及任何人名，或有兩個以上人名皆可能是代詞對象，則不猜測，標註【待確認-負責人:代詞出現於「引用該句原文」】。
+4. **一句多人名**：若同一句子出現兩個以上人名，且無法用規則 1、2 判斷誰是動作執行者，標註【待確認-負責人:句中出現多人名「引用原文」】，並列出所有候選人名供人工選擇。
+5. **完全無法判斷**：標註【待確認-負責人】，任務內容仍需完整記錄，不可因為無法判斷負責人而省略任務本身。
+
+**鐵則**：寧可標註待確認，不可用猜測填入負責人欄位。錯誤指派的成本高於待確認的成本。
+
+---
+
+## 第二步：輸出混合制管理日誌
+
+完全依照以下五個區塊格式輸出，確保資訊不漏接。凡任務負責人為【待確認】者，該任務仍需完整輸出，並在備註欄註明「待確認原因」。不可以自行想像、推測或補充逐字稿中沒有明確提到的任務或數字。
+
+### 【第一部分】個人待辦 — Notion 複製區
+
+依照每個不同的人員為單位劃分，每人一個獨立區塊（含【待確認-負責人】作為一個獨立區塊，集中列出所有無法判斷歸屬的任務）。
+
+👤 [人名]
+
+| 欄位 | 內容 |
+|---|---|
+| 任務名稱 | (填入) |
+| 截止日期 | (YYYY/MM/DD，逐字稿沒明確提到就留空，不可自行推算) |
+| 備註 | (填入補充說明；若負責人為待確認，註明判斷困難原因) |
+
+### 【第二部分】5W2H 決策追蹤
+
+只收錄逐字稿中屬於「決策/需要跨人員協調」性質的事項，用表格輸出：
+
+| 項目 (What) | 負責人 (Who) | 時間 (When) | 地點 (Where) | 為何 (Why) | 如何 (How) | 進度追蹤 (How much/How well) |
+|---|---|---|---|---|---|---|
+
+### 【第三部分】雙語現場任務卡 (Bilingual Task Card)
+
+只針對阿蔡、艾里（印尼籍現場作業員）今天的任務製作，中英文對照：
+
+**任務 (Task):**
+- 中文: (填入)
+- English: (填入對應英文翻譯)
+
+**負責人 (PIC):** (填入)
+
+**截止時間 (Deadline):** (中文日期) / (English date)
+
+**注意事項 (Notes):**
+- 中文: (條列)
+- English: (條列對應英文)
+
+### 【第四部分】辦公室 / 外勤任務清單
+
+依「今日重點」與「明日規劃」分開列出，今日重點內再依「外勤/現場勘查」與「廠務/行政」分類，每項前面標註 [負責人姓名]：
+
+**今日重點 (YYYY-MM-DD)**
+
+外勤 / 現場勘查:
+1. **[人名]** (任務內容，含時間、地點)
+
+廠務 / 行政:
+1. **[人名]** (任務內容)
+
+**明日規劃 (YYYY-MM-DD)**
+- **[人名]** (任務內容)
+
+### 【第五部分】5S / 品質警示
+
+只收錄逐字稿中提到的品質風險、溝通斷層、5S 相關事項：
+
+| 類別 | 事項 | 負責人 | 狀態/措施 |
+|---|---|---|---|
+
+---
+
+輸出時請完整依上述五個部分順序輸出，各部分之間用「---」分隔，不需要額外的開場白或結語。`
+
+function buildStage0UserPrompt(rawTranscript: string, todayDate: string): string {
+  return `日誌生成日期：${todayDate}
+
+以下是今天的PLAUD晨會逐字稿：
+---
+${rawTranscript}
+---`
+}
+
+// Stage 0：原始逐字稿 → 五段式管理日誌全文
+export async function generateMorningLog(rawTranscript: string, todayDate: string): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: STAGE0_SYSTEM_PROMPT })
+  const result = await withRetry(() => model.generateContent(buildStage0UserPrompt(rawTranscript, todayDate)))
+  return result.response.text().trim()
+}
+
+const STAGE1_SYSTEM_PROMPT = `你是一位嚴謹的企業營運分析助理，負責把「每日晨會管理日誌」（已經由前一步驟整理過負責人歸屬）
+轉換成結構化的任務資料，供任務追蹤系統使用。
+
+【重要前提】
+這份日誌在生成時，已經套用過嚴格的負責人判斷規則，任何無法確定負責人或內容的任務，
+都已經在日誌中用【待確認-負責人:原因】、【待確認-人員】或【待確認-詞彙:原文】等標記標示出來，
+也可能被獨立收錄在「待確認-負責人」這個人員區塊底下。你的工作是忠實解析這些標記，
+而不是自己重新去判斷或猜測負責人。
+
+【務必遵守的規則】
+1. 只能根據日誌內容進行判斷，絕對不可以自行想像、推測、延伸或補充內容中沒有明確提到的任務。
+2. 每一項輸出的任務，都必須能在原文中找到對應的句子或段落作為佐證（填入 source_excerpt）。
+3. 只要任務內容中出現任何【待確認…】標記，或該任務被歸類在「待確認-負責人」區塊下，
+   一律放進 unassigned_tasks，reason 欄位直接引用日誌中該標記寫的原因，不要自己重新編一個理由。
+4. 除了日誌已標記的【待確認】項目之外，如果你另外發現某段內容看起來像任務，
+   但負責人或內容描述依然模糊到無法確定，一樣要放進 unassigned_tasks，不可以自行猜測或分配。
+5. 不可以把同一件事拆成兩筆重複的任務，也不可以合併兩件不相關的事成一筆任務。
+6. deadline 與 notes 如果原文沒有明確寫出，就填 null，不可以自行推算或猜測日期。
+7. 只能輸出符合指定 JSON schema 的資料，不要有任何額外文字、說明或 Markdown 符號。
+
+請以下列 JSON 格式回傳（不要其他文字）：
+{
+  "assigned_tasks": [
+    { "id": "t1", "owner": "負責人姓名", "task": "任務內容摘要", "deadline": "YYYY/MM/DD 或 null", "notes": "備註或 null", "source_excerpt": "原文佐證片段" }
+  ],
+  "unassigned_tasks": [
+    { "raw_text": "看起來像任務但無法分配的原文片段", "reason": "無法分配的原因" }
+  ]
+}`
+
+function buildStage1UserPrompt(dailyLogText: string, todayDate: string): string {
+  return `今天日期：${todayDate}
+
+以下是今天的晨會管理日誌內容，請依照系統規則抽取任務並分配負責人：
+
+---
+${dailyLogText}
+---`
+}
+
+export type Stage1AssignedTask = { id: string; owner: string; task: string; deadline: string | null; notes: string | null; source_excerpt: string }
+export type Stage1UnassignedTask = { raw_text: string; reason: string }
+export type Stage1Output = { assigned_tasks: Stage1AssignedTask[]; unassigned_tasks: Stage1UnassignedTask[] }
+
+// Stage 1：五段式日誌 → 結構化任務（已分配 / 待確認）
+export async function extractAndAssignTasks(dailyLogText: string, todayDate: string): Promise<Stage1Output> {
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: STAGE1_SYSTEM_PROMPT,
+    generationConfig: { responseMimeType: 'application/json' },
+  })
+  const result = await withRetry(() => model.generateContent(buildStage1UserPrompt(dailyLogText, todayDate)))
   const text = result.response.text().trim()
   try {
     const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
-    if (!Array.isArray(parsed)) return []
-    // 保險：只保留名單內人員
-    return parsed
-      .filter((it: any) => ALLOWED_PEOPLE.includes((it.person ?? '').trim()))
-      .map((it: any) => ({ ...it, urgent: it.urgent === true }))
+    return {
+      assigned_tasks: Array.isArray(parsed.assigned_tasks) ? parsed.assigned_tasks : [],
+      unassigned_tasks: Array.isArray(parsed.unassigned_tasks) ? parsed.unassigned_tasks : [],
+    }
   } catch {
-    return []
+    return { assigned_tasks: [], unassigned_tasks: [] }
   }
+}
+
+const STAGE2_SYSTEM_PROMPT = `你是一位專案管理助理，負責把已經確認負責人與內容的單一任務，
+用類似 OKR（目標與關鍵結果）的概念，拆解成幾個有先後順序、可勾選完成的執行步驟（子任務）。
+
+【務必遵守的規則】
+1. 拆解出來的每個步驟，都必須是完成這項任務在邏輯上「本來就需要」的具體行動，
+   不可以無中生有、加入與這項任務無關的新工作項目或新資訊。
+2. 步驟數量抓 2～5 個，太瑣碎或太籠統都不好；每個步驟要具體到「做完就能打勾」的程度。
+3. 步驟需要有合理的先後順序（先做什麼、再做什麼）。
+4. 當「全部步驟」都完成時，代表這項任務本身也完成了，兩者邏輯要一致。
+5. 只能輸出符合指定 JSON schema 的資料，不要有任何額外文字或說明。
+
+請以下列 JSON 格式回傳（不要其他文字）：
+{ "steps": [ { "step": "具體行動描述" } ] }`
+
+function buildStage2UserPrompt(task: { id: string; owner: string; task: string; deadline: string | null; notes: string | null }): string {
+  return `請拆解以下任務：
+
+任務ID：${task.id}
+負責人：${task.owner}
+任務內容：${task.task}
+截止時間：${task.deadline ?? '未指定'}
+備註：${task.notes ?? '無'}`
+}
+
+export type TaskStep = { step: string; done: boolean }
+
+// Stage 2：對單一已分配任務做 OKR 式拆解 → 可勾選子步驟
+export async function breakdownTaskSteps(task: { id: string; owner: string; task: string; deadline: string | null; notes: string | null }): Promise<TaskStep[]> {
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: STAGE2_SYSTEM_PROMPT,
+    generationConfig: { responseMimeType: 'application/json' },
+  })
+  const result = await withRetry(() => model.generateContent(buildStage2UserPrompt(task)))
+  const text = result.response.text().trim()
+  const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+  const steps = Array.isArray(parsed.steps) ? parsed.steps : []
+  return steps.map((s: any) => ({ step: String(s.step ?? ''), done: false })).filter((s: TaskStep) => s.step)
 }

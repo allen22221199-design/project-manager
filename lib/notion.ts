@@ -443,6 +443,12 @@ export async function getTasksByPerson(person: string) {
     direction: (page.properties['AI需求']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     aiPlan: (page.properties['AI規劃']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     flag: (page.properties['急件標記']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    steps: (() => {
+      try {
+        const raw = (page.properties['步驟']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
+        return raw ? JSON.parse(raw) : []
+      } catch { return [] }
+    })(),
     attachments: (() => {
       try {
         const raw = (page.properties['附件']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
@@ -484,6 +490,12 @@ export async function getDailyTasks(dateStr?: string) {
     direction: (page.properties['AI需求']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     aiPlan: (page.properties['AI規劃']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
     flag: (page.properties['急件標記']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    steps: (() => {
+      try {
+        const raw = (page.properties['步驟']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
+        return raw ? JSON.parse(raw) : []
+      } catch { return [] }
+    })(),
     attachments: (() => {
       try {
         const raw = (page.properties['附件']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
@@ -567,10 +579,13 @@ const DAILY_PROP_SCHEMA: Record<string, any> = {
   AI規劃: { rich_text: {} },
   附件: { rich_text: {} },
   急件標記: { rich_text: {} },
+  步驟: { rich_text: {} },
 }
 
+export type DailyTaskStep = { step: string; done: boolean }
+
 // Update a daily task (reassign person / edit text / change status)
-export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string; freq?: string; content?: string; direction?: string; aiPlan?: string; dueDate?: string; attachments?: {name: string; url: string}[]; flag?: string }) {
+export async function updateDailyTask(id: string, fields: { person?: string; task?: string; status?: string; freq?: string; content?: string; direction?: string; aiPlan?: string; dueDate?: string; attachments?: {name: string; url: string}[]; flag?: string; steps?: DailyTaskStep[] }) {
   const properties: any = {}
   if (fields.person !== undefined) properties['人員'] = { rich_text: [{ text: { content: fields.person } }] }
   if (fields.task !== undefined) properties['任務名稱'] = { title: [{ text: { content: fields.task } }] }
@@ -581,6 +596,7 @@ export async function updateDailyTask(id: string, fields: { person?: string; tas
   if (fields.aiPlan !== undefined) properties['AI規劃'] = { rich_text: toRichText(fields.aiPlan) }
   if (fields.attachments !== undefined) properties['附件'] = { rich_text: toRichText(JSON.stringify(fields.attachments)) }
   if (fields.flag !== undefined) properties['急件標記'] = { rich_text: toRichText(fields.flag) }
+  if (fields.steps !== undefined) properties['步驟'] = { rich_text: toRichText(JSON.stringify(fields.steps)) }
 
   // 遇到「某欄位不存在」：若在 schema 內就自動建立該欄位再重試，否則移除該欄位重試，
   // 讓其他欄位仍能正常儲存，不會整筆失敗。

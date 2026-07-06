@@ -75,7 +75,8 @@ type PrivateEvent = { id: string; title: string; date: string; note?: string; ti
 type FileResult = { title: string; name: string; url: string }
 type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[] }
 type TaskAttachment = { name: string; url: string }
-type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[]; flag?: string }
+type TaskStep = { step: string; done: boolean }
+type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[]; flag?: string; steps?: TaskStep[] }
 
 // 安全解析回應：伺服器逾時/出錯時回的是 HTML，不要讓 JSON.parse 噴出難懂的錯誤
 async function readJson(r: Response): Promise<any> {
@@ -803,11 +804,12 @@ export default function Page() {
         body: JSON.stringify({ text: plaudText, sendLine }),
       })
       const data = await readJson(r)
-      if (r.ok && data.count > 0) {
+      if (r.ok && (data.count > 0 || data.pendingCount > 0)) {
         const lineNote = data.line?.ok ? '，已發送 LINE ✓'
           : data.line?.skipped ? '（LINE 未設定，略過）'
           : data.line?.error ? `（LINE 發送失敗：${data.line.error}）` : ''
-        setOrganizeMsg(`已整理 ${data.count} 筆工作項目並寫入 Notion ✓${lineNote}`)
+        const pendingNote = data.pendingCount > 0 ? `，另有 ${data.pendingCount} 項待確認負責人` : ''
+        setOrganizeMsg(`已整理 ${data.count} 筆工作項目並寫入 Notion ✓${pendingNote}${lineNote}`)
         setOrganizeOk(true)
         setPlaudText('')
         fetchDailyTasks()
@@ -1045,6 +1047,14 @@ export default function Page() {
     setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, flag: nextFlag } : x))
     setDailyTaskResults(prev => prev.map(x => x.id === t.id ? { ...x, flag: nextFlag } : x))
     fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, flag: nextFlag }) })
+  }
+
+  // 切換子步驟（checklist）完成狀態
+  function toggleTaskStep(t: DailyTask, stepIdx: number) {
+    const nextSteps = (t.steps ?? []).map((s, i) => i === stepIdx ? { ...s, done: !s.done } : s)
+    setDailyAll(prev => prev.map(x => x.id === t.id ? { ...x, steps: nextSteps } : x))
+    setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, steps: nextSteps } : x))
+    fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, steps: nextSteps }) })
   }
 
   // 儲存任務詳情（內容 / 進度方向 / 附件）
@@ -2420,9 +2430,10 @@ export default function Page() {
 
             {/* 貼上 Plaud 內容 → Gemini 整理 */}
             <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 space-y-3">
-              <p className="text-sm font-medium text-gray-700">📥 貼上 Plaud 內容自動整理</p>
+              <p className="text-sm font-medium text-gray-700">📥 貼上 Plaud 逐字稿自動整理</p>
+              <p className="text-xs text-gray-400 -mt-2">AI 會自動修正錯字、判斷負責人、拆解成可勾選的執行步驟；無法判斷負責人的項目會列在「待確認」欄，可拖曳指派</p>
               <textarea value={plaudText} onChange={e => setPlaudText(e.target.value)} rows={5}
-                placeholder="把 Plaud 生成好的摘要內容貼到這裡，Gemini 會自動整理成每個人的工作項目..."
+                placeholder="把 Plaud 產生的逐字稿或摘要貼到這裡..."
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
               <label className="flex items-center gap-2 text-sm text-gray-600">
                 <input type="checkbox" checked={sendLine} onChange={e => setSendLine(e.target.checked)} className="rounded" />
@@ -2522,8 +2533,8 @@ export default function Page() {
                   const dayTasks = dailyAll.filter(t => t.date === selectedDate && (showCompleted || (t.status !== '完成' && t.status !== '已封存')))
                   const dailyGrouped: Record<string, DailyTask[]> = {}
                   for (const t of dayTasks) (dailyGrouped[t.person] ??= []).push(t)
-                  const extraPeople = Object.keys(dailyGrouped).filter(p => !DAILY_PEOPLE.includes(p))
-                  const allPeople = [...DAILY_PEOPLE, ...extraPeople].filter(p => p !== PRIVATE_PERSON && (!filterPerson || p === filterPerson))
+                  const extraPeople = Object.keys(dailyGrouped).filter(p => !DAILY_PEOPLE.includes(p)).sort((a, b) => (a === '待確認' ? -1 : b === '待確認' ? 1 : 0))
+                  const allPeople = [...extraPeople.filter(p => p === '待確認'), ...DAILY_PEOPLE, ...extraPeople.filter(p => p !== '待確認')].filter(p => p !== PRIVATE_PERSON && (!filterPerson || p === filterPerson))
                   return allPeople.map(person => {
                     const tasks = dailyGrouped[person] ?? []
                     const isOver = dragOverPerson === person
@@ -2532,13 +2543,14 @@ export default function Page() {
                         onDragOver={e => { e.preventDefault(); setDragOverPerson(person) }}
                         onDragLeave={() => setDragOverPerson(prev => prev === person ? null : prev)}
                         onDrop={e => { e.preventDefault(); setDragOverPerson(null); if (draggingId) reassignTask(draggingId, person); setDraggingId(null) }}
-                        className={`bg-white border rounded-xl p-4 transition-colors ${isOver ? 'border-gray-900 bg-gray-50' : 'border-gray-200'}`}>
+                        className={`bg-white border rounded-xl p-4 transition-colors ${isOver ? 'border-gray-900 bg-gray-50' : person === '待確認' ? 'border-amber-300 bg-amber-50/40' : 'border-gray-200'}`}>
                         <div className="flex items-center gap-2 mb-3">
-                          <span className="w-7 h-7 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-medium shrink-0">
-                            {person.slice(0, 1)}
+                          <span className={`w-7 h-7 rounded-full text-white text-xs flex items-center justify-center font-medium shrink-0 ${person === '待確認' ? 'bg-amber-500' : 'bg-indigo-600'}`}>
+                            {person === '待確認' ? '⚠️' : person.slice(0, 1)}
                           </span>
                           <p className="font-medium text-gray-900">{person}</p>
                           <span className="text-xs text-gray-400">{tasks.length} 項</span>
+                          {person === '待確認' && <span className="text-xs text-amber-600">拖曳到正確人員即可指派</span>}
                         </div>
                         {tasks.length === 0 ? (
                           <p className="text-xs text-gray-300 py-1">（可拖任務到這裡）</p>
@@ -2599,6 +2611,17 @@ export default function Page() {
                                 <button onClick={() => deleteTask(t.id)} title="刪除"
                                   className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 shrink-0 leading-none">×</button>
                               </div>
+                              {(t.steps ?? []).length > 0 && (
+                                <div className="ml-6 mt-0.5 mb-1 space-y-0.5">
+                                  {(t.steps ?? []).map((s, si) => (
+                                    <label key={si} className="flex items-start gap-1.5 text-xs cursor-pointer">
+                                      <input type="checkbox" checked={s.done} onChange={() => toggleTaskStep(t, si)}
+                                        className="mt-0.5 rounded shrink-0" />
+                                      <span className={s.done ? 'line-through text-gray-300' : 'text-gray-500'}>{s.step}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
                               {detailId === t.id && renderTaskDetail(t)}
                               </div>
                             ))}
