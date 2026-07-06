@@ -1,5 +1,5 @@
 // 晨會任務自動化：共用流程（Stage0 → Stage1 → Stage2 → 寫入 Notion）
-// 供「貼上 Plaud 內容」(app/api/organize-tasks) 與 Zapier webhook (app/api/plaud-webhook) 共用
+// 供「貼上 Plaud 內容」(app/api/organize-tasks) 使用
 import { generateMorningLog, extractAndAssignTasks, breakdownTaskSteps } from './gemini'
 import { addDailyTask, updateDailyTask, deleteDailyTasksByDate, writeHistorySection } from './notion'
 import { pushToLine } from './line'
