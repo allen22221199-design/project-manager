@@ -154,6 +154,10 @@ export default function Page() {
   const [privatePersonTasks, setPrivatePersonTasks] = useState<DailyTask[]>([])
   const [showPrivateDone, setShowPrivateDone] = useState(false)
   const [addingPrivateTask, setAddingPrivateTask] = useState(false)
+  const [showPrivateTaskForm, setShowPrivateTaskForm] = useState(false)
+  const [ptTaskId, setPtTaskId] = useState<string | null>(null)
+  const [ptTaskText, setPtTaskText] = useState('')
+  const [ptTaskDate, setPtTaskDate] = useState('')
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOverPerson, setDragOverPerson] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -302,16 +306,29 @@ export default function Page() {
     setPrivatePersonTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
     fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, status: next }) })
   }
-  async function addPrivatePersonTask() {
-    const task = window.prompt(`新增 ${PRIVATE_PERSON_LABEL} 的工作項目：`)
-    if (!task?.trim() || addingPrivateTask) return
+  function openAddPrivateTask() {
+    setPtTaskId(null); setPtTaskText(''); setPtTaskDate(todayISO()); setShowPrivateTaskForm(true)
+  }
+  function openEditPrivateTask(t: DailyTask) {
+    setPtTaskId(t.id); setPtTaskText(t.task); setPtTaskDate(t.date || todayISO()); setShowPrivateTaskForm(true)
+  }
+  async function savePrivateTaskForm() {
+    if (!ptTaskText.trim() || addingPrivateTask) return
     setAddingPrivateTask(true)
     try {
-      const today = todayISO()
-      await fetch('/api/daily-tasks', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ person: PRIVATE_PERSON, task: task.trim(), date: today }),
-      })
+      if (ptTaskId) {
+        setPrivatePersonTasks(prev => prev.map(x => x.id === ptTaskId ? { ...x, task: ptTaskText.trim(), date: ptTaskDate } : x))
+        await fetch('/api/daily-tasks', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: ptTaskId, task: ptTaskText.trim(), dueDate: ptTaskDate }),
+        })
+      } else {
+        await fetch('/api/daily-tasks', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ person: PRIVATE_PERSON, task: ptTaskText.trim(), date: ptTaskDate || todayISO() }),
+        })
+      }
+      setShowPrivateTaskForm(false)
       await fetchPrivatePersonTasks()
     } finally { setAddingPrivateTask(false) }
   }
@@ -2714,7 +2731,7 @@ export default function Page() {
                   <p className="text-xs text-gray-400 mt-0.5">🔴 紅色底色＝急件或需優先處理的項目（急件／協作／丈量繪圖）</p>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <button onClick={addPrivatePersonTask} disabled={addingPrivateTask}
+                  <button onClick={openAddPrivateTask} disabled={addingPrivateTask}
                     className="text-xs bg-indigo-600 text-white rounded-lg px-2.5 py-1 hover:bg-indigo-700 disabled:opacity-40">＋ 新增任務</button>
                   <button onClick={fetchPrivatePersonTasks} className="text-xs text-gray-400 hover:text-gray-700 border border-gray-200 rounded-lg px-2 py-1">↻ 重新整理</button>
                   <button onClick={() => setShowPrivateDone(v => !v)}
@@ -2743,7 +2760,8 @@ export default function Page() {
                           <span className={`flex-1 cursor-text ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-800'}`}
                             onClick={() => { setEditingId(t.id); setEditText(t.task) }}>{t.task}</span>
                         )}
-                        {t.date && <span className="text-xs text-gray-400 shrink-0">{t.date}</span>}
+                        <button onClick={() => openEditPrivateTask(t)} title="點擊修改截止日期"
+                          className="text-xs text-gray-400 hover:text-indigo-500 shrink-0">{t.date || '設定日期'}</button>
                         <button onClick={() => deletePrivatePersonTask(t)} title="刪除"
                           className="shrink-0 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 leading-none px-1">✕</button>
                       </div>
@@ -2752,6 +2770,29 @@ export default function Page() {
                 </div>
               )}
             </div>
+
+            {/* 新增／編輯 Alen 任務表單 */}
+            {showPrivateTaskForm && (
+              <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setShowPrivateTaskForm(false)}>
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-5" onClick={e => e.stopPropagation()}>
+                  <p className="text-base font-semibold text-gray-900 mb-4">{ptTaskId ? '編輯任務' : `新增 ${PRIVATE_PERSON_LABEL} 的工作項目`}</p>
+                  <label className="text-xs text-gray-500">任務內容</label>
+                  <input value={ptTaskText} onChange={e => setPtTaskText(e.target.value)} placeholder="工作項目內容" autoFocus
+                    onKeyDown={e => { if (e.key === 'Enter') savePrivateTaskForm() }}
+                    className="w-full mt-0.5 mb-3 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                  <label className="text-xs text-gray-500">截止日期</label>
+                  <input type="date" value={ptTaskDate} onChange={e => setPtTaskDate(e.target.value)}
+                    className="w-full mt-0.5 mb-4 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                  <div className="flex items-center gap-2">
+                    <button onClick={savePrivateTaskForm} disabled={addingPrivateTask || !ptTaskText.trim()}
+                      className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                      {addingPrivateTask ? '儲存中…' : '儲存'}
+                    </button>
+                    <button onClick={() => setShowPrivateTaskForm(false)} className="text-sm text-gray-400 hover:text-gray-600 px-2">取消</button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
               <div className="flex items-center justify-between mb-4">
