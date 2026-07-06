@@ -1395,6 +1395,29 @@ export default function Page() {
         </div>
       )}
 
+      {/* 新增／編輯 Alen 任務表單 */}
+      {showPrivateTaskForm && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setShowPrivateTaskForm(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-5" onClick={e => e.stopPropagation()}>
+            <p className="text-base font-semibold text-gray-900 mb-4">{ptTaskId ? '編輯任務' : `新增 ${PRIVATE_PERSON_LABEL} 的工作項目`}</p>
+            <label className="text-xs text-gray-500">任務內容</label>
+            <input value={ptTaskText} onChange={e => setPtTaskText(e.target.value)} placeholder="工作項目內容" autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') savePrivateTaskForm() }}
+              className="w-full mt-0.5 mb-3 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+            <label className="text-xs text-gray-500">截止日期</label>
+            <input type="date" value={ptTaskDate} onChange={e => setPtTaskDate(e.target.value)}
+              className="w-full mt-0.5 mb-4 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+            <div className="flex items-center gap-2">
+              <button onClick={savePrivateTaskForm} disabled={addingPrivateTask || !ptTaskText.trim()}
+                className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                {addingPrivateTask ? '儲存中…' : '儲存'}
+              </button>
+              <button onClick={() => setShowPrivateTaskForm(false)} className="text-sm text-gray-400 hover:text-gray-600 px-2">取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className={`mx-auto p-4 animate-fade-in ${view === 'dashboard' || view === 'private' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
@@ -2777,29 +2800,6 @@ export default function Page() {
                 </div>
               )}
             </div>
-
-            {/* 新增／編輯 Alen 任務表單 */}
-            {showPrivateTaskForm && (
-              <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setShowPrivateTaskForm(false)}>
-                <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-5" onClick={e => e.stopPropagation()}>
-                  <p className="text-base font-semibold text-gray-900 mb-4">{ptTaskId ? '編輯任務' : `新增 ${PRIVATE_PERSON_LABEL} 的工作項目`}</p>
-                  <label className="text-xs text-gray-500">任務內容</label>
-                  <input value={ptTaskText} onChange={e => setPtTaskText(e.target.value)} placeholder="工作項目內容" autoFocus
-                    onKeyDown={e => { if (e.key === 'Enter') savePrivateTaskForm() }}
-                    className="w-full mt-0.5 mb-3 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
-                  <label className="text-xs text-gray-500">截止日期</label>
-                  <input type="date" value={ptTaskDate} onChange={e => setPtTaskDate(e.target.value)}
-                    className="w-full mt-0.5 mb-4 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-indigo-400" />
-                  <div className="flex items-center gap-2">
-                    <button onClick={savePrivateTaskForm} disabled={addingPrivateTask || !ptTaskText.trim()}
-                      className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
-                      {addingPrivateTask ? '儲存中…' : '儲存'}
-                    </button>
-                    <button onClick={() => setShowPrivateTaskForm(false)} className="text-sm text-gray-400 hover:text-gray-600 px-2">取消</button>
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
               <div className="flex items-center justify-between mb-4">
