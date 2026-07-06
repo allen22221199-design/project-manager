@@ -20,8 +20,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    // ⚠️ 欄位名稱請依 Zapier 測試觸發時實際看到的欄位調整
-    const rawTranscript: string | undefined = body?.transcript ?? body?.transcript_text ?? body?.raw_text
+    // 欄位名稱不分大小寫比對（Zapier 端實測欄位為大寫開頭的 Transcript）
+    const bodyLower: Record<string, any> = {}
+    for (const k in body) bodyLower[k.toLowerCase()] = body[k]
+    const rawTranscript: string | undefined =
+      bodyLower['transcript'] ?? bodyLower['transcript_text'] ?? bodyLower['raw_text'] ?? bodyLower['summary']
 
     if (!rawTranscript || rawTranscript.trim().length === 0) {
       return NextResponse.json({ error: '收不到逐字稿內容，請檢查 Zapier 送過來的欄位名稱是否對應' }, { status: 400 })
