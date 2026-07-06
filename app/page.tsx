@@ -71,7 +71,7 @@ type Project = { id: string; name: string; status: string; contact: string; addr
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private'
-type PrivateEvent = { id: string; title: string; date: string; note?: string; time?: string; allDay?: boolean }
+type PrivateEvent = { id: string; title: string; date: string; note?: string; time?: string; endTime?: string; allDay?: boolean }
 type FileResult = { title: string; name: string; url: string }
 type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[] }
 type TaskAttachment = { name: string; url: string }
@@ -149,6 +149,7 @@ export default function Page() {
   const [evTitle, setEvTitle] = useState('')
   const [evDate, setEvDate] = useState('')
   const [evTime, setEvTime] = useState('')
+  const [evEndTime, setEvEndTime] = useState('')
   const [evSaving, setEvSaving] = useState(false)
   const [privatePersonTasks, setPrivatePersonTasks] = useState<DailyTask[]>([])
   const [showPrivateDone, setShowPrivateDone] = useState(false)
@@ -352,16 +353,18 @@ export default function Page() {
     } catch {} finally { setGcalLoading(false) }
   }
   function openAddEvent(date: string) {
-    setEvId(null); setEvTitle(''); setEvDate(date); setEvTime(''); setShowEventForm(true)
+    setEvId(null); setEvTitle(''); setEvDate(date); setEvTime(''); setEvEndTime(''); setShowEventForm(true)
   }
   function openEditEvent(ev: PrivateEvent) {
-    setEvId(ev.id); setEvTitle(ev.title); setEvDate(ev.date); setEvTime(ev.allDay ? '' : (ev.time ?? '')); setShowEventForm(true)
+    setEvId(ev.id); setEvTitle(ev.title); setEvDate(ev.date)
+    setEvTime(ev.allDay ? '' : (ev.time ?? '')); setEvEndTime(ev.allDay ? '' : (ev.endTime ?? ''))
+    setShowEventForm(true)
   }
   async function saveEventForm() {
     if (!evTitle.trim() || !evDate || evSaving) return
     setEvSaving(true)
     try {
-      const body = { id: evId ?? undefined, title: evTitle.trim(), date: evDate, time: evTime }
+      const body = { id: evId ?? undefined, title: evTitle.trim(), date: evDate, time: evTime, endTime: evEndTime }
       const r = await fetch('/api/gcal', {
         method: evId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1345,19 +1348,24 @@ export default function Page() {
             <input value={evTitle} onChange={e => setEvTitle(e.target.value)} placeholder="行程內容" autoFocus
               onKeyDown={e => { if (e.key === 'Enter') saveEventForm() }}
               className="w-full mt-0.5 mb-3 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
-            <div className="flex gap-2 mb-1">
+            <div className="mb-1">
+              <label className="text-xs text-gray-500">日期</label>
+              <input type="date" value={evDate} onChange={e => setEvDate(e.target.value)}
+                className="w-full mt-0.5 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+            </div>
+            <div className="flex gap-2 mb-1 mt-2">
               <div className="flex-1">
-                <label className="text-xs text-gray-500">日期</label>
-                <input type="date" value={evDate} onChange={e => setEvDate(e.target.value)}
-                  className="w-full mt-0.5 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-indigo-400" />
-              </div>
-              <div className="w-28">
-                <label className="text-xs text-gray-500">時間</label>
+                <label className="text-xs text-gray-500">開始時間</label>
                 <input type="time" value={evTime} onChange={e => setEvTime(e.target.value)}
                   className="w-full mt-0.5 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-indigo-400" />
               </div>
+              <div className="flex-1">
+                <label className="text-xs text-gray-500">截止時間</label>
+                <input type="time" value={evEndTime} onChange={e => setEvEndTime(e.target.value)} disabled={!evTime}
+                  className="w-full mt-0.5 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-indigo-400 disabled:bg-gray-50 disabled:text-gray-300" />
+              </div>
             </div>
-            <p className="text-[11px] text-gray-400 mb-3">留空時間＝全天行程；填時間＝該時段（預設 1 小時）</p>
+            <p className="text-[11px] text-gray-400 mb-3">開始時間留空＝全天行程；截止時間留空＝預設開始後 1 小時</p>
             <div className="flex items-center gap-2">
               <button onClick={saveEventForm} disabled={evSaving || !evTitle.trim()}
                 className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
@@ -2797,7 +2805,9 @@ export default function Page() {
                         {list.map(ev => (
                           <button key={ev.id} onClick={() => openEditEvent(ev)}
                             className="w-full flex items-center gap-2 text-left bg-white border border-gray-100 rounded-lg px-2.5 py-1.5 hover:border-indigo-300 transition-colors">
-                            <span className={`text-xs font-medium shrink-0 w-12 text-center rounded px-1 py-0.5 ${ev.allDay ? 'bg-purple-50 text-purple-600' : 'bg-indigo-50 text-indigo-600'}`}>{ev.allDay ? '全天' : (ev.time || '—')}</span>
+                            <span className={`text-xs font-medium shrink-0 text-center rounded px-1.5 py-0.5 ${ev.allDay ? 'bg-purple-50 text-purple-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                              {ev.allDay ? '全天' : ev.endTime ? `${ev.time}–${ev.endTime}` : (ev.time || '—')}
+                            </span>
                             <span className="text-sm text-gray-800 flex-1 truncate">{ev.title}</span>
                             {ev.note && <span className="text-xs text-gray-400 shrink-0 truncate max-w-[35%]">{ev.note}</span>}
                           </button>
