@@ -1372,7 +1372,7 @@ export default function Page() {
         </div>
       )}
 
-      <main className={`mx-auto p-4 animate-fade-in ${view === 'dashboard' || view === 'private' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
+      <main className={`mx-auto p-4 animate-fade-in ${view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
@@ -2368,8 +2368,27 @@ export default function Page() {
         )}
 
         {/* DAILY */}
-        {view === 'daily' && (
-          <div>
+        {view === 'daily' && (() => {
+          const addTaskCard = (
+            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-3 flex flex-wrap items-center gap-2">
+              <span className="text-sm text-gray-500 shrink-0">＋ 新增任務</span>
+              <select value={newTaskPerson} onChange={e => setNewTaskPerson(e.target.value)}
+                className="border border-gray-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-indigo-400 shrink-0">
+                {DAILY_PEOPLE.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <input value={newTaskText} onChange={e => setNewTaskText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addManualTask(selectedDate || todayISO(), fetchDailyTasks) }}
+                placeholder="任務內容…（指派給上方人員）"
+                className="flex-1 min-w-[180px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+              <button onClick={() => addManualTask(selectedDate || todayISO(), fetchDailyTasks)} disabled={addingTask || !newTaskText.trim()}
+                className="bg-indigo-600 text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 shrink-0">
+                {addingTask ? '新增中…' : '新增'}
+              </button>
+            </div>
+          )
+          return (
+          <div className="flex flex-col 2xl:flex-row gap-4 2xl:items-start">
+          <div className="flex flex-col gap-0 flex-1 min-w-0">
             <div className="flex items-center mb-4 gap-2 flex-wrap">
               <p className="text-sm text-gray-500">每日工作項目（依人員分類）</p>
               <div className="ml-auto flex items-center gap-1.5">
@@ -2478,22 +2497,8 @@ export default function Page() {
               )
             })()}
 
-            {/* 手動新增任務並指派 */}
-            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-3 mb-3 flex flex-wrap items-center gap-2">
-              <span className="text-sm text-gray-500 shrink-0">＋ 新增任務</span>
-              <select value={newTaskPerson} onChange={e => setNewTaskPerson(e.target.value)}
-                className="border border-gray-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-indigo-400 shrink-0">
-                {DAILY_PEOPLE.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-              <input value={newTaskText} onChange={e => setNewTaskText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') addManualTask(selectedDate || todayISO(), fetchDailyTasks) }}
-                placeholder="任務內容…（指派給上方人員）"
-                className="flex-1 min-w-[180px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
-              <button onClick={() => addManualTask(selectedDate || todayISO(), fetchDailyTasks)} disabled={addingTask || !newTaskText.trim()}
-                className="bg-indigo-600 text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 shrink-0">
-                {addingTask ? '新增中…' : '新增'}
-              </button>
-            </div>
+            {/* 手動新增任務並指派：窄螢幕內嵌顯示；寬螢幕移到右側欄 */}
+            <div className="2xl:hidden mb-3">{addTaskCard}</div>
 
             <div className="flex items-center gap-1.5 flex-wrap mb-3">
               <p className="text-xs text-gray-400">💡 拖曳任務可換負責人；點狀態可切換；點任務文字可編輯（皆即時同步 Notion）</p>
@@ -2606,7 +2611,14 @@ export default function Page() {
               </div>
             )}
           </div>
-        )}
+
+          {/* 寬螢幕：新增任務固定在右側灰色區（不置中） */}
+          <div className="hidden 2xl:block 2xl:w-80 2xl:shrink-0 2xl:sticky 2xl:top-16">
+            {addTaskCard}
+          </div>
+          </div>
+          )
+        })()}
 
         {/* AI 助理 */}
         {view === 'chat' && (
