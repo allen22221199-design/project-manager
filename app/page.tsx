@@ -1415,8 +1415,39 @@ export default function Page() {
           const byStatus: Record<string, number> = {}
           for (const p of projects) byStatus[p.status] = (byStatus[p.status] ?? 0) + 1
           const statusList = Object.entries(byStatus).sort((a, b) => b[1] - a[1])
+          // 最新進度回報卡片（寬螢幕時放到右側灰色區）
+          const nowP = new Date(Date.now() + 8 * 3600 * 1000)
+          const cutP = new Date(nowP); cutP.setUTCDate(nowP.getUTCDate() - 2)
+          const cutPStr = cutP.toISOString().slice(0, 10)
+          const recentProg = projects
+            .filter(p => p.latestProgress && p.latestProgressDate && p.latestProgressDate >= cutPStr)
+            .sort((a, b) => (b.latestProgressDate ?? '').localeCompare(a.latestProgressDate ?? ''))
+          const recentProgressCard = (
+            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+              <p className="text-sm font-medium text-gray-700 mb-3">最新進度回報 {recentProg.length > 0 && <span className="text-emerald-500">({recentProg.length})</span>}</p>
+              {recentProg.length === 0 ? (
+                <p className="text-sm text-gray-400">近兩天尚無進度回報</p>
+              ) : (
+                <div className="space-y-2">
+                  {recentProg.map(p => (
+                    <div key={p.id} className="group w-full flex items-start gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-emerald-50/60 transition-colors">
+                      <button onClick={() => selectProject(p)} className="flex items-start gap-2 flex-1 min-w-0 text-left">
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 shrink-0 mt-0.5">{p.latestProgressDate?.slice(5)}</span>
+                        {p.color && <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5" style={{ background: p.color }} />}
+                        <span className="font-medium text-gray-800 shrink-0">{p.name}</span>
+                        <span className="text-gray-500 flex-1 truncate">{p.latestProgress}</span>
+                      </button>
+                      <button onClick={() => dismissProgress(p)} title="移除此筆（清掉最新進度標記）"
+                        className="shrink-0 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 leading-none px-1">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
           return (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col 2xl:flex-row gap-4 2xl:items-start">
+            <div className="flex flex-col gap-4 flex-1 min-w-0">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <button onClick={() => { setView('daily'); fetchDailyTasks() }} className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 text-left hover:border-indigo-300 transition-colors">
                   <p className="text-xs text-gray-400">今日待辦</p>
@@ -1454,38 +1485,8 @@ export default function Page() {
                 )}
               </div>
 
-              {/* 最新進度回報（保留兩天） */}
-              {(() => {
-                const now2 = new Date(Date.now() + 8 * 3600 * 1000)
-                const cutoff = new Date(now2); cutoff.setUTCDate(now2.getUTCDate() - 2)
-                const cutoffStr = cutoff.toISOString().slice(0, 10)
-                const recent = projects
-                  .filter(p => p.latestProgress && p.latestProgressDate && p.latestProgressDate >= cutoffStr)
-                  .sort((a, b) => (b.latestProgressDate ?? '').localeCompare(a.latestProgressDate ?? ''))
-                return (
-                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
-                    <p className="text-sm font-medium text-gray-700 mb-3">最新進度回報 {recent.length > 0 && <span className="text-emerald-500">({recent.length})</span>}</p>
-                    {recent.length === 0 ? (
-                      <p className="text-sm text-gray-400">近兩天尚無進度回報</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {recent.map(p => (
-                          <div key={p.id} className="group w-full flex items-start gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-emerald-50/60 transition-colors">
-                            <button onClick={() => selectProject(p)} className="flex items-start gap-2 flex-1 min-w-0 text-left">
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 shrink-0 mt-0.5">{p.latestProgressDate?.slice(5)}</span>
-                              {p.color && <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5" style={{ background: p.color }} />}
-                              <span className="font-medium text-gray-800 shrink-0">{p.name}</span>
-                              <span className="text-gray-500 flex-1 truncate">{p.latestProgress}</span>
-                            </button>
-                            <button onClick={() => dismissProgress(p)} title="移除此筆（清掉最新進度標記）"
-                              className="shrink-0 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 leading-none px-1">✕</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              })()}
+              {/* 窄螢幕：最新進度回報顯示在流程中；寬螢幕移到右側欄 */}
+              <div className="2xl:hidden">{recentProgressCard}</div>
 
               {/* 流程排程表（單一表格，用顏色區分案件） */}
               {(() => {
@@ -1702,6 +1703,12 @@ export default function Page() {
                   </div>
                 )
               })()}
+            </div>
+
+            {/* 寬螢幕：最新進度回報固定在右側灰色區（不置中） */}
+            <div className="hidden 2xl:block 2xl:w-80 2xl:shrink-0 2xl:sticky 2xl:top-16">
+              {recentProgressCard}
+            </div>
             </div>
           )
         })()}
