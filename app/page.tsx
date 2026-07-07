@@ -21,9 +21,11 @@ const DAILY_STATUS_CYCLE = ['進行中', '完成']
 // 此人員的工作項目不在公開區顯示，只在管理者登入後的私人區可見
 const PRIVATE_PERSON = '呂理論'          // 對應 Notion 的人員名稱（勿改）
 const PRIVATE_PERSON_LABEL = 'Alen'      // 畫面上顯示的名稱
-const PROCESS_STEPS = ['打樣', '丈量', '製圖', '訂料', '噴印檔', '前處理', '環氧白', '四色', '烘乾', '面漆', '包裝', '施工']
+const PROCESS_STEPS = ['打樣', '丈量', '製圖', '訂料', '噴印檔', '前處理', '環氧白', '生產', '包裝', '施工']
 // 舊版排程資料是用流程「順序編號」儲存的（沒有打樣），用來把舊資料轉成用流程名稱對應
 const OLD_PROCESS_STEPS = ['丈量', '製圖', '訂料', '噴印檔', '前處理', '環氧白', '四色', '烘乾', '面漆', '包裝', '施工']
+// 「四色／烘乾／面漆」合併成「生產」後，把舊資料的這三個流程名稱一併轉存到「生產」，避免既有排程消失
+const MERGED_INTO_PRODUCTION = ['四色', '烘乾', '面漆']
 // 任務文字含以下關鍵字 → 視為急件，套紅底
 const URGENT_KEYWORDS = ['急件', '緊急', '急需', '趕件', '趕工', '火速', '儘快', '盡快', '馬上', '立刻', 'ASAP', '急']
 function isUrgentTask(text?: string): boolean {
@@ -1492,14 +1494,18 @@ export default function Page() {
                   let obj: Record<string, string> = {}
                   try { obj = p.schedule ? JSON.parse(p.schedule) : {} } catch { return {} }
                   // 舊資料以流程編號存（如 "0|AM|date"）→ 轉成流程名稱（如 "丈量|AM|date"）
+                  // 「四色／烘乾／面漆」→ 合併轉存到「生產」，既有排程不會消失
                   const out: Record<string, string> = {}
                   for (const k in obj) {
                     const parts = k.split('|')
-                    if (/^\d+$/.test(parts[0])) {
-                      const name = OLD_PROCESS_STEPS[Number(parts[0])]
-                      if (name) { out[`${name}|${parts[1]}|${parts[2]}`] = obj[k]; continue }
+                    let proc = parts[0]
+                    if (/^\d+$/.test(proc)) {
+                      const name = OLD_PROCESS_STEPS[Number(proc)]
+                      if (name) proc = name
                     }
-                    out[k] = obj[k]
+                    if (MERGED_INTO_PRODUCTION.includes(proc)) proc = '生產'
+                    const key = `${proc}|${parts[1]}|${parts[2]}`
+                    if (!(key in out) || obj[k]) out[key] = obj[k]  // 同一格已合併時，保留有內容的那筆
                   }
                   return out
                 }
