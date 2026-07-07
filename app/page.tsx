@@ -647,11 +647,12 @@ export default function Page() {
     } finally { setSearching(false) }
   }
 
-  async function fetchInProgress() {
+  async function fetchInProgress(activeOnly = true) {
     try {
-      const r = await fetch('/api/daily-tasks')
+      const r = await fetch(`/api/daily-tasks${activeOnly ? '?activeOnly=1' : ''}`)
       const data = await readJson(r)
-      // 抓全部（不含已封存）；是否顯示「完成」由切換鈕決定
+      // 預設只抓進行中（在 Notion 端就篩掉完成／已封存，避免每次都掃全部歷史資料變慢）；
+      // 點「顯示已完成」才會改抓全部
       setInProgressTasks((data.all ?? []).filter((t: DailyTask) => t.status !== '已封存'))
     } catch {}
   }
@@ -2036,7 +2037,7 @@ export default function Page() {
                   <div className="mb-4">
                     <div className="flex items-center gap-2 mb-2.5">
                       <p className="text-sm text-gray-500 font-medium">{showCompletedSearch ? '全部任務' : '進行中任務'} — 點選人名查看：</p>
-                      <button onClick={() => setShowCompletedSearch(v => !v)}
+                      <button onClick={() => { const next = !showCompletedSearch; setShowCompletedSearch(next); fetchInProgress(!next) }}
                         className={`ml-auto text-xs px-3 py-1 rounded-full transition-colors ${showCompletedSearch ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white border border-gray-200 text-gray-400 hover:border-gray-400'}`}>
                         {showCompletedSearch ? '隱藏已完成' : '顯示已完成'}
                       </button>

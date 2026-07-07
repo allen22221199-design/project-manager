@@ -460,10 +460,14 @@ export async function getTasksByPerson(person: string) {
 }
 
 // Read daily work items, grouped by person
-export async function getDailyTasks(dateStr?: string) {
-  const filter = dateStr
-    ? { property: '截止日期', date: { equals: dateStr } }
-    : undefined
+export async function getDailyTasks(dateStr?: string, opts: { activeOnly?: boolean } = {}) {
+  const clauses: any[] = []
+  if (dateStr) clauses.push({ property: '截止日期', date: { equals: dateStr } })
+  if (opts.activeOnly) {
+    clauses.push({ property: '狀態', status: { does_not_equal: '完成' } })
+    clauses.push({ property: '狀態', status: { does_not_equal: '已封存' } })
+  }
+  const filter = clauses.length === 0 ? undefined : clauses.length === 1 ? clauses[0] : { and: clauses }
   // 分頁抓完全部（Notion 單次最多 100 筆，超過要靠 cursor 續抓）
   const results: any[] = []
   let cursor: string | undefined = undefined

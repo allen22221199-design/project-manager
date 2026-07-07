@@ -6,13 +6,14 @@ export async function GET(req: NextRequest) {
     const date = req.nextUrl.searchParams.get('date') ?? undefined
     const person = req.nextUrl.searchParams.get('person') ?? undefined
     const freq = req.nextUrl.searchParams.get('freq') ?? undefined
+    const activeOnly = req.nextUrl.searchParams.get('activeOnly') === '1'
 
     if (person) {
       const tasks = await getTasksByPerson(person)
       return NextResponse.json({ tasks })
     }
 
-    const tasks = await getDailyTasks(date)
+    const tasks = await getDailyTasks(date, { activeOnly })
     const grouped: Record<string, typeof tasks> = {}
     for (const t of tasks) {
       ;(grouped[t.person] ??= []).push(t)
