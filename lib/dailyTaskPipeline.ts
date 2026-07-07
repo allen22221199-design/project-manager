@@ -4,14 +4,27 @@ import { generateMorningLog, extractAndAssignTasks, breakdownTaskSteps } from '.
 import { addDailyTask, updateDailyTask, deleteDailyTasksByDate, writeHistorySection } from './notion'
 import { pushToLine } from './line'
 
-// 短名 → 系統內全名（人員清單需一致，才能正確分組、與私人待辦隱藏邏輯對上）
+// 系統唯一認可的人員名單（跟 app/page.tsx 的 DAILY_PEOPLE 一致）
+const DAILY_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
+// 短名／常見別名 → 系統內全名
 const NAME_MAP: Record<string, string> = {
   文彬: '黃文彬', 治先: '王治先', 湘婷: '黃湘婷', 淑慧: '廖淑慧',
   哲緯: '吳哲緯', 理論: '呂理論', 碧惠: '徐碧惠', 阿蔡: '阿蔡', 艾里: '艾里',
 }
-function normalizeOwner(name: string): string {
+// 把 AI 給的負責人字串正規化成名單內的正式姓名；比對不到任何一位就回傳 null（丟去待確認，不可自創新名字）
+function normalizeOwner(name: string): string | null {
   const n = (name ?? '').trim()
-  return NAME_MAP[n] ?? n
+  if (!n) return null
+  if (DAILY_PEOPLE.includes(n)) return n
+  if (NAME_MAP[n]) return NAME_MAP[n]
+  // 名字裡包含某位已知人員的姓名/短名（例如 AI 多加了「海陸」等前綴字）
+  for (const full of DAILY_PEOPLE) {
+    if (n.includes(full)) return full
+  }
+  for (const short in NAME_MAP) {
+    if (n.includes(short)) return NAME_MAP[short]
+  }
+  return null
 }
 
 // 把日誌裡的 YYYY/MM/DD 或類似格式轉成 ISO YYYY-MM-DD；解析不出來回傳 null
@@ -73,35 +86,48 @@ export async function runDailyTaskPipeline(rawText: string, opts: { sendLine?: b
   await deleteDailyTasksByDate(logDate)
 
   const grouped: Record<string, string[]> = {}
+  let assignedCount = 0
+  let pendingCount = 0
 
   for (const task of stage1.assigned_tasks) {
-    const owner = normalizeOwner(task.owner) || '未分類'
+    const owner = normalizeOwner(task.owner)
+    if (!owner) {
+      // 負責人不在名單內（AI 自創或無法辨識的名字）→ 一律歸類為待確認，不可自行新增人名標籤
+      const page = await addDailyTask('待確認', task.task, logDate, 'Plaud')
+      const steps = stepsByTaskId.get(task.id) ?? []
+      if (steps.length) { try { await updateDailyTask((page as any).id, { steps }) } catch {} }
+      ;(grouped['待確認'] ??= []).push(task.task)
+      pendingCount++
+      continue
+    }
     const dueDate = toISODate(task.deadline) ?? logDate
     const page = await addDailyTask(owner, task.task, dueDate, 'Plaud')
     const steps = stepsByTaskId.get(task.id) ?? []
     try { await updateDailyTask((page as any).id, { content: task.notes ?? '', steps }) } catch {}
     ;(grouped[owner] ??= []).push(task.task)
+    assignedCount++
   }
 
   for (const p of stage1.unassigned_tasks) {
-    const page = await addDailyTask('待確認', p.raw_text, logDate, 'Plaud')
-    try { await updateDailyTask((page as any).id, { content: p.reason ?? '' }) } catch {}
+    // 只記錄任務本身，不附「無法辨識的原因」備註
+    await addDailyTask('待確認', p.raw_text, logDate, 'Plaud')
     ;(grouped['待確認'] ??= []).push(p.raw_text)
+    pendingCount++
   }
 
   try { await writeHistorySection(logDate, grouped) } catch { /* 歷史頁面失敗不影響主流程 */ }
 
   let lineResult: any = null
   if (opts.sendLine !== false) {
-    const msg = `📋 今日工作日誌已完成（${logDate}）\n已排程 ${stage1.assigned_tasks.length} 項、待確認 ${stage1.unassigned_tasks.length} 項\n請至以下網址查看：\nhttps://project-manager-theta-nine.vercel.app`
+    const msg = `📋 今日工作日誌已完成（${logDate}）\n已排程 ${assignedCount} 項、待確認 ${pendingCount} 項\n請至以下網址查看：\nhttps://project-manager-theta-nine.vercel.app`
     try { lineResult = await pushToLine(msg) } catch (e: any) { lineResult = { error: e.message } }
   }
 
   return {
     logDate,
     dailyLogText,
-    assignedCount: stage1.assigned_tasks.length,
-    pendingCount: stage1.unassigned_tasks.length,
+    assignedCount,
+    pendingCount,
     line: lineResult,
   }
 }
