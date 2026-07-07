@@ -5,17 +5,22 @@ import { addDailyTask, updateDailyTask, deleteDailyTasksByDate, writeHistorySect
 import { pushToLine } from './line'
 
 // 系統唯一認可的人員名單（跟 app/page.tsx 的 DAILY_PEOPLE 一致）
-const DAILY_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
+const DAILY_PEOPLE = ['徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡', '庫瑪']
 // 短名／常見別名 → 系統內全名
 const NAME_MAP: Record<string, string> = {
   文彬: '黃文彬', 治先: '王治先', 湘婷: '黃湘婷', 淑慧: '廖淑慧',
-  哲緯: '吳哲緯', 理論: '呂理論', 碧惠: '徐碧惠', 阿蔡: '阿蔡', 艾里: '艾里',
+  哲緯: '吳哲緯', 碧惠: '徐碧惠', 阿蔡: '阿蔡', 艾里: '艾里', 庫瑪: '庫瑪',
+}
+// 語音辨識常見諧音/錯字誤判 → 正式姓名（發現新的誤判案例時往這裡加）
+const MISHEARD_ALIASES: Record<string, string> = {
+  洪志堅: '王治先', // 「志堅」與「治先」發音相近，易被誤聽/誤植
 }
 // 把 AI 給的負責人字串正規化成名單內的正式姓名；比對不到任何一位就回傳 null（丟去待確認，不可自創新名字）
 function normalizeOwner(name: string): string | null {
   const n = (name ?? '').trim()
   if (!n) return null
   if (DAILY_PEOPLE.includes(n)) return n
+  if (MISHEARD_ALIASES[n]) return MISHEARD_ALIASES[n]
   if (NAME_MAP[n]) return NAME_MAP[n]
   // 名字裡包含某位已知人員的姓名/短名（例如 AI 多加了「海陸」等前綴字）
   for (const full of DAILY_PEOPLE) {
@@ -23,6 +28,9 @@ function normalizeOwner(name: string): string | null {
   }
   for (const short in NAME_MAP) {
     if (n.includes(short)) return NAME_MAP[short]
+  }
+  for (const alias in MISHEARD_ALIASES) {
+    if (n.includes(alias) || alias.includes(n)) return MISHEARD_ALIASES[alias]
   }
   return null
 }

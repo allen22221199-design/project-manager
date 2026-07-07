@@ -15,7 +15,7 @@ const STATUS_COLORS: Record<string, string> = {
 const STATUS_OPTIONS = ['報價中', '等待中', '打樣中', '對色中', '生產中', '施工中', '請款中含保留款', '完成']
 const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中', '施工中', '等待中', '請款中含保留款', '完成']
 const INACTIVE_STATUSES = ['完成', '請款中含保留款']
-const DAILY_PEOPLE = ['呂理論', '徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
+const DAILY_PEOPLE = ['徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡', '庫瑪']
 const PROJECT_ASSIGNEES = ['', '黃文彬', '王志先', '廖淑慧', '呂理論', '呂敏紅']
 const DAILY_STATUS_CYCLE = ['進行中', '完成']
 // 此人員的工作項目不在公開區顯示，只在管理者登入後的私人區可見
