@@ -35,14 +35,6 @@ function normalizeOwner(name: string): string | null {
   return null
 }
 
-// 把日誌裡的 YYYY/MM/DD 或類似格式轉成 ISO YYYY-MM-DD；解析不出來回傳 null
-function toISODate(d: string | null | undefined): string | null {
-  if (!d) return null
-  const m = String(d).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
-  if (!m) return null
-  return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
-}
-
 // 從貼上內容的第一行嘗試解析出「這份記錄屬於哪一天」（支援 YYYY/MM/DD、M月D日、M/D）
 function detectLogDate(rawText: string): string {
   const nowTW = new Date(Date.now() + 8 * 3600 * 1000)
@@ -108,10 +100,14 @@ export async function runDailyTaskPipeline(rawText: string, opts: { sendLine?: b
       pendingCount++
       continue
     }
-    const dueDate = toISODate(task.deadline) ?? logDate
-    const page = await addDailyTask(owner, task.task, dueDate, 'Plaud')
+    // 「今日工作」的分頁一律用建立當天（錄音處理日），不可被錄音裡講的期限改變分類
+    const page = await addDailyTask(owner, task.task, logDate, 'Plaud')
     const steps = stepsByTaskId.get(task.id) ?? []
-    try { await updateDailyTask((page as any).id, { content: task.notes ?? '', steps }) } catch {}
+    // 錄音裡提到的期限只當參考資訊存進任務內容，不影響分頁歸類
+    const contentParts: string[] = []
+    if (task.deadline) contentParts.push(`期限：${task.deadline}`)
+    if (task.notes) contentParts.push(task.notes)
+    try { await updateDailyTask((page as any).id, { content: contentParts.join('\n'), steps }) } catch {}
     ;(grouped[owner] ??= []).push(task.task)
     assignedCount++
   }
