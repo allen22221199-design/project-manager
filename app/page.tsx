@@ -219,13 +219,6 @@ export default function Page() {
   const [uploading, setUploading] = useState(false)
   const taskFileRef = useRef<HTMLInputElement>(null)
 
-  // AI 規劃
-  const [aiPlanning, setAiPlanning] = useState(false)
-  const [aiPlanText, setAiPlanText] = useState('')
-  const [aiUsedKb, setAiUsedKb] = useState<string[]>([])
-  const [aiPlanSaving, setAiPlanSaving] = useState(false)
-  const [aiPlanSaved, setAiPlanSaved] = useState(false)
-
   // create project form
   const [newName, setNewName] = useState('')
   const [newContact, setNewContact] = useState('')
@@ -996,51 +989,9 @@ export default function Page() {
     setDetailId(t.id)
     setDetailContent(t.content ?? '')
     setDetailDirection(t.direction ?? '')
-    setAiPlanText(t.aiPlan ?? '')
-    setAiUsedKb([])
-    setAiPlanSaved(!!(t.aiPlan ?? '').trim())
     setDetailAttachments(t.attachments ?? [])
     setSaveDetailOk(false)
     setSaveDetailErr('')
-  }
-
-  // AI 規劃：思考 + 查知識庫 + 上網搜尋（生成後由使用者決定是否存入 Notion）
-  async function runAiPlan(t: DailyTask) {
-    setAiPlanning(true)
-    setAiPlanText('')
-    setAiUsedKb([])
-    setAiPlanSaved(false)
-    try {
-      const r = await fetch('/api/ai-plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: t.task, content: detailContent, direction: detailDirection, goal: detailDirection }),
-      })
-      const data = await readJson(r)
-      if (r.ok) {
-        setAiPlanText(data.plan || '（沒有產生內容）')
-        setAiUsedKb(data.usedKnowledge ?? [])
-      } else {
-        setAiPlanText('錯誤：' + (data.error ?? '規劃失敗'))
-      }
-    } catch (e: any) {
-      setAiPlanText('錯誤：' + e.message)
-    } finally { setAiPlanning(false) }
-  }
-
-  // 使用者按下後，才把任務內容、AI需求、AI規劃結果寫回 Notion
-  async function savePlan(t: DailyTask) {
-    setAiPlanSaving(true)
-    setDailyAll(prev => prev.map(x => x.id === t.id ? { ...x, content: detailContent, direction: detailDirection, aiPlan: aiPlanText } : x))
-    setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, content: detailContent, direction: detailDirection, aiPlan: aiPlanText } : x))
-    try {
-      await fetch('/api/daily-tasks', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: t.id, content: detailContent, direction: detailDirection, aiPlan: aiPlanText }),
-      })
-      setAiPlanSaved(true)
-    } finally { setAiPlanSaving(false) }
   }
 
   // 手動切換紅標（急件）：on=強制紅、off=強制不紅
@@ -1235,12 +1186,6 @@ export default function Page() {
             </div>
           )}
         </div>
-        <div>
-          <label className="text-xs text-gray-500">希望 AI 幫你做什麼</label>
-          <textarea value={detailDirection} onChange={e => setDetailDirection(e.target.value)} rows={4}
-            placeholder={'清楚說明要 AI 做什麼，越具體越準：\n① 想要的產出（規劃步驟／找廠商／寫文案／比價…）\n② 限制（預算、時間、地點、規格、數量）\n③ 偏好或方向\n例：幫我規劃這支產品影片的拍攝流程，並找台中 3 家能配合的攝影團隊比價，預算 2 萬內。'}
-            className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
-        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => saveDetail(t.id)} disabled={savingDetail}
             className="bg-indigo-600 text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:bg-indigo-700 disabled:opacity-40">
@@ -1249,27 +1194,7 @@ export default function Page() {
           {saveDetailOk && <span className="text-xs text-green-600 font-medium">✓ 已儲存</span>}
           {saveDetailErr && <span className="text-xs text-red-500">{saveDetailErr}</span>}
           <button onClick={() => { setDetailId(null); setSaveDetailOk(false); setSaveDetailErr('') }} className="text-xs text-gray-400 hover:text-gray-600 px-1">關閉</button>
-          <button onClick={() => runAiPlan(t)} disabled={aiPlanning}
-            className="ml-auto bg-blue-600 text-white rounded px-3 py-1 text-xs font-medium hover:bg-blue-700 disabled:opacity-40">
-            {aiPlanning ? 'AI 思考中…' : '🤖 開始 AI 規劃'}
-          </button>
         </div>
-        {aiPlanText && (
-          <div className="mt-1 border-t border-gray-200 pt-2">
-            {aiUsedKb.length > 0 && (
-              <p className="text-xs text-gray-400 mb-1">參考知識庫：{aiUsedKb.join('、')}</p>
-            )}
-            <div className="text-sm text-gray-700 whitespace-pre-wrap bg-white border border-gray-200 rounded p-2 max-h-80 overflow-auto">{aiPlanText}</div>
-            {!aiPlanning && !aiPlanText.startsWith('錯誤：') && (
-              aiPlanSaved
-                ? <p className="mt-1 text-xs text-green-600">✓ 已存入 Notion「AI規劃」欄位</p>
-                : <button onClick={() => savePlan(t)} disabled={aiPlanSaving}
-                    className="mt-1 bg-indigo-600 text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:bg-indigo-700 disabled:opacity-40">
-                    {aiPlanSaving ? '存入中...' : '存入 Notion'}
-                  </button>
-            )}
-          </div>
-        )}
       </div>
     )
   }
