@@ -391,13 +391,12 @@ export default function Page() {
   }
   async function submitTrainingAnswer() {
     if (!trainingQuiz || !trainingCourseId || trainingGrading) return
-    if (!trainingPerson.trim()) { alert('請先輸入你的姓名'); return }
     setTrainingGrading(true)
     try {
       const r = await fetch('/api/training/grade', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          person: trainingPerson.trim(), courseId: trainingCourseId,
+          person: trainingPerson.trim() || '匿名', courseId: trainingCourseId,
           why: trainingWhy, how: trainingHow,
           referenceWhy: trainingQuiz.referenceWhy.zh, referenceHow: trainingQuiz.referenceHow.zh,
           lang: trainingLang,
@@ -3002,8 +3001,6 @@ export default function Page() {
               <div className="flex items-center justify-between mb-4">
                 <button onClick={() => setTrainingCourseId(null)} className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1">← 返回課程列表</button>
                 <div className="flex items-center gap-2">
-                  <input value={trainingPerson} onChange={e => setTrainingPerson(e.target.value)} placeholder="你的姓名"
-                    className="text-sm border border-gray-200 rounded-lg px-2 py-1 w-24 focus:outline-none focus:border-indigo-400" />
                   <button onClick={() => setTrainingLang('zh')} className={`text-sm px-2.5 py-1 rounded-lg ${lang === 'zh' ? 'bg-indigo-600 text-white' : 'border border-gray-200 text-gray-500'}`}>中文</button>
                   <button onClick={() => setTrainingLang('id')} className={`text-sm px-2.5 py-1 rounded-lg ${lang === 'id' ? 'bg-indigo-600 text-white' : 'border border-gray-200 text-gray-500'}`}>Indonesia</button>
                 </div>
