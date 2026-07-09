@@ -309,6 +309,21 @@ export default function Page() {
   // 互動：每格「先想再看」— 記住學員自己打的想法（key: `${stageIdx}-${fieldIdx}`）
   const [trainingGuesses, setTrainingGuesses] = useState<Record<string, string>>({})
   const [trainingGuessInput, setTrainingGuessInput] = useState('')
+  // AI 對學員想法的評語（key 同上）
+  const [trainingFeedbacks, setTrainingFeedbacks] = useState<Record<string, string>>({})
+  const [trainingEvaluatingKey, setTrainingEvaluatingKey] = useState<string | null>(null)
+
+  async function evaluateThought(key: string, cardTitle: string, question: string, learnerAnswer: string, referenceAnswer: string) {
+    setTrainingEvaluatingKey(key)
+    try {
+      const r = await fetch('/api/training/evaluate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cardTitle, question, learnerAnswer, referenceAnswer }),
+      })
+      const data = await readJson(r)
+      if (r.ok) setTrainingFeedbacks(prev => ({ ...prev, [key]: data.feedback ?? '' }))
+    } catch {} finally { setTrainingEvaluatingKey(null) }
+  }
 
   async function askTrainingAI(cardTitle: string) {
     if (!trainingAskInput.trim() || trainingAsking) return
@@ -340,6 +355,7 @@ export default function Page() {
     setTrainingResult(null)
     setTrainingWhy(''); setTrainingHow('')
     setTrainingGuesses({}); setTrainingGuessInput(''); setTrainingAskAnswer('')
+    setTrainingFeedbacks({})
   }
   async function createTrainingCourse2() {
     if (!trainingSourceText.trim() || trainingCreating) return
@@ -3006,8 +3022,14 @@ export default function Page() {
                 const allRevealed = trainingRevealed >= stage.fields.length
                 const activeField = allRevealed ? null : stage.fields[trainingRevealed]
                 const revealAnswer = () => {
-                  const key = `${trainingStageIdx}-${trainingRevealed}`
-                  if (trainingGuessInput.trim()) setTrainingGuesses(prev => ({ ...prev, [key]: trainingGuessInput.trim() }))
+                  const idx = trainingRevealed
+                  const key = `${trainingStageIdx}-${idx}`
+                  const ans = trainingGuessInput.trim()
+                  if (ans) {
+                    setTrainingGuesses(prev => ({ ...prev, [key]: ans }))
+                    // 學員有寫想法 → 請 AI 判斷合不合理（沒有唯一標準答案）
+                    evaluateThought(key, t(stage.title), t(stage.fields[idx].k), ans, t(stage.fields[idx].v))
+                  }
                   setTrainingRevealed(r => r + 1); setTrainingGuessInput('')
                 }
                 return (
@@ -3016,7 +3038,9 @@ export default function Page() {
                     <div className="space-y-2.5">
                       {stage.fields.slice(0, trainingRevealed).map((f, i) => {
                         const c = colorFor(i)
-                        const guess = trainingGuesses[`${trainingStageIdx}-${i}`]
+                        const fkey = `${trainingStageIdx}-${i}`
+                        const guess = trainingGuesses[fkey]
+                        const fb = trainingFeedbacks[fkey]
                         return (
                           <div key={i}>
                             {guess && (
@@ -3025,8 +3049,14 @@ export default function Page() {
                                 <p className="text-sm text-gray-600">{guess}</p>
                               </div>
                             )}
+                            {guess && (
+                              <div className="border border-green-200 bg-green-50 rounded-xl px-4 py-2 mb-1">
+                                <p className="text-xs text-green-600 mb-0.5">🧑‍🏫 {lang === 'zh' ? '老師的回饋' : 'Komentar guru'}</p>
+                                <p className="text-sm text-gray-700 whitespace-pre-wrap">{trainingEvaluatingKey === fkey && !fb ? (lang === 'zh' ? '思考中…' : 'Sedang menilai…') : fb}</p>
+                              </div>
+                            )}
                             <div style={{ background: c.bg, borderColor: c.bd }} className="border rounded-xl px-4 py-3">
-                              <p style={{ color: c.txt }} className="text-xs font-medium mb-1">{t(f.k)}{i > 0 && guess ? (lang === 'zh' ? '（正確答案）' : ' (jawaban)') : ''}</p>
+                              <p style={{ color: c.txt }} className="text-xs font-medium mb-1">{t(f.k)}{i > 0 && guess ? (lang === 'zh' ? '（參考方向）' : ' (arah referensi)') : ''}</p>
                               <p className="text-sm text-gray-800">{t(f.v)}</p>
                             </div>
                           </div>

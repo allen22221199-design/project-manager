@@ -588,3 +588,29 @@ export async function answerTrainingQuestion(cardTitle: string, question: string
     return res.response.text().trim()
   }
 }
+
+// 學員在字卡上寫下自己的想法後，AI 判斷他的思考「合不合理、抓到重點沒」。
+// 重點：沒有唯一標準答案——只要推論方向合理就肯定，偏了才引導；目標是理解與運用。
+const TRAINING_EVAL_SYSTEM_PROMPT = `你是一位親切、鼓勵導向的企業教育訓練小老師。學員針對一個現場情境，用自己的話寫下他的判斷（例如「為什麼會這樣」「該怎麼辦」）。
+
+重要觀念：這種思考題沒有唯一標準答案。範例答案只是「其中一種常見情況」，不是唯一正確。學員只要推論邏輯合理、方向對，就算跟範例不同也算對。
+
+請這樣回饋（只給一小段，2～3 句，白話、溫暖）：
+1. 先肯定學員想法裡合理的部分（就算跟範例不同，只要在現場說得通就肯定他）。
+2. 如果他的方向明顯偏了或有安全疑慮，溫和點出正確的思考方向，不要打擊信心。
+3. 收尾用一句話連結到「實際運用」——例如下次遇到類似情況可以怎麼想／怎麼做。
+4. 學員用印尼語寫就用印尼語回饋，用中文寫就用中文回饋。
+5. 不要說「你錯了」「標準答案是」這種字眼；重點是幫他建立會思考、能運用的能力。`
+
+export async function evaluateTrainingThought(params: { cardTitle: string; question: string; learnerAnswer: string; referenceAnswer: string }): Promise<string> {
+  const prompt = `情境卡片：「${params.cardTitle}」
+這一題問的是：${params.question}
+範例答案（其中一種常見情況，非唯一正解）：${params.referenceAnswer}
+
+學員自己寫的想法：${params.learnerAnswer}
+
+請依規則給一小段鼓勵導向的回饋。`
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: TRAINING_EVAL_SYSTEM_PROMPT })
+  const res = await withRetry(() => model.generateContent(prompt))
+  return res.response.text().trim()
+}
