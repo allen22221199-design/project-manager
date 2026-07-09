@@ -311,12 +311,12 @@ export default function Page() {
     if (!trainingAskInput.trim() || trainingAsking) return
     setTrainingAsking(true); setTrainingAskAnswer('')
     try {
-      const r = await fetch('/api/chat', {
+      const r = await fetch('/api/training/ask', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [{ role: 'user', content: `關於這個訓練案例「${cardTitle}」，我的問題是：${trainingAskInput.trim()}` }] }),
+        body: JSON.stringify({ cardTitle, question: trainingAskInput.trim() }),
       })
       const data = await readJson(r)
-      setTrainingAskAnswer(r.ok ? (data.reply ?? '') : ('錯誤：' + (data.error ?? '無法回答')))
+      setTrainingAskAnswer(r.ok ? (data.answer ?? '') : ('錯誤：' + (data.error ?? '無法回答')))
     } catch (e: any) { setTrainingAskAnswer('錯誤：' + e.message) }
     finally { setTrainingAsking(false); setTrainingAskInput('') }
   }

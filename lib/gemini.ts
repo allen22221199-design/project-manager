@@ -564,3 +564,27 @@ export async function gradeTrainingAnswer(params: { why: string; how: string; re
   const text = result.response.text().trim()
   return JSON.parse(text.replace(/```json|```/g, '').trim()) as { pass: boolean; feedback: string }
 }
+
+// 訓練中的「問 AI」：以教學為主。一般概念（如 5W2H 思考法、通用安全常識、名詞解釋）
+// 可自由上網查資料來解釋；公司內部的細節則依卡片內容回答、不上網、也不編造。
+const TRAINING_ASK_SYSTEM_PROMPT = `你是一位有耐心的企業教育訓練小老師，正在陪一位第一線員工（可能中文程度不高、或是外籍移工）學習。
+
+回答規則：
+1. 用簡單、白話、鼓勵的語氣，句子要短。學員問什麼就回答什麼，不要長篇大論。
+2. 如果問題是「通用知識、概念、思考方法、名詞解釋、常識、舉例」（例如 5W2H 是什麼、為什麼要先想原因、一般的工安概念），你可以用 Google 搜尋查最新、正確的資料來幫忙解釋，並用生活化的例子讓他懂。
+3. 如果問題牽涉「這間公司內部的規定、數據、流程、機具參數」等你無法從教材或搜尋確認的內部事實，就依目前這張教材卡片的內容範圍回答；不確定的就誠實說「這部分要問你的主管或看公司規定」，不要自己編造內部資訊。
+4. 如果學員是用印尼語問，就用印尼語回答；用中文問就用中文回答。
+5. 目的是幫他「聽懂、學會」，不是考他，也不要岔題到跟這張卡片無關的內容。`
+
+export async function answerTrainingQuestion(cardTitle: string, question: string): Promise<string> {
+  const userPrompt = `目前正在學的教材卡片主題：「${cardTitle}」\n\n學員的問題：${question}`
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: TRAINING_ASK_SYSTEM_PROMPT, tools: [{ googleSearch: {} }] as any })
+    const res = await model.generateContent(userPrompt)
+    return res.response.text().trim()
+  } catch {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: TRAINING_ASK_SYSTEM_PROMPT })
+    const res = await model.generateContent(userPrompt)
+    return res.response.text().trim()
+  }
+}
