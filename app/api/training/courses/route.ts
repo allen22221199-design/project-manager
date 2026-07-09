@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   try {
     const { sourceText, is5w2h } = await req.json()
     if (!sourceText?.trim()) return NextResponse.json({ error: '請貼入教材內容' }, { status: 400 })
-    const content: any = await generateTrainingCards(sourceText.trim())
+    const content: any = await generateTrainingCards(sourceText.trim(), !!is5w2h)
     content.is5w2h = !!is5w2h  // 是否為 5W2H 課程（決定上課時要不要顯示對照標籤）
     const name = content.courseTitle?.zh || '(未命名課程)'
     const r = await createTrainingCourse(name, content)

@@ -459,7 +459,14 @@ const TRAINING_CARDS_SYSTEM_PROMPT = `你是一位資深企業教育訓練設計
 2. 橋接案例（Contoh penghubung）：半生活半工作，開始貼近教材主題，但還不用專業術語。
 3. 正式工作案例（Kasus kerja nyata）：直接對應教材真正要教的工作情境與專業內容。
 
-每個階段的案例都要用「發生什麼事？為什麼？該怎麼辦？花多少？」四個欄位呈現（What/Why/How/How much），這是教「WHY」而不是死背，讓學員理解「原來我平常就在這樣想事情」。
+每個階段的案例要用「一問一答」的欄位(fields)呈現，這是教「WHY」而不是死背，讓學員理解「原來我平常就在這樣想事情」。
+
+【欄位數量：不要固定，依教材內容分析需要幾個】
+不要每次都硬湊成 4 個欄位。請先分析這份教材真正需要幾個提問面向，再決定欄位數量（通常 3～8 個）：
+- 如果教材是「5W2H」思考法，就要完整拆成 7 個欄位，一個蘿蔔一個坑：發生什麼事(What)、為什麼(Why)、誰來做(Who)、什麼時候(When)、在哪裡(Where)、怎麼做(How)、花多少(How much/How many)。
+- 如果教材只需要「發生什麼事→為什麼→怎麼辦」就講得清楚，那就只給 3 個欄位，不要硬加。
+- 其他教材依實際需要的提問面向決定，寧可貼合內容，也不要為了湊數而空泛。
+三個階段（生活／橋接／正式）的欄位「面向」要一致（同樣的提問角度），只是換不同案例。
 
 【重要：每個欄位都要給 3 個「延伸可能」(alts)】
 除了主要答案(v)之外，每個欄位都要再給 3 個「其他可能的方向」放進 alts 陣列。這是要教學員「同一件事其實有好幾種可能，不是只有一個標準答案」，鼓勵發散思考。
@@ -486,18 +493,19 @@ const TRAINING_CARDS_SYSTEM_PROMPT = `你是一位資深企業教育訓練設計
       "stageId": "Contoh sehari-hari",
       "title": { "zh": "案例標題", "id": "Judul contoh" },
       "fields": [
-        { "k": { "zh": "發生什麼事？", "id": "Apa yang terjadi?" }, "v": { "zh": "...", "id": "..." }, "alts": [ { "zh": "可能…①", "id": "..." }, { "zh": "可能…②", "id": "..." }, { "zh": "可能…③", "id": "..." } ] },
-        { "k": { "zh": "為什麼會這樣？", "id": "Mengapa hal ini terjadi?" }, "v": { "zh": "...", "id": "..." }, "alts": [ { "zh": "可能…①", "id": "..." }, { "zh": "可能…②", "id": "..." }, { "zh": "可能…③", "id": "..." } ] },
-        { "k": { "zh": "該怎麼辦？", "id": "Bagaimana cara mengatasinya?" }, "v": { "zh": "...", "id": "..." }, "alts": [ { "zh": "可以…①", "id": "..." }, { "zh": "可以…②", "id": "..." }, { "zh": "可以…③", "id": "..." } ] },
-        { "k": { "zh": "花多少？", "id": "Berapa biaya / waktunya?" }, "v": { "zh": "...", "id": "..." }, "alts": [ { "zh": "可能…①", "id": "..." }, { "zh": "可能…②", "id": "..." }, { "zh": "可能…③", "id": "..." } ] }
+        { "k": { "zh": "提問（如 發生什麼事？）", "id": "Pertanyaan" }, "v": { "zh": "...", "id": "..." }, "alts": [ { "zh": "可能…①", "id": "..." }, { "zh": "可能…②", "id": "..." }, { "zh": "可能…③", "id": "..." } ] }
       ]
     }
   ]
 }
-stages 陣列必須恰好包含 3 個階段，順序為：生活案例、橋接案例、正式工作案例。`
+說明：fields 陣列的長度「不固定」，依教材內容分析需要幾個提問面向就給幾個（一般 3～8 個；5W2H 教材固定 7 個）。每個 field 的 k 是提問、v 是主要答案、alts 是 3 個延伸可能。
+stages 陣列必須恰好包含 3 個階段，順序為：生活案例、橋接案例、正式工作案例，且三階段的欄位面向數量與角度要一致。`
 
-function buildTrainingCardsUserPrompt(sourceText: string): string {
-  return `以下是要教給員工的教材內容，請依規則拆解成三階段案例卡：
+function buildTrainingCardsUserPrompt(sourceText: string, is5w2h?: boolean): string {
+  const note = is5w2h
+    ? '\n\n【本教材為 5W2H 思考法】請務必把每個階段拆成完整 7 個欄位：發生什麼事(What)、為什麼(Why)、誰來做(Who)、什麼時候(When)、在哪裡(Where)、怎麼做(How)、花多少(How much/How many)，一個都不能少。'
+    : ''
+  return `以下是要教給員工的教材內容，請先分析它需要幾個提問面向，再拆解成三階段案例卡：${note}
 ---
 ${sourceText}
 ---`
@@ -508,13 +516,13 @@ export type TrainingField = { k: TrainingBilingual; v: TrainingBilingual; alts?:
 export type TrainingStage = { stage: string; stageId: string; title: TrainingBilingual; fields: TrainingField[] }
 export type TrainingCourseContent = { courseTitle: TrainingBilingual; stages: TrainingStage[] }
 
-export async function generateTrainingCards(sourceText: string): Promise<TrainingCourseContent> {
+export async function generateTrainingCards(sourceText: string, is5w2h?: boolean): Promise<TrainingCourseContent> {
   const model = genAI.getGenerativeModel({
     model: 'gemini-2.5-flash',
     systemInstruction: TRAINING_CARDS_SYSTEM_PROMPT,
     generationConfig: { responseMimeType: 'application/json' },
   })
-  const result = await withRetry(() => model.generateContent(buildTrainingCardsUserPrompt(sourceText)))
+  const result = await withRetry(() => model.generateContent(buildTrainingCardsUserPrompt(sourceText, is5w2h)))
   const text = result.response.text().trim()
   const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
   return parsed as TrainingCourseContent
