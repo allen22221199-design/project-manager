@@ -872,3 +872,110 @@ export async function updatePrivateEvent(id: string, fields: { title?: string; d
 export async function deletePrivateEvent(id: string) {
   await notion.pages.update({ page_id: id, archived: true })
 }
+
+// ── 教育訓練（互動字卡課程）───────────────────────────────────
+// 需在 Vercel 設定：
+//   NOTION_TRAINING_COURSES_DB_ID — 資料庫欄位：課程名稱(title)、內容JSON(rich_text)、啟用(checkbox)
+//   NOTION_TRAINING_RECORDS_DB_ID — 資料庫欄位：人員(rich_text)、課程ID(rich_text)、完成日期(date)、
+//                                    測驗通過(checkbox)、測驗講評(rich_text)
+const TRAINING_COURSES_DB_ID = process.env.NOTION_TRAINING_COURSES_DB_ID || ''
+const TRAINING_RECORDS_DB_ID = process.env.NOTION_TRAINING_RECORDS_DB_ID || ''
+
+function ensureTrainingCoursesDb() {
+  if (!TRAINING_COURSES_DB_ID) throw new Error('尚未設定 NOTION_TRAINING_COURSES_DB_ID')
+}
+function ensureTrainingRecordsDb() {
+  if (!TRAINING_RECORDS_DB_ID) throw new Error('尚未設定 NOTION_TRAINING_RECORDS_DB_ID')
+}
+
+export async function getTrainingCourses() {
+  ensureTrainingCoursesDb()
+  const results: any[] = []
+  let cursor: string | undefined = undefined
+  do {
+    const res: any = await notion.databases.query({
+      database_id: TRAINING_COURSES_DB_ID,
+      sorts: [{ timestamp: 'created_time', direction: 'descending' }],
+      page_size: 100,
+      ...(cursor ? { start_cursor: cursor } : {}),
+    })
+    results.push(...res.results)
+    cursor = res.has_more ? res.next_cursor : undefined
+  } while (cursor)
+  return results
+    .filter((p: any) => !p.archived && !p.in_trash)
+    .map((page: any) => {
+      let content: any = null
+      try {
+        const raw = (page.properties['內容JSON']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
+        content = raw ? JSON.parse(raw) : null
+      } catch { content = null }
+      return {
+        id: page.id,
+        name: page.properties['課程名稱']?.title?.[0]?.plain_text ?? '(未命名)',
+        active: page.properties['啟用']?.checkbox ?? true,
+        content,
+      }
+    })
+}
+
+export async function createTrainingCourse(name: string, content: any) {
+  ensureTrainingCoursesDb()
+  const json = JSON.stringify(content)
+  const res: any = await notion.pages.create({
+    parent: { database_id: TRAINING_COURSES_DB_ID },
+    properties: {
+      課程名稱: { title: [{ text: { content: name } }] },
+      內容JSON: { rich_text: toRichText(json) },
+      啟用: { checkbox: true },
+    },
+  })
+  return { id: res.id }
+}
+
+export async function deleteTrainingCourse(id: string) {
+  await notion.pages.update({ page_id: id, archived: true })
+}
+
+export async function getTrainingRecords(person?: string) {
+  ensureTrainingRecordsDb()
+  const filter = person ? { property: '人員', rich_text: { equals: person } } : undefined
+  const results: any[] = []
+  let cursor: string | undefined = undefined
+  do {
+    const res: any = await notion.databases.query({
+      database_id: TRAINING_RECORDS_DB_ID,
+      ...(filter ? { filter } : {}),
+      page_size: 100,
+      ...(cursor ? { start_cursor: cursor } : {}),
+    })
+    results.push(...res.results)
+    cursor = res.has_more ? res.next_cursor : undefined
+  } while (cursor)
+  return results
+    .filter((p: any) => !p.archived && !p.in_trash)
+    .map((page: any) => ({
+      id: page.id,
+      person: (page.properties['人員']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+      courseId: (page.properties['課程ID']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+      date: page.properties['完成日期']?.date?.start ?? '',
+      passed: page.properties['測驗通過']?.checkbox ?? false,
+      feedback: (page.properties['測驗講評']?.rich_text ?? []).map((r: any) => r.plain_text).join(''),
+    }))
+}
+
+export async function saveTrainingRecord(person: string, courseId: string, passed: boolean, feedback: string) {
+  ensureTrainingRecordsDb()
+  const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
+  const res: any = await notion.pages.create({
+    parent: { database_id: TRAINING_RECORDS_DB_ID },
+    properties: {
+      人員: { rich_text: [{ text: { content: person } }] },
+      課程ID: { rich_text: [{ text: { content: courseId } }] },
+      完成日期: { date: { start: today } },
+      測驗通過: { checkbox: passed },
+      測驗講評: { rich_text: toRichText(feedback) },
+    },
+  })
+  return { id: res.id }
+}

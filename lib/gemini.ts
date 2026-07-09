@@ -443,3 +443,124 @@ export async function breakdownTaskSteps(task: { id: string; owner: string; task
   const steps = Array.isArray(parsed.steps) ? parsed.steps : []
   return steps.map((s: any) => ({ step: String(s.step ?? ''), done: false })).filter((s: TaskStep) => s.step)
 }
+
+// ════════════════════════════════════════════════════════════════
+// 教育訓練：把教材文字自動拆解成「生活案例 → 橋接案例 → 正式工作案例」
+// 三階段互動字卡（中文／印尼語雙語），並產生結尾測驗題目、批改自由作答。
+// 設計依據：現場實測有效的 5W2H 漸進式教學法（生活案例破冰 → 半生活半工作橋接
+// → 正式工作案例對應公司系統欄位）。
+// ════════════════════════════════════════════════════════════════
+
+const TRAINING_CARDS_SYSTEM_PROMPT = `你是一位資深企業教育訓練設計師，專長是幫工廠/工地的第一線員工（含外籍移工，需中文＋印尼語雙語）設計「漸進式」教材。
+
+【核心教學法（務必遵守）】
+把教材內容拆解成三個階段的案例卡，難度漸進：
+1. 生活案例（Contoh sehari-hari）：跟教材主題無關、但用大家生活中都遇過的小事練習思考架構，建立信任、降低心理門檻。不用專業術語。
+2. 橋接案例（Contoh penghubung）：半生活半工作，開始貼近教材主題，但還不用專業術語。
+3. 正式工作案例（Kasus kerja nyata）：直接對應教材真正要教的工作情境與專業內容。
+
+每個階段的案例都要用「發生什麼事？為什麼？該怎麼辦？花多少？」四個欄位呈現（What/Why/How/How much），這是教「WHY」而不是死背，讓學員理解「原來我平常就在這樣想事情」。
+
+【務必遵守的規則】
+1. 三個階段都要有，且必須是同一條學習路徑（由淺入深），不可以三階段互不相關。
+2. 生活案例必須是任何人、不分年紀國籍都秒懂的小事（食衣住行育樂），不可以出現任何教材裡的專業術語。
+3. 正式工作案例的內容必須真的來自使用者提供的教材，不可以自己編造教材中沒有的專業知識。
+4. 每個欄位的中文與印尼語翻譯都要精準、口語化，不要用機器直譯的生硬語氣。
+5. 只能輸出符合指定 JSON schema 的資料，不要有任何額外文字或說明。
+
+請以下列 JSON 格式回傳（不要其他文字）：
+{
+  "courseTitle": { "zh": "課程標題", "id": "Judul kursus" },
+  "stages": [
+    {
+      "stage": "生活案例",
+      "stageId": "Contoh sehari-hari",
+      "title": { "zh": "案例標題", "id": "Judul contoh" },
+      "fields": [
+        { "k": { "zh": "發生什麼事？", "id": "Apa yang terjadi?" }, "v": { "zh": "...", "id": "..." } },
+        { "k": { "zh": "為什麼會這樣？", "id": "Mengapa hal ini terjadi?" }, "v": { "zh": "...", "id": "..." } },
+        { "k": { "zh": "該怎麼辦？", "id": "Bagaimana cara mengatasinya?" }, "v": { "zh": "...", "id": "..." } },
+        { "k": { "zh": "花多少？", "id": "Berapa biaya / waktunya?" }, "v": { "zh": "...", "id": "..." } }
+      ]
+    }
+  ]
+}
+stages 陣列必須恰好包含 3 個階段，順序為：生活案例、橋接案例、正式工作案例。`
+
+function buildTrainingCardsUserPrompt(sourceText: string): string {
+  return `以下是要教給員工的教材內容，請依規則拆解成三階段案例卡：
+---
+${sourceText}
+---`
+}
+
+export type TrainingBilingual = { zh: string; id: string }
+export type TrainingField = { k: TrainingBilingual; v: TrainingBilingual }
+export type TrainingStage = { stage: string; stageId: string; title: TrainingBilingual; fields: TrainingField[] }
+export type TrainingCourseContent = { courseTitle: TrainingBilingual; stages: TrainingStage[] }
+
+export async function generateTrainingCards(sourceText: string): Promise<TrainingCourseContent> {
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: TRAINING_CARDS_SYSTEM_PROMPT,
+    generationConfig: { responseMimeType: 'application/json' },
+  })
+  const result = await withRetry(() => model.generateContent(buildTrainingCardsUserPrompt(sourceText)))
+  const text = result.response.text().trim()
+  const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+  return parsed as TrainingCourseContent
+}
+
+const TRAINING_QUIZ_SYSTEM_PROMPT = `你是一位企業教育訓練出題老師。根據提供的「正式工作案例」內容，出一題新的情境測驗，
+用來確認學員是否真的理解（而不是背答案），情境要類似但不可以完全照抄原案例。
+
+規則：
+1. 只給「發生什麼事」，不要直接給答案，讓學員自己填「為什麼」「該怎麼辦」。
+2. 同時提供一份「參考答案」（為什麼、該怎麼辦），供批改比對，但不會顯示給學員直到作答後。
+3. 中文與印尼語都要提供。
+4. 只能輸出符合指定 JSON schema 的資料，不要有其他文字。
+
+請以下列 JSON 格式回傳：
+{
+  "title": { "zh": "...", "id": "..." },
+  "what": { "zh": "...", "id": "..." },
+  "referenceWhy": { "zh": "...", "id": "..." },
+  "referenceHow": { "zh": "...", "id": "..." }
+}`
+
+export type TrainingQuiz = { title: TrainingBilingual; what: TrainingBilingual; referenceWhy: TrainingBilingual; referenceHow: TrainingBilingual }
+
+export async function generateTrainingQuiz(formalCase: TrainingStage): Promise<TrainingQuiz> {
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: TRAINING_QUIZ_SYSTEM_PROMPT,
+    generationConfig: { responseMimeType: 'application/json' },
+  })
+  const prompt = `正式工作案例內容：\n${JSON.stringify(formalCase, null, 2)}`
+  const result = await withRetry(() => model.generateContent(prompt))
+  const text = result.response.text().trim()
+  return JSON.parse(text.replace(/```json|```/g, '').trim()) as TrainingQuiz
+}
+
+const TRAINING_GRADE_SYSTEM_PROMPT = `你是一位親切但認真的教育訓練評分老師。學員用自己的話回答「為什麼」與「該怎麼辦」，
+請對照參考答案，判斷學員是否抓到核心邏輯（不要求逐字相同，抓到重點就算對）。
+
+規則：
+1. pass：學員答案是否抓到參考答案的核心邏輯（true/false）。
+2. feedback：用溫和、鼓勵的語氣給一句中文講評（答對就肯定，答錯就簡短點出參考答案的重點方向，不要打擊信心）。
+3. 只能輸出符合指定 JSON schema 的資料。
+
+請以下列 JSON 格式回傳：
+{ "pass": true, "feedback": "講評文字" }`
+
+export async function gradeTrainingAnswer(params: { why: string; how: string; referenceWhy: string; referenceHow: string }): Promise<{ pass: boolean; feedback: string }> {
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: TRAINING_GRADE_SYSTEM_PROMPT,
+    generationConfig: { responseMimeType: 'application/json' },
+  })
+  const prompt = `參考答案 - 為什麼：${params.referenceWhy}\n參考答案 - 怎麼辦：${params.referenceHow}\n\n學員作答 - 為什麼：${params.why || '（未填）'}\n學員作答 - 怎麼辦：${params.how || '（未填）'}`
+  const result = await withRetry(() => model.generateContent(prompt))
+  const text = result.response.text().trim()
+  return JSON.parse(text.replace(/```json|```/g, '').trim()) as { pass: boolean; feedback: string }
+}

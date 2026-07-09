@@ -72,13 +72,21 @@ const PROJECT_COLORS_LIST = [
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string; ganttStart?: string; ganttEnd?: string; schedule?: string; latestProgress?: string; latestProgressDate?: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
-type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private'
+type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private' | 'training'
 type PrivateEvent = { id: string; title: string; date: string; note?: string; time?: string; endTime?: string; allDay?: boolean }
 type FileResult = { title: string; name: string; url: string }
 type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[] }
 type TaskAttachment = { name: string; url: string }
 type TaskStep = { step: string; done: boolean }
 type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[]; flag?: string; steps?: TaskStep[] }
+
+// 教育訓練
+type TrainingBilingual = { zh: string; id: string }
+type TrainingField = { k: TrainingBilingual; v: TrainingBilingual }
+type TrainingStage = { stage: string; stageId: string; title: TrainingBilingual; fields: TrainingField[] }
+type TrainingCourseContent = { courseTitle: TrainingBilingual; stages: TrainingStage[] }
+type TrainingCourse = { id: string; name: string; active: boolean; content: TrainingCourseContent | null }
+type TrainingQuiz = { title: TrainingBilingual; what: TrainingBilingual; referenceWhy: TrainingBilingual; referenceHow: TrainingBilingual }
 
 // 安全解析回應：伺服器逾時/出錯時回的是 HTML，不要讓 JSON.parse 噴出難懂的錯誤
 async function readJson(r: Response): Promise<any> {
@@ -275,6 +283,109 @@ export default function Page() {
   const [kbSyncing, setKbSyncing] = useState(false)
   const [kbMsg, setKbMsg] = useState('')
   const [kbOk, setKbOk] = useState(false)
+
+  // 教育訓練
+  const [trainingCourses, setTrainingCourses] = useState<TrainingCourse[]>([])
+  const [trainingLoading, setTrainingLoading] = useState(false)
+  const [trainingCourseId, setTrainingCourseId] = useState<string | null>(null)
+  const [trainingLang, setTrainingLang] = useState<'zh' | 'id'>('zh')
+  const [trainingStageIdx, setTrainingStageIdx] = useState(0)
+  const [trainingRevealed, setTrainingRevealed] = useState(0)
+  const [trainingQuiz, setTrainingQuiz] = useState<TrainingQuiz | null>(null)
+  const [trainingQuizLoading, setTrainingQuizLoading] = useState(false)
+  const [trainingWhy, setTrainingWhy] = useState('')
+  const [trainingHow, setTrainingHow] = useState('')
+  const [trainingGrading, setTrainingGrading] = useState(false)
+  const [trainingResult, setTrainingResult] = useState<{ pass: boolean; feedback: string } | null>(null)
+  const [trainingPerson, setTrainingPerson] = useState('')
+  // 新增課程（管理者）
+  const [showTrainingCreate, setShowTrainingCreate] = useState(false)
+  const [trainingSourceText, setTrainingSourceText] = useState('')
+  const [trainingCreating, setTrainingCreating] = useState(false)
+  const [trainingCreateErr, setTrainingCreateErr] = useState('')
+  const [trainingAskInput, setTrainingAskInput] = useState('')
+  const [trainingAskAnswer, setTrainingAskAnswer] = useState('')
+  const [trainingAsking, setTrainingAsking] = useState(false)
+
+  async function askTrainingAI(cardTitle: string) {
+    if (!trainingAskInput.trim() || trainingAsking) return
+    setTrainingAsking(true); setTrainingAskAnswer('')
+    try {
+      const r = await fetch('/api/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: `關於這個訓練案例「${cardTitle}」，我的問題是：${trainingAskInput.trim()}` }] }),
+      })
+      const data = await readJson(r)
+      setTrainingAskAnswer(r.ok ? (data.reply ?? '') : ('錯誤：' + (data.error ?? '無法回答')))
+    } catch (e: any) { setTrainingAskAnswer('錯誤：' + e.message) }
+    finally { setTrainingAsking(false); setTrainingAskInput('') }
+  }
+
+  async function fetchTrainingCourses() {
+    setTrainingLoading(true)
+    try {
+      const r = await fetch('/api/training/courses')
+      const data = await readJson(r)
+      setTrainingCourses(data.courses ?? [])
+    } catch {} finally { setTrainingLoading(false) }
+  }
+  function openTrainingCourse(id: string) {
+    setTrainingCourseId(id)
+    setTrainingStageIdx(0)
+    setTrainingRevealed(0)
+    setTrainingQuiz(null)
+    setTrainingResult(null)
+    setTrainingWhy(''); setTrainingHow('')
+  }
+  async function createTrainingCourse2() {
+    if (!trainingSourceText.trim() || trainingCreating) return
+    setTrainingCreating(true); setTrainingCreateErr('')
+    try {
+      const r = await fetch('/api/training/courses', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceText: trainingSourceText.trim() }),
+      })
+      const data = await readJson(r)
+      if (!r.ok) { setTrainingCreateErr(data.error ?? '建立失敗'); return }
+      setTrainingSourceText(''); setShowTrainingCreate(false)
+      await fetchTrainingCourses()
+    } catch (e: any) { setTrainingCreateErr(e.message ?? '網路錯誤') }
+    finally { setTrainingCreating(false) }
+  }
+  async function deleteTrainingCourseUI(id: string) {
+    if (!window.confirm('確定刪除這堂課程嗎？')) return
+    setTrainingCourses(prev => prev.filter(c => c.id !== id))
+    if (trainingCourseId === id) setTrainingCourseId(null)
+    await fetch('/api/training/courses', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+  }
+  async function startTrainingQuiz(formalCase: TrainingStage) {
+    setTrainingQuizLoading(true); setTrainingResult(null); setTrainingWhy(''); setTrainingHow('')
+    try {
+      const r = await fetch('/api/training/quiz', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formalCase }),
+      })
+      const data = await readJson(r)
+      if (r.ok) setTrainingQuiz(data.quiz)
+    } finally { setTrainingQuizLoading(false) }
+  }
+  async function submitTrainingAnswer() {
+    if (!trainingQuiz || !trainingCourseId || trainingGrading) return
+    if (!trainingPerson.trim()) { alert('請先輸入你的姓名'); return }
+    setTrainingGrading(true)
+    try {
+      const r = await fetch('/api/training/grade', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          person: trainingPerson.trim(), courseId: trainingCourseId,
+          why: trainingWhy, how: trainingHow,
+          referenceWhy: trainingQuiz.referenceWhy.zh, referenceHow: trainingQuiz.referenceHow.zh,
+        }),
+      })
+      const data = await readJson(r)
+      if (r.ok) setTrainingResult({ pass: data.pass, feedback: data.feedback })
+    } finally { setTrainingGrading(false) }
+  }
 
   // AI 助理對話
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([])
@@ -1295,6 +1406,7 @@ export default function Page() {
           <NavBtn active={view === 'daily'} onClick={() => { setView('daily'); fetchDailyTasks() }}>今日工作</NavBtn>
           <NavBtn active={view === 'search'} onClick={() => { setView('search'); fetchInProgress() }}>任務查詢</NavBtn>
           <NavBtn active={view === 'chat'} onClick={() => setView('chat')}>AI 助理</NavBtn>
+          <NavBtn active={view === 'training'} onClick={() => { setView('training'); fetchTrainingCourses() }}>📚 教育訓練</NavBtn>
           {isAdmin && <NavBtn active={view === 'private'} onClick={() => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() }}>🔐 私人行事曆</NavBtn>}
         </div>
         {isAdmin ? (
@@ -1393,7 +1505,7 @@ export default function Page() {
         </div>
       )}
 
-      <main className={`mx-auto p-4 animate-fade-in ${view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : 'max-w-2xl'}`}>
+      <main className={`mx-auto p-4 animate-fade-in ${view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' || view === 'training' ? 'max-w-3xl' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
@@ -2793,6 +2905,192 @@ export default function Page() {
                 })}
               </div>
             </div>
+            </div>
+          )
+        })()}
+
+        {/* 教育訓練 */}
+        {view === 'training' && (() => {
+          const course = trainingCourses.find(c => c.id === trainingCourseId)
+          const lang = trainingLang
+          const t = (o: TrainingBilingual) => o[lang]
+
+          // ── 課程列表 ──
+          if (!course) {
+            return (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-base font-semibold text-gray-900">📚 教育訓練</p>
+                  {isAdmin && (
+                    <button onClick={() => setShowTrainingCreate(v => !v)}
+                      className="text-sm bg-indigo-600 text-white rounded-lg px-3 py-1.5 hover:bg-indigo-700">
+                      {showTrainingCreate ? '取消新增' : '＋ 新增課程'}
+                    </button>
+                  )}
+                </div>
+
+                {showTrainingCreate && (
+                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 space-y-3">
+                    <p className="text-sm font-medium text-gray-700">貼上教材內容，AI 會自動拆解成「生活案例 → 橋接案例 → 正式案例」三階段字卡</p>
+                    <textarea value={trainingSourceText} onChange={e => setTrainingSourceText(e.target.value)} rows={6}
+                      placeholder="貼上 SOP、規範、教材文字..."
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
+                    {trainingCreateErr && <p className="text-xs text-red-500">{trainingCreateErr}</p>}
+                    <button onClick={createTrainingCourse2} disabled={trainingCreating || !trainingSourceText.trim()}
+                      className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                      {trainingCreating ? 'AI 生成中…（約需 10-20 秒）' : '生成課程'}
+                    </button>
+                  </div>
+                )}
+
+                {trainingLoading ? (
+                  <p className="text-sm text-gray-400 text-center py-8">載入中...</p>
+                ) : trainingCourses.length === 0 ? (
+                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-6 text-center">
+                    <p className="text-sm text-gray-400">目前還沒有課程</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {trainingCourses.map(c => (
+                      <div key={c.id} className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 flex items-center gap-3">
+                        <button onClick={() => openTrainingCourse(c.id)} className="flex-1 text-left">
+                          <p className="font-medium text-gray-900">{c.content?.courseTitle?.zh ?? c.name}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{c.content?.stages?.length ?? 0} 個學習階段</p>
+                        </button>
+                        {isAdmin && (
+                          <button onClick={() => deleteTrainingCourseUI(c.id)} title="刪除課程"
+                            className="text-gray-300 hover:text-red-500 text-sm px-1">✕</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          }
+
+          const content = course.content
+          if (!content) return <p className="text-sm text-gray-400 text-center py-8">這堂課程內容讀取失敗</p>
+
+          // ── 上課中：字卡 or 測驗 ──
+          const stages = content.stages
+          const inQuiz = trainingStageIdx >= stages.length
+
+          return (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <button onClick={() => setTrainingCourseId(null)} className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1">← 返回課程列表</button>
+                <div className="flex items-center gap-2">
+                  <input value={trainingPerson} onChange={e => setTrainingPerson(e.target.value)} placeholder="你的姓名"
+                    className="text-sm border border-gray-200 rounded-lg px-2 py-1 w-24 focus:outline-none focus:border-indigo-400" />
+                  <button onClick={() => setTrainingLang('zh')} className={`text-sm px-2.5 py-1 rounded-lg ${lang === 'zh' ? 'bg-indigo-600 text-white' : 'border border-gray-200 text-gray-500'}`}>中文</button>
+                  <button onClick={() => setTrainingLang('id')} className={`text-sm px-2.5 py-1 rounded-lg ${lang === 'id' ? 'bg-indigo-600 text-white' : 'border border-gray-200 text-gray-500'}`}>Indonesia</button>
+                </div>
+              </div>
+
+              <div className="flex gap-2 mb-4 flex-wrap">
+                {[...stages.map(s => lang === 'zh' ? s.stage : s.stageId), lang === 'zh' ? '小測驗' : 'Kuis'].map((label, i) => (
+                  <span key={i} className={`text-xs px-3 py-1.5 rounded-full border ${i === trainingStageIdx ? 'bg-indigo-50 text-indigo-700 border-indigo-300 font-medium' : i < trainingStageIdx ? 'text-gray-400 border-gray-200' : 'text-gray-300 border-gray-100'}`}>
+                    {i + 1}. {label}
+                  </span>
+                ))}
+              </div>
+
+              {!inQuiz ? (() => {
+                const stage = stages[trainingStageIdx]
+                const shown = stage.fields.slice(0, trainingRevealed + 1)
+                const colorFor = (i: number) => i < 2 ? { bg: 'var(--bg-accent, #EAF2FB)', bd: '#93C5FD', txt: '#1D4ED8' } : { bg: '#FEF3E2', bd: '#FBBF24', txt: '#92400E' }
+                return (
+                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-5">
+                    <p className="text-lg font-semibold text-gray-900 mb-4">{t(stage.title)}</p>
+                    <div className="space-y-2.5">
+                      {shown.map((f, i) => {
+                        const c = colorFor(i)
+                        return (
+                          <div key={i} style={{ background: c.bg, borderColor: c.bd }} className="border rounded-xl px-4 py-3">
+                            <p style={{ color: c.txt }} className="text-xs font-medium mb-1">{t(f.k)}</p>
+                            <p className="text-sm text-gray-800">{t(f.v)}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <div className="mt-4">
+                      {trainingRevealed < stage.fields.length - 1 ? (
+                        <button onClick={() => setTrainingRevealed(r => r + 1)}
+                          className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700">
+                          {lang === 'zh' ? '下一個問題' : 'Pertanyaan berikutnya'}
+                        </button>
+                      ) : (
+                        <button onClick={() => {
+                          if (trainingStageIdx === stages.length - 1) startTrainingQuiz(stage)
+                          setTrainingStageIdx(i => i + 1); setTrainingRevealed(0)
+                        }} className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700">
+                          {trainingStageIdx === stages.length - 1 ? (lang === 'zh' ? '進入小測驗 →' : 'Mulai kuis →') : (lang === 'zh' ? '進入下一階段 →' : 'Ke tahap berikutnya →')}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <div className="flex gap-2">
+                        <input value={trainingAskInput} onChange={e => setTrainingAskInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') askTrainingAI(t(stage.title)) }}
+                          placeholder={lang === 'zh' ? '看不懂可以問 AI...' : 'Tanya AI jika belum paham...'}
+                          className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                        <button onClick={() => askTrainingAI(t(stage.title))} disabled={trainingAsking || !trainingAskInput.trim()}
+                          className="bg-blue-600 text-white rounded-lg px-3 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-40">
+                          {trainingAsking ? '…' : (lang === 'zh' ? '問 AI' : 'Tanya AI')}
+                        </button>
+                      </div>
+                      {trainingAskAnswer && (
+                        <p className="mt-2 text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 border border-gray-100 rounded-lg p-3">{trainingAskAnswer}</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })() : (
+                <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-5">
+                  {trainingQuizLoading || !trainingQuiz ? (
+                    <p className="text-sm text-gray-400 text-center py-8">{lang === 'zh' ? '出題中...' : 'Membuat soal...'}</p>
+                  ) : (
+                    <>
+                      <p className="text-lg font-semibold text-gray-900 mb-4">{lang === 'zh' ? '小測驗：' : 'Kuis: '}{t(trainingQuiz.title)}</p>
+                      <div className="border rounded-xl px-4 py-3 mb-4" style={{ background: '#EAF2FB', borderColor: '#93C5FD' }}>
+                        <p className="text-xs font-medium mb-1" style={{ color: '#1D4ED8' }}>{lang === 'zh' ? '發生什麼事？' : 'Apa yang terjadi?'}</p>
+                        <p className="text-sm text-gray-800">{t(trainingQuiz.what)}</p>
+                      </div>
+                      {!trainingResult ? (
+                        <>
+                          <p className="text-sm text-gray-500 mb-2">{lang === 'zh' ? '換你想想看：為什麼會這樣？該怎麼辦？' : 'Giliranmu: kenapa ini terjadi? Bagaimana solusinya?'}</p>
+                          <input value={trainingWhy} onChange={e => setTrainingWhy(e.target.value)} placeholder={lang === 'zh' ? '為什麼會這樣？' : 'Mengapa hal ini terjadi?'}
+                            className="w-full mb-2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                          <input value={trainingHow} onChange={e => setTrainingHow(e.target.value)} placeholder={lang === 'zh' ? '該怎麼辦？' : 'Bagaimana solusinya?'}
+                            className="w-full mb-3 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                          <button onClick={submitTrainingAnswer} disabled={trainingGrading}
+                            className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                            {trainingGrading ? (lang === 'zh' ? '批改中...' : 'Menilai...') : (lang === 'zh' ? '對答案' : 'Lihat jawaban')}
+                          </button>
+                        </>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className={`rounded-xl px-4 py-3 border ${trainingResult.pass ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                            <p className={`text-sm font-medium ${trainingResult.pass ? 'text-green-700' : 'text-amber-700'}`}>
+                              {trainingResult.pass ? '✓ ' + (lang === 'zh' ? '通過！' : 'Lulus!') : (lang === 'zh' ? '再想想看' : 'Coba lagi')}
+                            </p>
+                            <p className="text-sm text-gray-700 mt-1">{trainingResult.feedback}</p>
+                          </div>
+                          <div className="border rounded-xl px-4 py-3" style={{ background: '#FEF3E2', borderColor: '#FBBF24' }}>
+                            <p className="text-xs font-medium mb-1" style={{ color: '#92400E' }}>{lang === 'zh' ? '參考答案' : 'Jawaban referensi'}</p>
+                            <p className="text-sm text-gray-800">{t(trainingQuiz.referenceWhy)}</p>
+                            <p className="text-sm text-gray-800 mt-1">{t(trainingQuiz.referenceHow)}</p>
+                          </div>
+                          <button onClick={() => setTrainingCourseId(null)}
+                            className="text-sm text-gray-500 hover:text-gray-800">{lang === 'zh' ? '完成，返回課程列表' : 'Selesai, kembali ke daftar'} →</button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )
         })()}
