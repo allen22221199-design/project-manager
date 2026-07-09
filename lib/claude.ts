@@ -40,6 +40,43 @@ export async function analyzeProgressImage(base64: string, mediaType: string) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// LINE 客服機器人 — 第二層嚴謹判斷（Claude Haiku）
+// 只在第一層（Gemini）無法直接確定回覆時才呼叫
+// ════════════════════════════════════════════════════════════════
+
+export type CustomerJudgement = { action: 'reply' | 'escalate'; reply: string | null; reason: string }
+
+const CUSTOMER_JUDGE_SYSTEM = `你是煌盛興業（藝格板、藝格玻璃）LINE客服的第二層嚴謹審核員。第一層AI已經初步分類，但無法確定是否能直接回覆，交給你做最終判斷。
+
+1. 若訊息可以用一般性、不涉及具體金額／規格數字／個案承諾的方式安全回覆（例如：說明大方向、請客戶提供更多資訊、告知會請專人盡快聯繫），可以直接回覆，action 設為 "reply"。
+2. 若訊息涉及：具體報價金額、具體規格數字確認、任何形式的客訴或糾紛、需要查詢個案資料才能回答的問題，一律 action 設為 "escalate"，交給真人處理，reply 填 null。
+3. 絕對不要編造價格、規格數字、交期或任何無法確認的具體承諾。有疑慮時一律選擇 escalate。
+4. 回覆需親切、簡潔、繁體中文，不要條列。
+
+請以下列 JSON 格式回傳（不要其他文字）：
+{ "action": "reply 或 escalate", "reply": "回覆內容或 null", "reason": "簡短判斷理由" }`
+
+export async function judgeCustomerMessage(text: string, category: string): Promise<CustomerJudgement> {
+  const msg = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 512,
+    system: CUSTOMER_JUDGE_SYSTEM,
+    messages: [{ role: 'user', content: `第一層分類：${category}\n客戶訊息：${text.slice(0, 2000)}` }],
+  })
+  const raw = (msg.content[0] as any).text?.trim() ?? '{}'
+  try {
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim())
+    return {
+      action: parsed.action === 'reply' ? 'reply' : 'escalate',
+      reply: parsed.reply || null,
+      reason: String(parsed.reason ?? ''),
+    }
+  } catch {
+    return { action: 'escalate', reply: null, reason: 'parse_error' }
+  }
+}
+
 export async function analyzeItemImage(base64: string, mediaType: string) {
   const msg = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
