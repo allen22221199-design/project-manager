@@ -461,12 +461,21 @@ const TRAINING_CARDS_SYSTEM_PROMPT = `你是一位資深企業教育訓練設計
 
 每個階段的案例都要用「發生什麼事？為什麼？該怎麼辦？花多少？」四個欄位呈現（What/Why/How/How much），這是教「WHY」而不是死背，讓學員理解「原來我平常就在這樣想事情」。
 
+【重要：每個欄位都要給 3 個「延伸可能」(alts)】
+除了主要答案(v)之外，每個欄位都要再給 3 個「其他可能的方向」放進 alts 陣列。這是要教學員「同一件事其實有好幾種可能，不是只有一個標準答案」，鼓勵發散思考。
+每個延伸可能都是完整、口語的一句話。範例：
+- 問題：為什麼週五的飯菜會臭掉？
+- 主要答案(v)：可能是天氣熱、放在室溫太久沒有冰起來。
+- 延伸可能(alts)：①可能是昨天就沒拿去冰 ②可能本來就有不新鮮的食材 ③可能是便當盒沒蓋好跑進細菌
+每個延伸可能中文與印尼語都要有。
+
 【務必遵守的規則】
 1. 三個階段都要有，且必須是同一條學習路徑（由淺入深），不可以三階段互不相關。
 2. 生活案例必須是任何人、不分年紀國籍都秒懂的小事（食衣住行育樂），不可以出現任何教材裡的專業術語。
 3. 正式工作案例的內容必須真的來自使用者提供的教材，不可以自己編造教材中沒有的專業知識。
 4. 每個欄位的中文與印尼語翻譯都要精準、口語化，不要用機器直譯的生硬語氣。
-5. 只能輸出符合指定 JSON schema 的資料，不要有任何額外文字或說明。
+5. 每個欄位的 alts 都要剛好 3 個，且彼此不同、都合理。
+6. 只能輸出符合指定 JSON schema 的資料，不要有任何額外文字或說明。
 
 請以下列 JSON 格式回傳（不要其他文字）：
 {
@@ -477,10 +486,10 @@ const TRAINING_CARDS_SYSTEM_PROMPT = `你是一位資深企業教育訓練設計
       "stageId": "Contoh sehari-hari",
       "title": { "zh": "案例標題", "id": "Judul contoh" },
       "fields": [
-        { "k": { "zh": "發生什麼事？", "id": "Apa yang terjadi?" }, "v": { "zh": "...", "id": "..." } },
-        { "k": { "zh": "為什麼會這樣？", "id": "Mengapa hal ini terjadi?" }, "v": { "zh": "...", "id": "..." } },
-        { "k": { "zh": "該怎麼辦？", "id": "Bagaimana cara mengatasinya?" }, "v": { "zh": "...", "id": "..." } },
-        { "k": { "zh": "花多少？", "id": "Berapa biaya / waktunya?" }, "v": { "zh": "...", "id": "..." } }
+        { "k": { "zh": "發生什麼事？", "id": "Apa yang terjadi?" }, "v": { "zh": "...", "id": "..." }, "alts": [ { "zh": "可能…①", "id": "..." }, { "zh": "可能…②", "id": "..." }, { "zh": "可能…③", "id": "..." } ] },
+        { "k": { "zh": "為什麼會這樣？", "id": "Mengapa hal ini terjadi?" }, "v": { "zh": "...", "id": "..." }, "alts": [ { "zh": "可能…①", "id": "..." }, { "zh": "可能…②", "id": "..." }, { "zh": "可能…③", "id": "..." } ] },
+        { "k": { "zh": "該怎麼辦？", "id": "Bagaimana cara mengatasinya?" }, "v": { "zh": "...", "id": "..." }, "alts": [ { "zh": "可以…①", "id": "..." }, { "zh": "可以…②", "id": "..." }, { "zh": "可以…③", "id": "..." } ] },
+        { "k": { "zh": "花多少？", "id": "Berapa biaya / waktunya?" }, "v": { "zh": "...", "id": "..." }, "alts": [ { "zh": "可能…①", "id": "..." }, { "zh": "可能…②", "id": "..." }, { "zh": "可能…③", "id": "..." } ] }
       ]
     }
   ]
@@ -495,7 +504,7 @@ ${sourceText}
 }
 
 export type TrainingBilingual = { zh: string; id: string }
-export type TrainingField = { k: TrainingBilingual; v: TrainingBilingual }
+export type TrainingField = { k: TrainingBilingual; v: TrainingBilingual; alts?: TrainingBilingual[] }
 export type TrainingStage = { stage: string; stageId: string; title: TrainingBilingual; fields: TrainingField[] }
 export type TrainingCourseContent = { courseTitle: TrainingBilingual; stages: TrainingStage[] }
 

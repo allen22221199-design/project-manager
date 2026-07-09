@@ -82,7 +82,7 @@ type DailyTask = { id: string; task: string; person: string; date: string; creat
 
 // 教育訓練
 type TrainingBilingual = { zh: string; id: string }
-type TrainingField = { k: TrainingBilingual; v: TrainingBilingual }
+type TrainingField = { k: TrainingBilingual; v: TrainingBilingual; alts?: TrainingBilingual[] }
 type TrainingStage = { stage: string; stageId: string; title: TrainingBilingual; fields: TrainingField[] }
 type TrainingCourseContent = { courseTitle: TrainingBilingual; stages: TrainingStage[]; is5w2h?: boolean }
 type TrainingCourse = { id: string; name: string; active: boolean; content: TrainingCourseContent | null }
@@ -3101,6 +3101,18 @@ export default function Page() {
                             <div style={{ background: c.bg, borderColor: c.bd }} className="border rounded-xl px-4 py-3">
                               <p style={{ color: c.txt }} className="text-sm font-medium mb-1">{t(f.k)}{show5w2h && <Fw2hBadge labelZh={f.k.zh} showZh={lang === 'zh'} />}{i > 0 && guess ? (lang === 'zh' ? '（參考方向）' : ' (arah referensi)') : ''}</p>
                               <p className="text-sm text-gray-800">{t(f.v)}</p>
+                              {f.alts && f.alts.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-dashed" style={{ borderColor: c.bd }}>
+                                  <p className="text-xs mb-1" style={{ color: c.txt }}>💭 {lang === 'zh' ? '也有可能是…（不只一種答案）' : 'Bisa juga karena… (bukan cuma satu jawaban)'}</p>
+                                  <ul className="space-y-0.5">
+                                    {f.alts.map((a, ai) => (
+                                      <li key={ai} className="text-sm text-gray-600 flex gap-1.5">
+                                        <span style={{ color: c.txt }}>•</span><span>{t(a)}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
                             </div>
                           </div>
                         )
