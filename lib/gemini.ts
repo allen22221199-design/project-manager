@@ -155,48 +155,6 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   return out
 }
 
-// ════════════════════════════════════════════════════════════════
-// LINE 客服機器人 — 第一層分類（Gemini Flash-Lite，快速、便宜）
-// ════════════════════════════════════════════════════════════════
-
-export type CustomerCategory = 'greeting' | 'faq' | 'quote' | 'spec' | 'complaint' | 'other'
-export type CustomerClassification = { category: CustomerCategory; confident: boolean; reply: string | null }
-
-const CUSTOMER_CLASSIFY_SYSTEM = `你是煌盛興業（產品：藝格板、藝格玻璃）LINE官方帳號的第一線訊息分類員。你的任務是判斷客戶傳來的訊息屬於哪一類，並在「打招呼」或「常見且明確能回答的簡單問題」時，直接草擬一個簡短有禮貌的中文回覆。
-
-分類只能是以下其中一種：
-- "greeting"：單純問候、寒暄（你好、在嗎、請問一下等等，尚未進入具體問題）
-- "faq"：常見且不涉及金額、規格數字、個案糾紛的簡單問題（例如：營業時間、如何聯絡業務、是否可到府估價等一般性資訊）
-- "quote"：詢問報價、價格、費用
-- "spec"：詢問產品規格、材質、尺寸、施工細節等技術性問題
-- "complaint"：客訴、抱怨、對品質或服務不滿
-- "other"：以上皆不符合
-
-規則：
-1. 只有 "greeting"，或你「非常確定」答案正確的 "faq"，才可以直接給 reply，並把 confident 設為 true。
-2. 只要牽涉到報價、規格數字、個案細節，或你不是很確定答案是否正確，一律把 confident 設為 false、reply 填 null，交由後續判斷流程處理。絕對不要自己編造價格或規格數字。
-3. 語氣親切、簡潔、繁體中文，像正常聊天一樣回覆，不要條列。
-
-請以下列 JSON 格式回傳（不要其他文字）：
-{ "category": "greeting/faq/quote/spec/complaint/other", "confident": true/false, "reply": "草擬回覆內容，不確定時填 null" }`
-
-export async function classifyCustomerMessage(text: string): Promise<CustomerClassification> {
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash-lite',
-    systemInstruction: CUSTOMER_CLASSIFY_SYSTEM,
-    generationConfig: { responseMimeType: 'application/json' },
-  })
-  const result = await withRetry(() => model.generateContent(text.slice(0, 2000)))
-  const raw = result.response.text().trim()
-  try {
-    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim())
-    const category: CustomerCategory = ['greeting', 'faq', 'quote', 'spec', 'complaint'].includes(parsed.category) ? parsed.category : 'other'
-    return { category, confident: !!parsed.confident, reply: parsed.reply || null }
-  } catch {
-    return { category: 'other', confident: false, reply: null }
-  }
-}
-
 // AI 助理即時對話：優先用公司知識庫；查不到內部事實就說不知道；網路資料要標註
 export async function chatWithAssistant(messages: { role: string; content: string }[], knowledge: string) {
   const sys = `你是煌盛興業的內部 AI 助理，協助同仁處理：客戶通話的話術建議、公司機具的參數／保養查詢、製作 SOP 等工作。
