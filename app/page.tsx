@@ -306,6 +306,9 @@ export default function Page() {
   const [trainingAskInput, setTrainingAskInput] = useState('')
   const [trainingAskAnswer, setTrainingAskAnswer] = useState('')
   const [trainingAsking, setTrainingAsking] = useState(false)
+  // 互動：每格「先想再看」— 記住學員自己打的想法（key: `${stageIdx}-${fieldIdx}`）
+  const [trainingGuesses, setTrainingGuesses] = useState<Record<string, string>>({})
+  const [trainingGuessInput, setTrainingGuessInput] = useState('')
 
   async function askTrainingAI(cardTitle: string) {
     if (!trainingAskInput.trim() || trainingAsking) return
@@ -332,10 +335,11 @@ export default function Page() {
   function openTrainingCourse(id: string) {
     setTrainingCourseId(id)
     setTrainingStageIdx(0)
-    setTrainingRevealed(0)
+    setTrainingRevealed(1)   // 第一格「發生什麼事」是情境說明，自動顯示；之後每格先想再看
     setTrainingQuiz(null)
     setTrainingResult(null)
     setTrainingWhy(''); setTrainingHow('')
+    setTrainingGuesses({}); setTrainingGuessInput(''); setTrainingAskAnswer('')
   }
   async function createTrainingCourse2() {
     if (!trainingSourceText.trim() || trainingCreating) return
@@ -2998,37 +3002,64 @@ export default function Page() {
 
               {!inQuiz ? (() => {
                 const stage = stages[trainingStageIdx]
-                const shown = stage.fields.slice(0, trainingRevealed + 1)
-                const colorFor = (i: number) => i < 2 ? { bg: 'var(--bg-accent, #EAF2FB)', bd: '#93C5FD', txt: '#1D4ED8' } : { bg: '#FEF3E2', bd: '#FBBF24', txt: '#92400E' }
+                const colorFor = (i: number) => i < 2 ? { bg: '#EAF2FB', bd: '#93C5FD', txt: '#1D4ED8' } : { bg: '#FEF3E2', bd: '#FBBF24', txt: '#92400E' }
+                const allRevealed = trainingRevealed >= stage.fields.length
+                const activeField = allRevealed ? null : stage.fields[trainingRevealed]
+                const revealAnswer = () => {
+                  const key = `${trainingStageIdx}-${trainingRevealed}`
+                  if (trainingGuessInput.trim()) setTrainingGuesses(prev => ({ ...prev, [key]: trainingGuessInput.trim() }))
+                  setTrainingRevealed(r => r + 1); setTrainingGuessInput('')
+                }
                 return (
                   <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-5">
                     <p className="text-lg font-semibold text-gray-900 mb-4">{t(stage.title)}</p>
                     <div className="space-y-2.5">
-                      {shown.map((f, i) => {
+                      {stage.fields.slice(0, trainingRevealed).map((f, i) => {
                         const c = colorFor(i)
+                        const guess = trainingGuesses[`${trainingStageIdx}-${i}`]
                         return (
-                          <div key={i} style={{ background: c.bg, borderColor: c.bd }} className="border rounded-xl px-4 py-3">
-                            <p style={{ color: c.txt }} className="text-xs font-medium mb-1">{t(f.k)}</p>
-                            <p className="text-sm text-gray-800">{t(f.v)}</p>
+                          <div key={i}>
+                            {guess && (
+                              <div className="border border-gray-200 bg-gray-50 rounded-xl px-4 py-2 mb-1">
+                                <p className="text-xs text-gray-400 mb-0.5">{lang === 'zh' ? '你的想法' : 'Jawabanmu'}</p>
+                                <p className="text-sm text-gray-600">{guess}</p>
+                              </div>
+                            )}
+                            <div style={{ background: c.bg, borderColor: c.bd }} className="border rounded-xl px-4 py-3">
+                              <p style={{ color: c.txt }} className="text-xs font-medium mb-1">{t(f.k)}{i > 0 && guess ? (lang === 'zh' ? '（正確答案）' : ' (jawaban)') : ''}</p>
+                              <p className="text-sm text-gray-800">{t(f.v)}</p>
+                            </div>
                           </div>
                         )
                       })}
                     </div>
-                    <div className="mt-4">
-                      {trainingRevealed < stage.fields.length - 1 ? (
-                        <button onClick={() => setTrainingRevealed(r => r + 1)}
-                          className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700">
-                          {lang === 'zh' ? '下一個問題' : 'Pertanyaan berikutnya'}
-                        </button>
-                      ) : (
+
+                    {activeField && (
+                      <div className="mt-3 border border-indigo-200 bg-indigo-50/40 rounded-xl px-4 py-3">
+                        <p className="text-sm font-medium text-indigo-700 mb-2">{lang === 'zh' ? '換你想想看：' : 'Coba pikirkan: '}{t(activeField.k)}</p>
+                        <div className="flex gap-2">
+                          <input value={trainingGuessInput} onChange={e => setTrainingGuessInput(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') revealAnswer() }}
+                            placeholder={lang === 'zh' ? '先用自己的話寫寫看（也可以直接看答案）' : 'Tulis dengan kata-katamu sendiri'}
+                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                          <button onClick={revealAnswer}
+                            className="bg-indigo-600 text-white rounded-lg px-3 py-2 text-sm font-medium hover:bg-indigo-700 whitespace-nowrap">
+                            {lang === 'zh' ? '看答案' : 'Lihat'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {allRevealed && (
+                      <div className="mt-4">
                         <button onClick={() => {
                           if (trainingStageIdx === stages.length - 1) startTrainingQuiz(stage)
-                          setTrainingStageIdx(i => i + 1); setTrainingRevealed(0)
+                          setTrainingStageIdx(i => i + 1); setTrainingRevealed(1); setTrainingGuessInput(''); setTrainingAskAnswer('')
                         }} className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700">
                           {trainingStageIdx === stages.length - 1 ? (lang === 'zh' ? '進入小測驗 →' : 'Mulai kuis →') : (lang === 'zh' ? '進入下一階段 →' : 'Ke tahap berikutnya →')}
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
 
                     <div className="mt-4 pt-4 border-t border-gray-100">
                       <div className="flex gap-2">
@@ -3037,7 +3068,7 @@ export default function Page() {
                           placeholder={lang === 'zh' ? '看不懂可以問 AI...' : 'Tanya AI jika belum paham...'}
                           className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
                         <button onClick={() => askTrainingAI(t(stage.title))} disabled={trainingAsking || !trainingAskInput.trim()}
-                          className="bg-blue-600 text-white rounded-lg px-3 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-40">
+                          className="bg-blue-600 text-white rounded-lg px-3 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-40 whitespace-nowrap">
                           {trainingAsking ? '…' : (lang === 'zh' ? '問 AI' : 'Tanya AI')}
                         </button>
                       </div>
