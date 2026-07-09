@@ -184,7 +184,92 @@ export default function Page() {
     return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}`
   })
   const [ganttActiveProject, setGanttActiveProject] = useState<string | null>(null)
-  const [ganttRangeStart, setGanttRangeStart] = useState<{ proc: string; ampm: string; date: string } | null>(null)
+  // 流程排程表：按住拖曳塗色用（像 Excel 拖曳選取一樣直覺）
+  const [ganttDragStart, setGanttDragStart] = useState<{ proc: string; ampm: string; date: string } | null>(null)
+  const [ganttDragOver, setGanttDragOver] = useState<string | null>(null)
+
+  // 流程排程表用：讀取／寫入某案件的排程資料（key 格式：流程|AM或PM|日期）
+  function parseGanttSchedule(p: Project): Record<string, string> {
+    let obj: Record<string, string> = {}
+    try { obj = p.schedule ? JSON.parse(p.schedule) : {} } catch { return {} }
+    const out: Record<string, string> = {}
+    for (const k in obj) {
+      const parts = k.split('|')
+      let proc = parts[0]
+      if (/^\d+$/.test(proc)) {
+        const name = OLD_PROCESS_STEPS[Number(proc)]
+        if (name) proc = name
+      }
+      if (MERGED_INTO_PRODUCTION.includes(proc)) proc = '生產'
+      const key = `${proc}|${parts[1]}|${parts[2]}`
+      if (!(key in out) || obj[k]) out[key] = obj[k]
+    }
+    return out
+  }
+  function saveGanttSchedule(p: Project, obj: Record<string, string>) {
+    const json = JSON.stringify(obj)
+    setProjects(prev => prev.map(x => x.id === p.id ? { ...x, schedule: json } : x))
+    fetch('/api/projects', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, schedule: json }) })
+  }
+  function ganttCellKey(proc: string, ampm: string, dateStr: string) {
+    return `${proc}|${ampm}|${dateStr}`
+  }
+  // 拖曳結束時套用：整段塗上目前選定案件的顏色；若整段本來就是該案件，改成清除
+  function commitGanttDrag(proc: string, ampm: string, d1: string, d2: string) {
+    const ap = projects.find(p => p.id === ganttActiveProject)
+    if (!ap) return
+    const activeProj = projects.filter(p => !INACTIVE_STATUSES.includes(p.status))
+    const owners: Record<string, string> = {}
+    for (const p of activeProj) {
+      const s = parseGanttSchedule(p)
+      for (const k in s) owners[k] = p.id
+    }
+    const lo = d1 <= d2 ? d1 : d2
+    const hi = d1 <= d2 ? d2 : d1
+    const startKey = ganttCellKey(proc, ampm, d1)
+    const clearMode = owners[startKey] === ap.id
+    const apSched = parseGanttSchedule(ap)
+    const otherEdits: Record<string, Record<string, string>> = {}
+    const [gy2, gm2] = ganttMonth.split('-').map(Number)
+    const daysInMonth2 = new Date(gy2, gm2, 0).getDate()
+    for (let d = 1; d <= daysInMonth2; d++) {
+      const ds = `${ganttMonth}-${String(d).padStart(2, '0')}`
+      if (ds < lo || ds > hi) continue
+      const key = ganttCellKey(proc, ampm, ds)
+      if (clearMode) {
+        if (owners[key] === ap.id) delete apSched[key]
+      } else {
+        const ownerId = owners[key]
+        if (ownerId && ownerId !== ap.id) {
+          const op = activeProj.find(p => p.id === ownerId)
+          if (op) {
+            if (!otherEdits[op.id]) otherEdits[op.id] = parseGanttSchedule(op)
+            delete otherEdits[op.id][key]
+          }
+        }
+        if (!(key in apSched)) apSched[key] = ''
+      }
+    }
+    saveGanttSchedule(ap, apSched)
+    for (const pid in otherEdits) {
+      const op = activeProj.find(p => p.id === pid)
+      if (op) saveGanttSchedule(op, otherEdits[pid])
+    }
+  }
+  // 拖曳結束（放開滑鼠）時套用整段塗色，任何位置放開都算數
+  useEffect(() => {
+    if (!ganttDragStart) return
+    function onUp() {
+      setGanttDragStart(cur => {
+        if (cur) {
+          setGanttDragOver(over => { commitGanttDrag(cur.proc, cur.ampm, cur.date, over ?? cur.date); return null })
+        }
+        return null
+      })
+    }
+    window.addEventListener('mouseup', onUp)
+    return () => window.removeEventListener('mouseup', onUp)
+  }, [ganttDragStart])
 
   // 知識庫同步
   const [kbSyncing, setKbSyncing] = useState(false)
@@ -245,8 +330,6 @@ export default function Page() {
   const itemFileRef = useRef<HTMLInputElement>(null)
   // 報告頁品項分頁：批次品項列表（辨識/手動，最後一次寫入）
   const [itemList, setItemList] = useState<any[]>([])
-  // 甘特圖格子單擊/雙擊判斷用
-  const ganttCellTimer = useRef<any>(null)
 
   useEffect(() => { fetchProjects(); fetchDailyTasks() }, [])
   useEffect(() => {
@@ -1412,121 +1495,31 @@ export default function Page() {
                 const prevMon = () => { const d = new Date(gy, gm - 2, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
                 const nextMon = () => { const d = new Date(gy, gm, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
                 const activeProj = projects.filter(p => !INACTIVE_STATUSES.includes(p.status))
-                const CELL_W = 30
-                const NAME_W = 120
+                const CELL_W = 36
+                const NAME_W = 140
 
-                // ── 排程資料（每個案件各自存 schedule，畫面合併成一張表）──
-                function parseSchedule(p: Project): Record<string, string> {
-                  let obj: Record<string, string> = {}
-                  try { obj = p.schedule ? JSON.parse(p.schedule) : {} } catch { return {} }
-                  // 舊資料以流程編號存（如 "0|AM|date"）→ 轉成流程名稱（如 "丈量|AM|date"）
-                  // 「四色／烘乾／面漆」→ 合併轉存到「生產」，既有排程不會消失
-                  const out: Record<string, string> = {}
-                  for (const k in obj) {
-                    const parts = k.split('|')
-                    let proc = parts[0]
-                    if (/^\d+$/.test(proc)) {
-                      const name = OLD_PROCESS_STEPS[Number(proc)]
-                      if (name) proc = name
-                    }
-                    if (MERGED_INTO_PRODUCTION.includes(proc)) proc = '生產'
-                    const key = `${proc}|${parts[1]}|${parts[2]}`
-                    if (!(key in out) || obj[k]) out[key] = obj[k]  // 同一格已合併時，保留有內容的那筆
-                  }
-                  return out
-                }
-                function saveSchedule(p: Project, obj: Record<string, string>) {
-                  const json = JSON.stringify(obj)
-                  setProjects(prev => prev.map(x => x.id === p.id ? { ...x, schedule: json } : x))
-                  fetch('/api/projects', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, schedule: json }) })
-                }
-                function cellKey(proc: string, ampm: string, dateStr: string) {
-                  return `${proc}|${ampm}|${dateStr}`
-                }
-
-                // 建立每格「擁有者」對照（哪個案件佔用了這格）
+                // 建立每格「擁有者」對照（哪個案件佔用了這格），render 用
                 const owners: Record<string, { pid: string; color: string; name: string; text: string }> = {}
                 for (const p of activeProj) {
-                  const s = parseSchedule(p)
+                  const s = parseGanttSchedule(p)
                   for (const k in s) owners[k] = { pid: p.id, color: p.color || '#AEC6E8', name: p.name, text: s[k] }
-                }
-
-                // 點格子：第一下設起點，第二下（同一列）設終點 → 整段一次填起來
-                function handleCellClick(proc: string, ampm: string, ds: string) {
-                  if (!ganttActiveProject) return
-                  if (!ganttRangeStart || ganttRangeStart.proc !== proc || ganttRangeStart.ampm !== ampm) {
-                    // 尚未設起點，或點到不同列 → 設為新的起點
-                    setGanttRangeStart({ proc, ampm, date: ds })
-                  } else {
-                    // 同一列的第二下 → 套用範圍
-                    applyRange(proc, ampm, ganttRangeStart.date, ds)
-                    setGanttRangeStart(null)
-                  }
-                }
-                // 對某列 [d1..d2] 整段填色 / 清除（依起點格目前狀態決定）
-                function applyRange(proc: string, ampm: string, d1: string, d2: string) {
-                  const ap = activeProj.find(p => p.id === ganttActiveProject)
-                  if (!ap) return
-                  const lo = d1 <= d2 ? d1 : d2
-                  const hi = d1 <= d2 ? d2 : d1
-                  const startKey = cellKey(proc, ampm, d1)
-                  const clearMode = owners[startKey]?.pid === ap.id  // 起點已是此案件 → 清除整段
-                  const apSched = parseSchedule(ap)
-                  const otherEdits: Record<string, Record<string, string>> = {}
-                  for (const d of days) {
-                    const ds = `${ganttMonth}-${String(d).padStart(2, '0')}`
-                    if (ds < lo || ds > hi) continue
-                    const key = cellKey(proc, ampm, ds)
-                    if (clearMode) {
-                      if (owners[key]?.pid === ap.id) delete apSched[key]
-                    } else {
-                      const ow = owners[key]
-                      if (ow && ow.pid !== ap.id) {
-                        const op = activeProj.find(p => p.id === ow.pid)
-                        if (op) {
-                          if (!otherEdits[op.id]) otherEdits[op.id] = parseSchedule(op)
-                          delete otherEdits[op.id][key]
-                        }
-                      }
-                      if (!(key in apSched)) apSched[key] = ''
-                    }
-                  }
-                  saveSchedule(ap, apSched)
-                  for (const pid in otherEdits) {
-                    const op = activeProj.find(p => p.id === pid)
-                    if (op) saveSchedule(op, otherEdits[pid])
-                  }
-                }
-                // 雙擊：編輯格內小字（寫到擁有者，或目前選取案件）
-                function editCellText(key: string) {
-                  const owner = owners[key]
-                  const target = owner ? activeProj.find(p => p.id === owner.pid)
-                    : (ganttActiveProject ? activeProj.find(p => p.id === ganttActiveProject) : null)
-                  if (!target) return
-                  const s = parseSchedule(target)
-                  const txt = window.prompt('輸入格內小字（縮寫／備註），留空僅填色：', s[key] ?? '')
-                  if (txt === null) return
-                  s[key] = txt.trim()
-                  saveSchedule(target, s)
                 }
 
                 return (
                   <div className="order-first bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div>
-                        <p className="text-sm font-medium text-gray-700">流程排程表</p>
-                        {ganttRangeStart ? (
-                          <p className="text-xs text-indigo-500 mt-0.5">已設起點，點選同一列的結束格 → 整段填色（雙擊格子加小字）</p>
-                        ) : (
-                          <p className="text-xs text-gray-400 mt-0.5">先選下方案件，再點「起點」格、再點「結束」格 → 一整排填起來</p>
-                        )}
+                        <p className="text-base font-semibold text-gray-800">流程排程表</p>
+                        <p className="text-sm text-gray-400 mt-0.5">
+                          {ganttActiveProject ? '在格子上按住滑鼠拖過去塗色，放開就完成；同一案件再塗一次會清除' : '① 先點下面的案件　② 在格子上按住拖曳塗色'}
+                        </p>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <button onClick={() => { setGanttRangeStart(null); setGanttMonth(prevMon()) }}
-                          className="w-7 h-7 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 text-sm flex items-center justify-center">‹</button>
-                        <span className="text-sm font-medium text-gray-700 w-20 text-center">{gy}年{gm}月</span>
-                        <button onClick={() => { setGanttRangeStart(null); setGanttMonth(nextMon()) }}
-                          className="w-7 h-7 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 text-sm flex items-center justify-center">›</button>
+                        <button onClick={() => setGanttMonth(prevMon())}
+                          className="w-9 h-9 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 text-base flex items-center justify-center">‹</button>
+                        <span className="text-base font-semibold text-gray-700 w-24 text-center">{gy}年{gm}月</span>
+                        <button onClick={() => setGanttMonth(nextMon())}
+                          className="w-9 h-9 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 text-base flex items-center justify-center">›</button>
                       </div>
                     </div>
 
@@ -1535,22 +1528,22 @@ export default function Page() {
                     ) : (
                       <>
                         {/* 案件色塊選取列 */}
-                        <div className="flex flex-wrap gap-1.5 mb-3">
+                        <div className="flex flex-wrap gap-2 mb-3">
                           {activeProj.map(p => {
                             const sel = ganttActiveProject === p.id
                             return (
                               <button key={p.id}
-                                onClick={() => { setGanttRangeStart(null); setGanttActiveProject(sel ? null : p.id) }}
-                                className={`text-sm px-3 py-1.5 rounded-full font-medium border transition-all ${sel ? 'ring-2 ring-offset-1 ring-indigo-400 border-transparent' : 'border-gray-200 hover:border-gray-400'}`}
+                                onClick={() => setGanttActiveProject(sel ? null : p.id)}
+                                className={`text-base px-4 py-2 rounded-full font-medium border transition-all ${sel ? 'ring-2 ring-offset-1 ring-indigo-400 border-transparent' : 'border-gray-200 hover:border-gray-400'}`}
                                 style={{ background: sel ? (p.color || '#AEC6E8') : `${p.color || '#AEC6E8'}33`, color: sel ? '#1a1a1a' : '#555' }}>
-                                <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: p.color || '#AEC6E8' }} />
+                                <span className="inline-block w-3 h-3 rounded-full mr-2 align-middle" style={{ background: p.color || '#AEC6E8' }} />
                                 {p.name}
                               </button>
                             )
                           })}
                         </div>
 
-                        <div className="overflow-x-auto -mx-1 px-1">
+                        <div className="overflow-x-auto -mx-1 px-1 select-none">
                           <table className="border-collapse w-full" style={{ minWidth: NAME_W + daysInMonth * CELL_W }}>
                             <thead>
                               <tr>
@@ -1562,7 +1555,7 @@ export default function Page() {
                                   const isWknd = dow === 0 || dow === 6
                                   return (
                                     <th key={d} style={{ minWidth: CELL_W }}
-                                      className={`text-center pb-2 text-sm font-medium ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-400'}`}>
+                                      className={`text-center pb-2 text-sm font-semibold ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-500'}`}>
                                       {d}
                                     </th>
                                   )
@@ -1574,13 +1567,13 @@ export default function Page() {
                                 ['AM', 'PM'].map((ampm, ai) => (
                                   <tr key={`${procIdx}-${ampm}`} className={procIdx % 2 === 0 ? 'bg-gray-50/40' : ''}>
                                     <td className="whitespace-nowrap pr-2" style={{ width: NAME_W, minWidth: NAME_W }}>
-                                      <div className="flex items-center gap-1.5 text-sm">
+                                      <div className="flex items-center gap-1.5 text-base">
                                         {ai === 0 ? (
-                                          <span className="text-gray-700 font-semibold" style={{ minWidth: 56, display: 'inline-block' }}>{proc}</span>
+                                          <span className="text-gray-800 font-bold" style={{ minWidth: 60, display: 'inline-block' }}>{proc}</span>
                                         ) : (
-                                          <span style={{ minWidth: 56, display: 'inline-block' }} />
+                                          <span style={{ minWidth: 60, display: 'inline-block' }} />
                                         )}
-                                        <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${ampm === 'AM' ? 'bg-sky-50 text-sky-600' : 'bg-orange-50 text-orange-600'}`}>{ampm}</span>
+                                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${ampm === 'AM' ? 'bg-sky-50 text-sky-600' : 'bg-orange-50 text-orange-600'}`}>{ampm}</span>
                                       </div>
                                     </td>
                                     {days.map(d => {
@@ -1588,26 +1581,23 @@ export default function Page() {
                                       const isToday = ds === todayStr
                                       const dow = new Date(ds).getDay()
                                       const isWknd = dow === 0 || dow === 6
-                                      const key = cellKey(proc, ampm, ds)
+                                      const key = ganttCellKey(proc, ampm, ds)
                                       const owner = owners[key]
-                                      const isAnchor = ganttRangeStart?.proc === proc && ganttRangeStart?.ampm === ampm && ganttRangeStart?.date === ds
+                                      const inDragRow = ganttDragStart && ganttDragStart.proc === proc && ganttDragStart.ampm === ampm
+                                      const isPreview = inDragRow && ganttDragOver &&
+                                        ds >= (ganttDragStart!.date <= ganttDragOver ? ganttDragStart!.date : ganttDragOver) &&
+                                        ds <= (ganttDragStart!.date <= ganttDragOver ? ganttDragOver : ganttDragStart!.date)
                                       return (
                                         <td key={d}
-                                          onClick={() => {
-                                            if (ganttCellTimer.current) return
-                                            ganttCellTimer.current = setTimeout(() => { ganttCellTimer.current = null; handleCellClick(proc, ampm, ds) }, 200)
-                                          }}
-                                          onDoubleClick={() => {
-                                            if (ganttCellTimer.current) { clearTimeout(ganttCellTimer.current); ganttCellTimer.current = null }
-                                            editCellText(key)
-                                          }}
-                                          title={owner ? `${owner.name}${owner.text ? '：' + owner.text : ''}（點起點格再點結束格可整段清除・雙擊編輯小字）` : ganttActiveProject ? '點起點格 → 再點結束格 → 整段填色（雙擊加小字）' : '請先選擇上方案件'}
-                                          className={`cursor-pointer border border-gray-100 hover:opacity-70 ${isAnchor ? 'ring-2 ring-inset ring-indigo-500' : isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
+                                          onMouseDown={() => { if (ganttActiveProject) { setGanttDragStart({ proc, ampm, date: ds }); setGanttDragOver(ds) } }}
+                                          onMouseEnter={() => { if (inDragRow) setGanttDragOver(ds) }}
+                                          title={owner ? owner.name : ganttActiveProject ? '按住拖曳塗色' : '請先點選上面的案件'}
+                                          className={`border border-gray-100 hover:opacity-70 ${ganttActiveProject ? 'cursor-pointer' : 'cursor-not-allowed'} ${isPreview ? 'ring-2 ring-inset ring-indigo-500' : isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
                                           style={{
                                             minWidth: CELL_W,
-                                            background: owner ? owner.color : isAnchor ? '#C7D2FE' : isWknd ? '#F3F0FF22' : 'transparent',
+                                            background: isPreview ? `${(projects.find(p => p.id === ganttActiveProject)?.color) || '#AEC6E8'}99` : owner ? owner.color : isWknd ? '#F3F0FF22' : 'transparent',
                                           }}>
-                                          <div className="h-8 flex items-center justify-center text-[11px] leading-none text-gray-800 overflow-hidden">{owner?.text ?? ''}</div>
+                                          <div className="h-10" />
                                         </td>
                                       )
                                     })}
