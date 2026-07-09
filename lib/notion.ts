@@ -937,6 +937,22 @@ export async function deleteTrainingCourse(id: string) {
   await notion.pages.update({ page_id: id, archived: true })
 }
 
+// 改課程標題：同步更新「課程名稱」欄位與內容JSON裡的 courseTitle.zh（顯示用）
+export async function renameTrainingCourse(id: string, newTitle: string) {
+  const page: any = await notion.pages.retrieve({ page_id: id })
+  let content: any = null
+  try {
+    const raw = (page.properties['內容JSON']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
+    content = raw ? JSON.parse(raw) : null
+  } catch { content = null }
+  const props: any = { 課程名稱: { title: [{ text: { content: newTitle } }] } }
+  if (content) {
+    content.courseTitle = { ...(content.courseTitle ?? {}), zh: newTitle }
+    props['內容JSON'] = { rich_text: toRichText(JSON.stringify(content)) }
+  }
+  await notion.pages.update({ page_id: id, properties: props })
+}
+
 export async function getTrainingRecords(person?: string) {
   ensureTrainingRecordsDb()
   const filter = person ? { property: '人員', rich_text: { equals: person } } : undefined

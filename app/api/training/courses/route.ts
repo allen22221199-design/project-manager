@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession, SESSION_COOKIE } from '@/lib/auth'
 import { generateTrainingCards } from '@/lib/gemini'
-import { getTrainingCourses, createTrainingCourse, deleteTrainingCourse } from '@/lib/notion'
+import { getTrainingCourses, createTrainingCourse, deleteTrainingCourse, renameTrainingCourse } from '@/lib/notion'
 
 // 課程清單：所有員工都能看（不需登入），用來上課
 export async function GET() {
@@ -29,6 +29,21 @@ export async function POST(req: NextRequest) {
     const name = content.courseTitle?.zh || '(未命名課程)'
     const r = await createTrainingCourse(name, content)
     return NextResponse.json({ ok: true, id: r.id, content })
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}
+
+// 改課程標題：僅管理者可用
+export async function PATCH(req: NextRequest) {
+  if (!verifySession(req.cookies.get(SESSION_COOKIE)?.value)) {
+    return NextResponse.json({ error: '未授權' }, { status: 401 })
+  }
+  try {
+    const { id, title } = await req.json()
+    if (!id || !title?.trim()) return NextResponse.json({ error: '缺少 id 或標題' }, { status: 400 })
+    await renameTrainingCourse(id, title.trim())
+    return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }

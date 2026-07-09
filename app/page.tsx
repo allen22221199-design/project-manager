@@ -327,6 +327,8 @@ export default function Page() {
   const [trainingCreating, setTrainingCreating] = useState(false)
   const [trainingCreateErr, setTrainingCreateErr] = useState('')
   const [trainingIs5w2h, setTrainingIs5w2h] = useState(false)  // 只有 5W2H 課程才顯示 5W2H 對照標籤
+  const [trainingEditId, setTrainingEditId] = useState<string | null>(null)  // 正在改標題的課程 id
+  const [trainingEditTitle, setTrainingEditTitle] = useState('')
   const [trainingAskInput, setTrainingAskInput] = useState('')
   const [trainingAskAnswer, setTrainingAskAnswer] = useState('')
   const [trainingAsking, setTrainingAsking] = useState(false)
@@ -401,6 +403,15 @@ export default function Page() {
     setTrainingCourses(prev => prev.filter(c => c.id !== id))
     if (trainingCourseId === id) setTrainingCourseId(null)
     await fetch('/api/training/courses', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+  }
+  async function saveTrainingTitle(id: string) {
+    const title = trainingEditTitle.trim()
+    if (!title) { setTrainingEditId(null); return }
+    setTrainingCourses(prev => prev.map(c => c.id === id
+      ? { ...c, name: title, content: c.content ? { ...c.content, courseTitle: { ...(c.content.courseTitle ?? {}), zh: title } } : c.content }
+      : c))
+    setTrainingEditId(null)
+    await fetch('/api/training/courses', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, title }) })
   }
   async function startTrainingQuiz(formalCase: TrainingStage) {
     setTrainingQuizLoading(true); setTrainingResult(null); setTrainingWhy(''); setTrainingHow('')
@@ -3001,13 +3012,31 @@ export default function Page() {
                   <div className="space-y-2">
                     {trainingCourses.map(c => (
                       <div key={c.id} className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 flex items-center gap-3">
-                        <button onClick={() => openTrainingCourse(c.id)} className="flex-1 text-left">
-                          <p className="font-medium text-gray-900">{c.content?.courseTitle?.zh ?? c.name}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">{c.content?.stages?.length ?? 0} 個學習階段</p>
-                        </button>
-                        {isAdmin && (
-                          <button onClick={() => deleteTrainingCourseUI(c.id)} title="刪除課程"
-                            className="text-gray-300 hover:text-red-500 text-sm px-1">✕</button>
+                        {trainingEditId === c.id ? (
+                          <div className="flex-1 flex gap-2">
+                            <input autoFocus value={trainingEditTitle} onChange={e => setTrainingEditTitle(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') saveTrainingTitle(c.id); if (e.key === 'Escape') setTrainingEditId(null) }}
+                              className="flex-1 border border-indigo-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500" />
+                            <button onClick={() => saveTrainingTitle(c.id)}
+                              className="bg-indigo-600 text-white rounded-lg px-3 py-1.5 text-sm font-medium hover:bg-indigo-700 whitespace-nowrap">儲存</button>
+                            <button onClick={() => setTrainingEditId(null)}
+                              className="text-gray-400 hover:text-gray-600 text-sm px-1">取消</button>
+                          </div>
+                        ) : (
+                          <>
+                            <button onClick={() => openTrainingCourse(c.id)} className="flex-1 text-left">
+                              <p className="font-medium text-gray-900">{c.content?.courseTitle?.zh ?? c.name}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">{c.content?.stages?.length ?? 0} 個學習階段</p>
+                            </button>
+                            {isAdmin && (
+                              <>
+                                <button onClick={() => { setTrainingEditId(c.id); setTrainingEditTitle(c.content?.courseTitle?.zh ?? c.name) }} title="修改標題"
+                                  className="text-gray-300 hover:text-indigo-500 text-sm px-1">✎</button>
+                                <button onClick={() => deleteTrainingCourseUI(c.id)} title="刪除課程"
+                                  className="text-gray-300 hover:text-red-500 text-sm px-1">✕</button>
+                              </>
+                            )}
+                          </>
                         )}
                       </div>
                     ))}
