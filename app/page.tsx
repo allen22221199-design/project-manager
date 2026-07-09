@@ -88,6 +88,29 @@ type TrainingCourseContent = { courseTitle: TrainingBilingual; stages: TrainingS
 type TrainingCourse = { id: string; name: string; active: boolean; content: TrainingCourseContent | null }
 type TrainingQuiz = { title: TrainingBilingual; what: TrainingBilingual; referenceWhy: TrainingBilingual; referenceHow: TrainingBilingual }
 
+// 5W2H ↔ 人事時地物 對照：依中文問題文字判斷這一格是哪一個，方便長者秒懂
+function fw2hTag(labelZh: string): { en: string; zh: string; color: string } | null {
+  const k = labelZh || ''
+  if (/什麼事|發生/.test(k)) return { en: 'What', zh: '事', color: '#2563EB' }
+  if (/為什麼|原因/.test(k)) return { en: 'Why', zh: '因', color: '#7C3AED' }
+  if (/多少|花費|花錢|成本/.test(k)) return { en: 'How much', zh: '花多少', color: '#B45309' }
+  if (/怎麼|解決|處理|該辦|辦/.test(k)) return { en: 'How', zh: '法', color: '#B45309' }
+  if (/誰/.test(k)) return { en: 'Who', zh: '人', color: '#0F766E' }
+  if (/何時|時候|時間/.test(k)) return { en: 'When', zh: '時', color: '#0F766E' }
+  if (/何地|哪裡|地點/.test(k)) return { en: 'Where', zh: '地', color: '#0F766E' }
+  return null
+}
+function Fw2hBadge({ labelZh, showZh = true }: { labelZh: string; showZh?: boolean }) {
+  const tag = fw2hTag(labelZh)
+  if (!tag) return null
+  return (
+    <span style={{ background: `${tag.color}18`, color: tag.color }}
+      className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full align-middle ml-1.5 whitespace-nowrap">
+      {tag.en}{showZh ? ` · ${tag.zh}` : ''}
+    </span>
+  )
+}
+
 // 安全解析回應：伺服器逾時/出錯時回的是 HTML，不要讓 JSON.parse 噴出難懂的錯誤
 async function readJson(r: Response): Promise<any> {
   const raw = await r.text()
@@ -3014,6 +3037,22 @@ export default function Page() {
                 ))}
               </div>
 
+              {/* 5W2H ↔ 人事時地物 白話對照（給長者秒懂） */}
+              {lang === 'zh' && (
+                <div className="mb-4 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+                  <p className="text-sm font-semibold text-gray-700 mb-2">看懂這些詞就會了 👇</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-gray-600">
+                    <span><b className="text-blue-600">What</b>＝發生什麼<b>事</b></span>
+                    <span><b className="text-purple-600">Why</b>＝為什麼（<b>原因</b>）</span>
+                    <span><b className="text-amber-700">How</b>＝怎麼<b>做</b></span>
+                    <span><b className="text-amber-700">How&nbsp;much</b>＝<b>花多少</b>（時間/錢）</span>
+                    <span><b className="text-teal-700">Who</b>＝<b>人</b></span>
+                    <span><b className="text-teal-700">When</b>＝<b>時</b>間</span>
+                    <span><b className="text-teal-700">Where</b>＝<b>地</b>點</span>
+                  </div>
+                </div>
+              )}
+
               {!inQuiz ? (() => {
                 const stage = stages[trainingStageIdx]
                 const colorFor = (i: number) => i < 2 ? { bg: '#EAF2FB', bd: '#93C5FD', txt: '#1D4ED8' } : { bg: '#FEF3E2', bd: '#FBBF24', txt: '#92400E' }
@@ -3054,7 +3093,7 @@ export default function Page() {
                               </div>
                             )}
                             <div style={{ background: c.bg, borderColor: c.bd }} className="border rounded-xl px-4 py-3">
-                              <p style={{ color: c.txt }} className="text-xs font-medium mb-1">{t(f.k)}{i > 0 && guess ? (lang === 'zh' ? '（參考方向）' : ' (arah referensi)') : ''}</p>
+                              <p style={{ color: c.txt }} className="text-sm font-medium mb-1">{t(f.k)}<Fw2hBadge labelZh={f.k.zh} showZh={lang === 'zh'} />{i > 0 && guess ? (lang === 'zh' ? '（參考方向）' : ' (arah referensi)') : ''}</p>
                               <p className="text-sm text-gray-800">{t(f.v)}</p>
                             </div>
                           </div>
@@ -3064,7 +3103,7 @@ export default function Page() {
 
                     {activeField && (
                       <div className="mt-3 border border-indigo-200 bg-indigo-50/40 rounded-xl px-4 py-3">
-                        <p className="text-sm font-medium text-indigo-700 mb-2">{lang === 'zh' ? '換你想想看：' : 'Coba pikirkan: '}{t(activeField.k)}</p>
+                        <p className="text-sm font-medium text-indigo-700 mb-2">{lang === 'zh' ? '換你想想看：' : 'Coba pikirkan: '}{t(activeField.k)}<Fw2hBadge labelZh={activeField.k.zh} showZh={lang === 'zh'} /></p>
                         <div className="flex gap-2">
                           <input value={trainingGuessInput} onChange={e => setTrainingGuessInput(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') revealAnswer() }}
@@ -3114,7 +3153,7 @@ export default function Page() {
                     <>
                       <p className="text-lg font-semibold text-gray-900 mb-4">{lang === 'zh' ? '小測驗：' : 'Kuis: '}{t(trainingQuiz.title)}</p>
                       <div className="border rounded-xl px-4 py-3 mb-4" style={{ background: '#EAF2FB', borderColor: '#93C5FD' }}>
-                        <p className="text-xs font-medium mb-1" style={{ color: '#1D4ED8' }}>{lang === 'zh' ? '發生什麼事？' : 'Apa yang terjadi?'}</p>
+                        <p className="text-sm font-medium mb-1" style={{ color: '#1D4ED8' }}>{lang === 'zh' ? '發生什麼事？' : 'Apa yang terjadi?'}<Fw2hBadge labelZh="發生什麼事" showZh={lang === 'zh'} /></p>
                         <p className="text-sm text-gray-800">{t(trainingQuiz.what)}</p>
                       </div>
                       {!trainingResult ? (
