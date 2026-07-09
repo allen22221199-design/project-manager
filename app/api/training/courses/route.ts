@@ -22,9 +22,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '尚未設定 GEMINI_API_KEY' }, { status: 503 })
   }
   try {
-    const { sourceText } = await req.json()
+    const { sourceText, is5w2h } = await req.json()
     if (!sourceText?.trim()) return NextResponse.json({ error: '請貼入教材內容' }, { status: 400 })
-    const content = await generateTrainingCards(sourceText.trim())
+    const content: any = await generateTrainingCards(sourceText.trim())
+    content.is5w2h = !!is5w2h  // 是否為 5W2H 課程（決定上課時要不要顯示對照標籤）
     const name = content.courseTitle?.zh || '(未命名課程)'
     const r = await createTrainingCourse(name, content)
     return NextResponse.json({ ok: true, id: r.id, content })

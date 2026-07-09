@@ -84,7 +84,7 @@ type DailyTask = { id: string; task: string; person: string; date: string; creat
 type TrainingBilingual = { zh: string; id: string }
 type TrainingField = { k: TrainingBilingual; v: TrainingBilingual }
 type TrainingStage = { stage: string; stageId: string; title: TrainingBilingual; fields: TrainingField[] }
-type TrainingCourseContent = { courseTitle: TrainingBilingual; stages: TrainingStage[] }
+type TrainingCourseContent = { courseTitle: TrainingBilingual; stages: TrainingStage[]; is5w2h?: boolean }
 type TrainingCourse = { id: string; name: string; active: boolean; content: TrainingCourseContent | null }
 type TrainingQuiz = { title: TrainingBilingual; what: TrainingBilingual; referenceWhy: TrainingBilingual; referenceHow: TrainingBilingual }
 
@@ -326,6 +326,7 @@ export default function Page() {
   const [trainingSourceText, setTrainingSourceText] = useState('')
   const [trainingCreating, setTrainingCreating] = useState(false)
   const [trainingCreateErr, setTrainingCreateErr] = useState('')
+  const [trainingIs5w2h, setTrainingIs5w2h] = useState(false)  // 只有 5W2H 課程才顯示 5W2H 對照標籤
   const [trainingAskInput, setTrainingAskInput] = useState('')
   const [trainingAskAnswer, setTrainingAskAnswer] = useState('')
   const [trainingAsking, setTrainingAsking] = useState(false)
@@ -386,11 +387,11 @@ export default function Page() {
     try {
       const r = await fetch('/api/training/courses', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceText: trainingSourceText.trim() }),
+        body: JSON.stringify({ sourceText: trainingSourceText.trim(), is5w2h: trainingIs5w2h }),
       })
       const data = await readJson(r)
       if (!r.ok) { setTrainingCreateErr(data.error ?? '建立失敗'); return }
-      setTrainingSourceText(''); setShowTrainingCreate(false)
+      setTrainingSourceText(''); setShowTrainingCreate(false); setTrainingIs5w2h(false)
       await fetchTrainingCourses()
     } catch (e: any) { setTrainingCreateErr(e.message ?? '網路錯誤') }
     finally { setTrainingCreating(false) }
@@ -2978,6 +2979,10 @@ export default function Page() {
                     <textarea value={trainingSourceText} onChange={e => setTrainingSourceText(e.target.value)} rows={6}
                       placeholder="貼上 SOP、規範、教材文字..."
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
+                    <label className="flex items-center gap-2 text-sm text-gray-600">
+                      <input type="checkbox" checked={trainingIs5w2h} onChange={e => setTrainingIs5w2h(e.target.checked)} className="rounded" />
+                      這是 5W2H 思考法課程（上課時顯示 5W2H · 人事時地物 對照標籤）
+                    </label>
                     {trainingCreateErr && <p className="text-xs text-red-500">{trainingCreateErr}</p>}
                     <button onClick={createTrainingCourse2} disabled={trainingCreating || !trainingSourceText.trim()}
                       className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
@@ -3018,6 +3023,7 @@ export default function Page() {
           // ── 上課中：字卡 or 測驗 ──
           const stages = content.stages
           const inQuiz = trainingStageIdx >= stages.length
+          const show5w2h = !!content.is5w2h  // 只有 5W2H 課程才顯示對照標籤與白話對照表
 
           return (
             <div>
@@ -3037,8 +3043,8 @@ export default function Page() {
                 ))}
               </div>
 
-              {/* 5W2H ↔ 人事時地物 白話對照（給長者秒懂） */}
-              {lang === 'zh' && (
+              {/* 5W2H ↔ 人事時地物 白話對照（給長者秒懂）— 只在 5W2H 課程顯示 */}
+              {show5w2h && lang === 'zh' && (
                 <div className="mb-4 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
                   <p className="text-sm font-semibold text-gray-700 mb-2">看懂這些詞就會了 👇</p>
                   <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-gray-600">
@@ -3093,7 +3099,7 @@ export default function Page() {
                               </div>
                             )}
                             <div style={{ background: c.bg, borderColor: c.bd }} className="border rounded-xl px-4 py-3">
-                              <p style={{ color: c.txt }} className="text-sm font-medium mb-1">{t(f.k)}<Fw2hBadge labelZh={f.k.zh} showZh={lang === 'zh'} />{i > 0 && guess ? (lang === 'zh' ? '（參考方向）' : ' (arah referensi)') : ''}</p>
+                              <p style={{ color: c.txt }} className="text-sm font-medium mb-1">{t(f.k)}{show5w2h && <Fw2hBadge labelZh={f.k.zh} showZh={lang === 'zh'} />}{i > 0 && guess ? (lang === 'zh' ? '（參考方向）' : ' (arah referensi)') : ''}</p>
                               <p className="text-sm text-gray-800">{t(f.v)}</p>
                             </div>
                           </div>
@@ -3103,7 +3109,7 @@ export default function Page() {
 
                     {activeField && (
                       <div className="mt-3 border border-indigo-200 bg-indigo-50/40 rounded-xl px-4 py-3">
-                        <p className="text-sm font-medium text-indigo-700 mb-2">{lang === 'zh' ? '換你想想看：' : 'Coba pikirkan: '}{t(activeField.k)}<Fw2hBadge labelZh={activeField.k.zh} showZh={lang === 'zh'} /></p>
+                        <p className="text-sm font-medium text-indigo-700 mb-2">{lang === 'zh' ? '換你想想看：' : 'Coba pikirkan: '}{t(activeField.k)}{show5w2h && <Fw2hBadge labelZh={activeField.k.zh} showZh={lang === 'zh'} />}</p>
                         <div className="flex gap-2">
                           <input value={trainingGuessInput} onChange={e => setTrainingGuessInput(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') revealAnswer() }}
@@ -3153,7 +3159,7 @@ export default function Page() {
                     <>
                       <p className="text-lg font-semibold text-gray-900 mb-4">{lang === 'zh' ? '小測驗：' : 'Kuis: '}{t(trainingQuiz.title)}</p>
                       <div className="border rounded-xl px-4 py-3 mb-4" style={{ background: '#EAF2FB', borderColor: '#93C5FD' }}>
-                        <p className="text-sm font-medium mb-1" style={{ color: '#1D4ED8' }}>{lang === 'zh' ? '發生什麼事？' : 'Apa yang terjadi?'}<Fw2hBadge labelZh="發生什麼事" showZh={lang === 'zh'} /></p>
+                        <p className="text-sm font-medium mb-1" style={{ color: '#1D4ED8' }}>{lang === 'zh' ? '發生什麼事？' : 'Apa yang terjadi?'}{show5w2h && <Fw2hBadge labelZh="發生什麼事" showZh={lang === 'zh'} />}</p>
                         <p className="text-sm text-gray-800">{t(trainingQuiz.what)}</p>
                       </div>
                       {!trainingResult ? (
