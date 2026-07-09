@@ -318,7 +318,7 @@ export default function Page() {
     try {
       const r = await fetch('/api/training/evaluate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardTitle, question, learnerAnswer, referenceAnswer }),
+        body: JSON.stringify({ cardTitle, question, learnerAnswer, referenceAnswer, lang: trainingLang }),
       })
       const data = await readJson(r)
       if (r.ok) setTrainingFeedbacks(prev => ({ ...prev, [key]: data.feedback ?? '' }))
@@ -331,7 +331,7 @@ export default function Page() {
     try {
       const r = await fetch('/api/training/ask', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardTitle, question: trainingAskInput.trim() }),
+        body: JSON.stringify({ cardTitle, question: trainingAskInput.trim(), lang: trainingLang }),
       })
       const data = await readJson(r)
       setTrainingAskAnswer(r.ok ? (data.answer ?? '') : ('錯誤：' + (data.error ?? '無法回答')))
@@ -400,6 +400,7 @@ export default function Page() {
           person: trainingPerson.trim(), courseId: trainingCourseId,
           why: trainingWhy, how: trainingHow,
           referenceWhy: trainingQuiz.referenceWhy.zh, referenceHow: trainingQuiz.referenceHow.zh,
+          lang: trainingLang,
         }),
       })
       const data = await readJson(r)

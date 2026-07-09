@@ -8,9 +8,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '尚未設定 GEMINI_API_KEY' }, { status: 503 })
   }
   try {
-    const { person, courseId, why, how, referenceWhy, referenceHow } = await req.json()
+    const { person, courseId, why, how, referenceWhy, referenceHow, lang } = await req.json()
     if (!person?.trim() || !courseId) return NextResponse.json({ error: '缺少 person 或 courseId' }, { status: 400 })
-    const result = await gradeTrainingAnswer({ why: why ?? '', how: how ?? '', referenceWhy: referenceWhy ?? '', referenceHow: referenceHow ?? '' })
+    const result = await gradeTrainingAnswer({ why: why ?? '', how: how ?? '', referenceWhy: referenceWhy ?? '', referenceHow: referenceHow ?? '', lang })
     try { await saveTrainingRecord(person.trim(), courseId, result.pass, result.feedback) } catch { /* 紀錄失敗不影響回饋顯示 */ }
     return NextResponse.json({ ok: true, ...result })
   } catch (e: any) {

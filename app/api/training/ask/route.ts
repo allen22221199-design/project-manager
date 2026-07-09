@@ -9,9 +9,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '尚未設定 GEMINI_API_KEY' }, { status: 503 })
   }
   try {
-    const { cardTitle, question } = await req.json()
+    const { cardTitle, question, lang } = await req.json()
     if (!question?.trim()) return NextResponse.json({ error: '請輸入問題' }, { status: 400 })
-    const answer = await answerTrainingQuestion((cardTitle ?? '').trim(), question.trim())
+    const answer = await answerTrainingQuestion((cardTitle ?? '').trim(), question.trim(), lang)
     return NextResponse.json({ ok: true, answer })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
