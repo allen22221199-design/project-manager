@@ -1764,7 +1764,13 @@ export default function Page() {
                                             minWidth: CELL_W,
                                             background: isPreview ? `${(projects.find(p => p.id === ganttActiveProject)?.color) || '#AEC6E8'}99` : owner ? owner.color : isWknd ? '#F3F0FF22' : 'transparent',
                                           }}>
-                                          <div className="h-10" />
+                                          <div className="h-10 flex items-center justify-center overflow-hidden px-0.5">
+                                            {owner && (
+                                              <span className="text-[10px] font-bold leading-none text-center text-gray-800/80 truncate">
+                                                {owner.name}
+                                              </span>
+                                            )}
+                                          </div>
                                         </td>
                                       )
                                     })}
