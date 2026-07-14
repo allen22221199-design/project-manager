@@ -1750,6 +1750,18 @@ export default function Page() {
                                       const isWknd = dow === 0 || dow === 6
                                       const key = ganttCellKey(proc, ampm, ds)
                                       const owner = owners[key]
+                                      // 判斷左右相鄰格是不是同一個案件（連在一起）→ 拿掉中間邊界、文字只顯示一次
+                                      const ownerAt = (dd: number) => (dd >= 1 && dd <= daysInMonth)
+                                        ? owners[ganttCellKey(proc, ampm, `${ganttMonth}-${String(dd).padStart(2,'0')}`)]
+                                        : undefined
+                                      const sameLeft = !!owner && ownerAt(d - 1)?.pid === owner.pid
+                                      const sameRight = !!owner && ownerAt(d + 1)?.pid === owner.pid
+                                      // 這格是連續區塊的開頭 → 算出整段長度，把名稱置中橫跨整段只顯示一次
+                                      let runLen = 1
+                                      if (owner && !sameLeft) {
+                                        let dd = d + 1
+                                        while (ownerAt(dd)?.pid === owner.pid) { runLen++; dd++ }
+                                      }
                                       const inDragRow = ganttDragStart && ganttDragStart.proc === proc && ganttDragStart.ampm === ampm
                                       const isPreview = inDragRow && ganttDragOver &&
                                         ds >= (ganttDragStart!.date <= ganttDragOver ? ganttDragStart!.date : ganttDragOver) &&
@@ -1759,15 +1771,16 @@ export default function Page() {
                                           onMouseDown={() => { if (ganttActiveProject) { setGanttDragStart({ proc, ampm, date: ds }); setGanttDragOver(ds) } }}
                                           onMouseEnter={() => { if (inDragRow) setGanttDragOver(ds) }}
                                           title={owner ? owner.name : ganttActiveProject ? '按住拖曳塗色' : '請先點選上面的案件'}
-                                          className={`border border-gray-100 hover:opacity-70 ${ganttActiveProject ? 'cursor-pointer' : 'cursor-not-allowed'} ${isPreview ? 'ring-2 ring-inset ring-indigo-500' : isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
+                                          className={`relative border-y border-gray-100 ${sameLeft ? '' : 'border-l'} ${sameRight ? '' : 'border-r'} hover:opacity-70 ${ganttActiveProject ? 'cursor-pointer' : 'cursor-not-allowed'} ${isPreview ? 'ring-2 ring-inset ring-indigo-500' : isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
                                           style={{
                                             minWidth: CELL_W,
                                             background: isPreview ? `${(projects.find(p => p.id === ganttActiveProject)?.color) || '#AEC6E8'}99` : owner ? owner.color : isWknd ? '#F3F0FF22' : 'transparent',
                                           }}>
-                                          <div className="h-10 flex items-center justify-center overflow-hidden px-0.5">
-                                            {owner && (
-                                              <span className="text-[10px] font-bold leading-none text-center text-gray-800/80 truncate">
-                                                {owner.name}
+                                          <div className="h-10">
+                                            {owner && !sameLeft && (
+                                              <span className="absolute inset-y-0 left-0 flex items-center justify-center px-1 overflow-hidden z-10 pointer-events-none"
+                                                style={{ width: runLen * CELL_W }}>
+                                                <span className="text-[10px] font-bold leading-none text-center text-gray-800/80 truncate">{owner.name}</span>
                                               </span>
                                             )}
                                           </div>
