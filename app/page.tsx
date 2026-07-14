@@ -1650,8 +1650,7 @@ export default function Page() {
                 )}
               </div>
 
-              {/* 窄螢幕：最新進度回報顯示在流程中；寬螢幕移到右側欄 */}
-              <div className="2xl:hidden">{recentProgressCard}</div>
+              {/* 最新進度回報卡片已依需求在此頁隱藏（recentProgressCard 保留供其他用途） */}
 
               {/* 流程排程表（單一表格，用顏色區分案件） */}
               {(() => {
@@ -1778,9 +1777,9 @@ export default function Page() {
                                           }}>
                                           <div className="h-10">
                                             {owner && !sameLeft && (
-                                              <span className="absolute inset-y-0 left-0 flex items-center justify-center px-1 overflow-hidden z-10 pointer-events-none"
+                                              <span className="absolute inset-y-0 left-0 flex items-center justify-center px-0.5 z-10 pointer-events-none"
                                                 style={{ width: runLen * CELL_W }}>
-                                                <span className="text-[10px] font-bold leading-none text-center text-gray-800/80 truncate">{owner.name}</span>
+                                                <span className="text-[9px] font-bold leading-tight text-center text-gray-800/80 whitespace-normal break-all">{owner.name}</span>
                                               </span>
                                             )}
                                           </div>
@@ -1800,10 +1799,7 @@ export default function Page() {
               })()}
             </div>
 
-            {/* 寬螢幕：最新進度回報固定在右側灰色區（不置中） */}
-            <div className="hidden 2xl:block 2xl:w-80 2xl:shrink-0 2xl:sticky 2xl:top-16">
-              {recentProgressCard}
-            </div>
+            {/* 寬螢幕右側「最新進度回報」欄已依需求隱藏 */}
             </div>
           )
         })()}
