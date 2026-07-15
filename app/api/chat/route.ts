@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getKnowledgeBase, readPagePlainText } from '@/lib/notion'
 import { chatWithAssistant, routeChatIntent, suggestFollowups } from '@/lib/gemini'
-import { rankKnowledge, rankChunks } from '@/lib/kbsearch'
+import { rankKnowledge, rankChunks, type Chunk } from '@/lib/kbsearch'
 
 // 進度回報草稿：聊天室偵測到「要記進度」時回傳給前端，讓使用者確認後才真正寫入
 export type ProgressDraft = {
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
 
       if (chunks.length > 0) {
         // 依文件分組、段落依序排列，讓相鄰段落接在一起（AI 才能判斷是完整內容）
-        const byDoc = new Map<string, typeof chunks>()
+        const byDoc = new Map<string, Chunk[]>()
         for (const c of chunks) {
           const list = byDoc.get(c.docId) ?? []
           list.push(c); byDoc.set(c.docId, list)

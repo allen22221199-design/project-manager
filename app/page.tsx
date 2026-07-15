@@ -3375,7 +3375,7 @@ export default function Page() {
 
       {/* 手機版：底部導覽列（電腦版隱藏）。用圖示＋短標籤，方便單手點選 */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-gray-200 flex items-stretch pb-[env(safe-area-inset-bottom)]">
-        {([
+        {[
           { v: 'dashboard', icon: '📊', label: '總覽', onClick: () => { setView('dashboard'); fetchProjects(); fetchDailyTasks() } },
           { v: 'list', icon: '📋', label: '案件', onClick: () => setView('list') },
           { v: 'daily', icon: '✅', label: '今日', onClick: () => { setView('daily'); fetchDailyTasks() } },
@@ -3383,7 +3383,7 @@ export default function Page() {
           { v: 'chat', icon: '💬', label: 'AI', onClick: () => setView('chat') },
           { v: 'training', icon: '📚', label: '培訓', onClick: () => { setView('training'); fetchTrainingCourses() } },
           ...(isAdmin ? [{ v: 'private', icon: '🔐', label: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } }] : []),
-        ] as { v: string; icon: string; label: string; onClick: () => void }[]).map(item => {
+        ].map(item => {
           const on = view === item.v
           return (
             <button key={item.v} onClick={item.onClick}
