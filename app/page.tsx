@@ -1515,7 +1515,8 @@ export default function Page() {
           <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-sm font-bold shadow-sm">煌</div>
           <div className="text-base font-semibold text-gray-900 tracking-tight">專案進度管理</div>
         </div>
-        <div className="ml-auto flex gap-1 bg-gray-100/80 rounded-xl p-1">
+        {/* 電腦版：頂部分頁列（手機版隱藏，改用底部導覽列） */}
+        <div className="hidden md:flex md:ml-auto gap-1 bg-gray-100/80 rounded-xl p-1">
           <NavBtn active={view === 'dashboard'} onClick={() => { setView('dashboard'); fetchProjects(); fetchDailyTasks() }}>總覽</NavBtn>
           <NavBtn active={view === 'list'} onClick={() => setView('list')}>案件清單</NavBtn>
           <NavBtn active={view === 'daily'} onClick={() => { setView('daily'); fetchDailyTasks() }}>今日工作</NavBtn>
@@ -1526,10 +1527,10 @@ export default function Page() {
         </div>
         {isAdmin ? (
           <button onClick={doLogout} title="登出管理者"
-            className="ml-2 text-xs text-gray-400 hover:text-gray-700 border border-gray-200 rounded-lg px-2 py-1.5">登出</button>
+            className="ml-auto md:ml-2 text-xs text-gray-400 hover:text-gray-700 border border-gray-200 rounded-lg px-2 py-1.5">登出</button>
         ) : (
           <button onClick={() => { setShowLogin(true); setLoginErr('') }} title="管理者登入"
-            className="ml-2 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-2 py-1.5">🔒 登入</button>
+            className="ml-auto md:ml-2 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-2 py-1.5">🔒 登入</button>
         )}
       </header>
 
@@ -1620,7 +1621,7 @@ export default function Page() {
         </div>
       )}
 
-      <main className={`mx-auto p-4 animate-fade-in ${view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' || view === 'training' ? 'max-w-3xl' : 'max-w-2xl'}`}>
+      <main className={`mx-auto p-4 pb-24 md:pb-4 animate-fade-in ${view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' || view === 'training' ? 'max-w-3xl' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
@@ -2818,7 +2819,7 @@ export default function Page() {
 
         {/* AI 助理 */}
         {view === 'chat' && (
-          <div className="flex flex-col" style={{ height: 'calc(100vh - 130px)' }}>
+          <div className="flex flex-col h-[calc(100vh-200px)] md:h-[calc(100vh-130px)]">
             {chatMessages.length > 0 && (
               <div className="flex justify-end mb-2">
                 <button onClick={() => { if (confirm('確定清除所有對話記錄？')) setChatMessages([]) }}
@@ -3371,6 +3372,28 @@ export default function Page() {
           )
         })()}
       </main>
+
+      {/* 手機版：底部導覽列（電腦版隱藏）。用圖示＋短標籤，方便單手點選 */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-gray-200 flex items-stretch pb-[env(safe-area-inset-bottom)]">
+        {([
+          { v: 'dashboard', icon: '📊', label: '總覽', onClick: () => { setView('dashboard'); fetchProjects(); fetchDailyTasks() } },
+          { v: 'list', icon: '📋', label: '案件', onClick: () => setView('list') },
+          { v: 'daily', icon: '✅', label: '今日', onClick: () => { setView('daily'); fetchDailyTasks() } },
+          { v: 'search', icon: '🔍', label: '查詢', onClick: () => { setView('search'); fetchInProgress() } },
+          { v: 'chat', icon: '💬', label: 'AI', onClick: () => setView('chat') },
+          { v: 'training', icon: '📚', label: '培訓', onClick: () => { setView('training'); fetchTrainingCourses() } },
+          ...(isAdmin ? [{ v: 'private', icon: '🔐', label: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } }] : []),
+        ] as { v: string; icon: string; label: string; onClick: () => void }[]).map(item => {
+          const on = view === item.v
+          return (
+            <button key={item.v} onClick={item.onClick}
+              className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 ${on ? 'text-indigo-600' : 'text-gray-400'}`}>
+              <span className="text-lg leading-none">{item.icon}</span>
+              <span className={`text-[10px] leading-none ${on ? 'font-semibold' : ''}`}>{item.label}</span>
+            </button>
+          )
+        })}
+      </nav>
     </div>
   )
 }
