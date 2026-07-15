@@ -95,14 +95,20 @@ export async function POST(req: NextRequest) {
       // 階段①：先用「摘要」語意排序，挑出最相關的候選文件（便宜、避免每篇都讀全文）
       const candDocs = await rankKnowledge(lastUser, kb, 5, 0.5)
       // 階段②：只對候選文件抓「完整內文」，切成有重疊、彼此銜接的段落，再用語意挑最相關的段落
+      // 去掉 Notion 內文裡的切塊標記（標題、〔第 i/n 段〕），避免污染送進 AI 的內容
+      const stripMarkers = (s: string) => s
+        .replace(/【AI 萃取內容（已切塊）】/g, '')
+        .replace(/【AI 萃取內容】/g, '')
+        .replace(/〔第\s*\d+\s*\/\s*\d+\s*段〕/g, '')
+        .trim()
       const withFull = await Promise.all(candDocs.map(async d => {
         let fullText = ''
         try { fullText = await readPagePlainText(d.id) } catch {}
         // 頁面內文抓不到（或很短）就退回摘要，確保仍有內容可用
-        if (fullText.replace(/【AI 萃取內容】/g, '').trim().length < (d.summary || d.text || '').length) {
+        if (stripMarkers(fullText).length < (d.summary || d.text || '').length) {
           fullText = (d.text || d.summary || fullText)
         }
-        return { docId: d.id, title: d.title, tags: d.tags, fullText: fullText.replace(/【AI 萃取內容】/g, '').trim() }
+        return { docId: d.id, title: d.title, tags: d.tags, fullText: stripMarkers(fullText) }
       }))
       const chunks = await rankChunks(lastUser, withFull, 8, 0.5)
 

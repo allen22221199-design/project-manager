@@ -1,4 +1,5 @@
 import { Client } from '@notionhq/client'
+import { chunkText } from './kbsearch'
 
 export const notion = new Client({ auth: process.env.NOTION_TOKEN })
 export const DATABASE_ID = process.env.NOTION_PROJECTS_DATABASE_ID || '25d2cda48d7781a6bec3f101d8c9a872'
@@ -742,13 +743,55 @@ export async function saveKnowledgeResult(pageId: string, ok: boolean, fullText:
     萃取摘要: { rich_text: toRichText(fullText.slice(0, 1900)) },
   } })
   if (ok && fullText) {
-    const chunks: string[] = []
-    for (let i = 0; i < fullText.length; i += 1800) chunks.push(fullText.slice(i, i + 1800))
-    await notion.blocks.children.append({ block_id: pageId, children: [
-      { type: 'heading_3', heading_3: { rich_text: [{ type: 'text', text: { content: `【AI 萃取內容】` } }] } },
-      ...chunks.map(c => ({ type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: c } }] } })),
-    ] as any })
+    // 存進 Notion 時就切成「一段一段」並標上【第 i/n 段】，方便在 Notion 直接看/編輯，
+    // 也讓檢索時能對齊完整段落（切塊在句子邊界斷開，storage 用不重疊的乾淨段落）
+    await notion.blocks.children.append({ block_id: pageId, children: buildChunkBlocks(fullText) as any })
   }
+}
+
+const CHUNK_HEADING = '【AI 萃取內容（已切塊）】'
+
+// 把長文切成乾淨段落，組成 Notion blocks：一個標題 + 每段（標籤列 + 內容）
+function buildChunkBlocks(fullText: string): any[] {
+  const parts = chunkText(fullText, 1500, 0)   // storage 用不重疊、在句子邊界斷開的乾淨段落
+  if (parts.length === 0) return []
+  return [
+    { type: 'heading_3', heading_3: { rich_text: [{ type: 'text', text: { content: CHUNK_HEADING } }] } },
+    ...parts.flatMap((c, i) => ([
+      { type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: `〔第 ${i + 1}/${parts.length} 段〕` }, annotations: { bold: true, color: 'blue' } }] } },
+      { type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: c.slice(0, 1990) } }] } },
+    ])),
+  ]
+}
+
+// 把某個知識庫頁面的「已萃取內文」重新整理成切塊區塊（給既有資料一鍵重整用）。
+// 具冪等性：若頁面已經有切塊標題就直接跳過，方便前端分批連續呼叫直到全部處理完。
+export async function rechunkKnowledgePage(pageId: string): Promise<{ done: boolean; skipped: boolean; chunks: number }> {
+  // 讀出全部 top-level 區塊
+  const blocks: any[] = []
+  let cursor: string | undefined = undefined
+  do {
+    const res: any = await notion.blocks.children.list({ block_id: pageId, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) })
+    blocks.push(...res.results)
+    cursor = res.has_more ? res.next_cursor : undefined
+  } while (cursor)
+
+  const textOf = (b: any) => { const rt = b[b.type]?.rich_text; return Array.isArray(rt) ? rt.map((r: any) => r.plain_text).join('') : '' }
+  // 已經切過塊 → 跳過
+  if (blocks.some(b => textOf(b).includes(CHUNK_HEADING))) return { done: true, skipped: true, chunks: 0 }
+
+  // 找舊的「【AI 萃取內容】」標題；標題之後（含標題）視為要重整的內容區
+  const headIdx = blocks.findIndex(b => /萃取內容|已切塊|切塊整理/.test(textOf(b)))
+  const contentBlocks = headIdx >= 0 ? blocks.slice(headIdx + 1) : blocks
+  const fullText = contentBlocks.map(textOf).filter(Boolean).join('\n').replace(/【AI 萃取內容】/g, '').trim()
+  const chunkBlocks = buildChunkBlocks(fullText)
+  if (chunkBlocks.length === 0) return { done: true, skipped: true, chunks: 0 }
+
+  // 移除舊的內容區塊（標題與其後），保留標題前的原始內容
+  const toRemove = headIdx >= 0 ? blocks.slice(headIdx) : blocks
+  for (const b of toRemove) { try { await notion.blocks.delete({ block_id: b.id }) } catch { /* 個別刪除失敗不中斷 */ } }
+  await notion.blocks.children.append({ block_id: pageId, children: chunkBlocks as any })
+  return { done: true, skipped: false, chunks: (chunkBlocks.length - 1) / 2 }
 }
 
 const TASKS_DATABASE_ID = '25d2cda48d7781fdb48be99fcf824daf'

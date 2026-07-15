@@ -1262,6 +1262,33 @@ export default function Page() {
     } finally { setKbSyncing(false) }
   }
 
+  // 把既有知識庫內容在 Notion 內重新整理成「切塊」（分批連續呼叫直到全部完成）
+  async function rechunkKnowledge() {
+    setKbSyncing(true); setKbMsg(''); setKbOk(false)
+    let totalChunked = 0
+    try {
+      for (let round = 0; round < 100; round++) {
+        const r = await fetch('/api/knowledge/rechunk', { method: 'POST' })
+        const raw = await r.text()
+        let data: any
+        try { data = JSON.parse(raw) } catch {
+          setKbMsg(`已整理 ${totalChunked} 筆；伺服器忙碌中斷，請再按一次「整理切塊」接續`)
+          setKbOk(false); return
+        }
+        if (!r.ok) { setKbMsg('錯誤：' + (data.error ?? '整理失敗')); setKbOk(false); return }
+        totalChunked += data.chunked ?? 0
+        if (data.more) {
+          setKbMsg(`整理中... 已切塊 ${totalChunked} 筆，還有約 ${data.remaining} 筆`)
+        } else {
+          setKbMsg(`切塊整理完成：這次新整理 ${totalChunked} 筆 ✓（已切塊過的自動略過）`)
+          setKbOk(true); return
+        }
+      }
+    } catch (e: any) {
+      setKbMsg('錯誤：' + e.message); setKbOk(false)
+    } finally { setKbSyncing(false) }
+  }
+
   // 開啟/關閉任務詳情面板
   function toggleDetail(t: DailyTask) {
     if (detailId === t.id) { setDetailId(null); setSaveDetailOk(false); setSaveDetailErr(''); return }
@@ -2552,6 +2579,15 @@ export default function Page() {
                   className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 whitespace-nowrap">
                   {kbSyncing ? '…' : '📚 同步'}
                 </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => { if (window.confirm('把檔案庫既有內容在 Notion 內重新整理成「切塊」（每份標【第 i/n 段】）？此動作會改寫 Notion 頁面內文，已切塊的會自動略過。')) rechunkKnowledge() }}
+                    disabled={kbSyncing}
+                    title="把既有內容在 Notion 內整理成切塊"
+                    className="text-xs px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 whitespace-nowrap">
+                    {kbSyncing ? '…' : '🧩 整理切塊'}
+                  </button>
+                )}
               </div>
             </div>
             {/* 操作回饋訊息 */}
