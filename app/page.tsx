@@ -76,7 +76,7 @@ type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashbo
 type PrivateEvent = { id: string; title: string; date: string; note?: string; time?: string; endTime?: string; allDay?: boolean }
 type FileResult = { title: string; name: string; url: string }
 type ProgressDraft = { date: string; description: string; matchedId: string | null; matchedName: string | null; candidates: { id: string; name: string }[] }
-type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; draft?: ProgressDraft; draftDone?: boolean }
+type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; draft?: ProgressDraft; draftDone?: boolean; suggestions?: string[] }
 type TaskAttachment = { name: string; url: string }
 type TaskStep = { step: string; done: boolean }
 type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[]; flag?: string; steps?: TaskStep[] }
@@ -1165,10 +1165,12 @@ export default function Page() {
   }
 
   // AI 助理：送出訊息
-  async function sendChat() {
-    const text = chatInput.trim()
+  async function sendChat(override?: string) {
+    const text = (override ?? chatInput).trim()
     if (!text || chatLoading) return
-    const next: ChatMsg[] = [...chatMessages, { role: 'user', content: text, _ts: Date.now() } as any]
+    // 點了某則答案的追問按鈕 → 清掉那些按鈕，避免重複點
+    const base = override ? chatMessages.map(m => m.suggestions ? { ...m, suggestions: undefined } : m) : chatMessages
+    const next: ChatMsg[] = [...base, { role: 'user', content: text, _ts: Date.now() } as any]
     setChatMessages(next)
     setChatInput('')
     setChatLoading(true)
@@ -1184,7 +1186,8 @@ export default function Page() {
       const reply = r.ok ? (data.reply || '（沒有回覆）') : ('錯誤：' + (data.error ?? '回覆失敗'))
       const files: FileResult[] = r.ok ? (data.files ?? []) : []
       const draft: ProgressDraft | undefined = r.ok ? data.progressDraft : undefined
-      setChatMessages([...next, { role: 'assistant', content: reply, files, draft }])
+      const suggestions: string[] = r.ok && !draft ? (data.suggestions ?? []) : []
+      setChatMessages([...next, { role: 'assistant', content: reply, files, draft, suggestions }])
     } catch (e: any) {
       setChatMessages([...next, { role: 'assistant', content: '錯誤：' + e.message }])
     } finally { setChatLoading(false) }
@@ -2891,6 +2894,19 @@ export default function Page() {
                         </div>
                       )
                     })()}
+                    {m.role === 'assistant' && m.suggestions && m.suggestions.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <p className="text-xs text-gray-400 mb-1.5">💡 你可能還想問：</p>
+                        <div className="flex flex-col items-start gap-1.5">
+                          {m.suggestions.map((s, si) => (
+                            <button key={si} onClick={() => sendChat(s)} disabled={chatLoading}
+                              className="text-left text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-1.5 hover:bg-indigo-100 disabled:opacity-40 transition-colors">
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

@@ -192,6 +192,27 @@ ${projectNames.length ? projectNames.map(n => '・' + n).join('\n') : '（目前
   }
 }
 
+// 問答後產生「後續追問」按鈕：根據這次一問一答，猜使用者接下來最可能想問的 3 個問題
+export async function suggestFollowups(question: string, answer: string): Promise<string[]> {
+  try {
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: { responseMimeType: 'application/json' },
+    })
+    const prompt = `根據以下一問一答，幫使用者想 3 個「他接下來最可能想繼續問」的後續問題。
+規則：繁體中文、口語、每個 16 字以內、具體可直接點；要延伸這個主題、不要重複原本的問題；若答案已說「查不到／不確定」，可給「換個方式問」或相關方向。
+只輸出 JSON 陣列，例如 ["問題一","問題二","問題三"]，不要多餘文字。
+
+【問】${question}
+【答】${answer.slice(0, 1500)}`
+    const res = await model.generateContent(prompt)
+    const arr = JSON.parse(res.response.text().replace(/```json|```/g, '').trim())
+    return Array.isArray(arr) ? arr.filter((s: any) => typeof s === 'string' && s.trim()).map((s: string) => s.trim()).slice(0, 3) : []
+  } catch {
+    return []
+  }
+}
+
 // 文字向量嵌入（語意搜尋用）；一次批次嵌入多筆
 export async function embedTexts(texts: string[]): Promise<number[][]> {
   const model = genAI.getGenerativeModel({ model: 'text-embedding-004' })

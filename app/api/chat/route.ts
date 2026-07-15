@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getKnowledgeBase, readPagePlainText } from '@/lib/notion'
-import { chatWithAssistant, routeChatIntent } from '@/lib/gemini'
+import { chatWithAssistant, routeChatIntent, suggestFollowups } from '@/lib/gemini'
 import { rankKnowledge, rankChunks } from '@/lib/kbsearch'
 
 // 進度回報草稿：聊天室偵測到「要記進度」時回傳給前端，讓使用者確認後才真正寫入
@@ -158,7 +158,10 @@ export async function POST(req: NextRequest) {
     } catch { /* 知識庫讀取失敗不影響對話 */ }
 
     const reply = await chatWithAssistant(messages, knowledge)
-    return NextResponse.json({ reply, files: fileResults })
+    // 產生「後續追問」建議按鈕（失敗不影響回覆）
+    let suggestions: string[] = []
+    try { suggestions = await suggestFollowups(lastUser, reply) } catch {}
+    return NextResponse.json({ reply, files: fileResults, suggestions })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
