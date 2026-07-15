@@ -39,10 +39,10 @@ export function chunkText(text: string, size = 900, overlap = 200): string[] {
     let end = Math.min(start + size, clean.length)
     if (end < clean.length) {
       // 從這一段的後半往回找最近的句子/段落邊界，讓每段盡量結束在完整句子
-      const window = clean.slice(start, end)
+      const seg = clean.slice(start, end)
       const boundary = Math.max(
-        window.lastIndexOf('\n'), window.lastIndexOf('。'),
-        window.lastIndexOf('！'), window.lastIndexOf('？'), window.lastIndexOf('. '),
+        seg.lastIndexOf('\n'), seg.lastIndexOf('。'),
+        seg.lastIndexOf('！'), seg.lastIndexOf('？'), seg.lastIndexOf('. '),
       )
       if (boundary > size * 0.5) end = start + boundary + 1
     }

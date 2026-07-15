@@ -120,8 +120,8 @@ export async function POST(req: NextRequest) {
           list.push(c); byDoc.set(c.docId, list)
         }
         const header = '以下是從公司資料庫依相關度找到的內容片段。同一份資料會標【第 i/n 段】，段落之間有刻意重疊銜接；看到相鄰的段落編號代表那是同一份完整內容的接續部分，請合併理解後再回答；若某份資料只回傳部分段落，回答時要留意可能還有未顯示的內容。'
-        knowledge = header + '\n\n' + [...byDoc.values()].map(list => {
-          const sorted = [...list].sort((a, b) => a.idx - b.idx)
+        knowledge = header + '\n\n' + Array.from(byDoc.values()).map(list => {
+          const sorted = list.slice().sort((a, b) => a.idx - b.idx)
           const title = sorted[0].title
           const tags = sorted[0].tags.length ? `(${sorted[0].tags.join('/')})` : ''
           return `【${title}】${tags}\n` + sorted.map(c => `〔第 ${c.idx}/${c.total} 段〕\n${c.text}`).join('\n（…接續…）\n')
