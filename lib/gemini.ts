@@ -144,6 +144,54 @@ ${knowledge || '（無相關內部資料）'}
   }
 }
 
+// 聊天室意圖判斷：分辨這句是「要查詢/問問題」還是「要新增專案進度回報」，
+// 若是進度回報，順便把對應的專案、日期、進度內容抽出來。
+// 保守原則：不確定時一律當成 question（因為寫入進度前還會再讓使用者確認）。
+export type ChatIntent = {
+  intent: 'progress' | 'question'
+  project: string | null   // 對應到的專案名稱（盡量對應 projectNames 其中一個；無法確定填 null）
+  date: string | null      // YYYY/MM/DD；沒提到就 null（之後預設今天）
+  description: string       // 乾淨的一句話進度描述
+}
+
+export async function routeChatIntent(message: string, projectNames: string[], todayISO: string): Promise<ChatIntent> {
+  const sys = `你是一個工地/工廠專案系統的聊天室助理的「意圖分類器」。判斷使用者這句話是：
+- "progress"：使用者在「回報／記錄某個專案的工作進度或狀態」（例如「冠德的箱蓋今天噴好了」「國壽三樓施工完成」「桃大的料到了」）。通常是在陳述一件已經發生或完成的現場事實。
+- "question"：使用者在「問問題、找SOP、問怎麼做、排除困難、閒聊」或任何不是要記錄進度的情況。
+
+【目前進行中的專案清單】
+${projectNames.length ? projectNames.map(n => '・' + n).join('\n') : '（目前沒有專案）'}
+
+規則：
+1. 只有當這句話明顯是在「陳述某專案的進度/完成/狀態」時才判定 progress；只要有疑問語氣、在問怎麼做、或看起來像查資料，一律判 question。
+2. 若判 progress，project 盡量對應到上面清單中「最相符的一個」專案完整名稱；真的對應不到就填 null。
+3. date：句子有明確講日期才填（格式 YYYY/MM/DD），沒有就填 null。
+4. description：把進度整理成乾淨、具體的一句話（去掉「幫我記一下」這類指令詞）。
+5. 只輸出 JSON，不要多餘文字。
+
+回傳格式：
+{ "intent": "progress" | "question", "project": "專案名稱或 null", "date": "YYYY/MM/DD 或 null", "description": "進度描述（question 時可空字串）" }`
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      systemInstruction: sys,
+      generationConfig: { responseMimeType: 'application/json' },
+    })
+    const res = await model.generateContent(`今天是 ${todayISO}。\n使用者說：「${message}」`)
+    const parsed = JSON.parse(res.response.text().replace(/```json|```/g, '').trim())
+    return {
+      intent: parsed.intent === 'progress' ? 'progress' : 'question',
+      project: parsed.project || null,
+      date: parsed.date || null,
+      description: String(parsed.description || ''),
+    }
+  } catch {
+    // 分類失敗就當一般問題處理，維持原本聊天流程
+    return { intent: 'question', project: null, date: null, description: '' }
+  }
+}
+
 // 文字向量嵌入（語意搜尋用）；一次批次嵌入多筆
 export async function embedTexts(texts: string[]): Promise<number[][]> {
   const model = genAI.getGenerativeModel({ model: 'text-embedding-004' })

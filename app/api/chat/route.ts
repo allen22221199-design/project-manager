@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getKnowledgeBase } from '@/lib/notion'
-import { chatWithAssistant } from '@/lib/gemini'
+import { chatWithAssistant, routeChatIntent } from '@/lib/gemini'
 import { rankKnowledge } from '@/lib/kbsearch'
+
+// 進度回報草稿：聊天室偵測到「要記進度」時回傳給前端，讓使用者確認後才真正寫入
+export type ProgressDraft = {
+  date: string
+  description: string
+  matchedId: string | null
+  matchedName: string | null
+  candidates: { id: string; name: string }[]
+}
+
+// 台北時區今天 YYYY/MM/DD
+function taipeiToday(): string {
+  const d = new Date(Date.now() + 8 * 3600 * 1000)
+  return `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`
+}
 
 export const maxDuration = 60
 
@@ -33,11 +48,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '尚未設定 GEMINI_API_KEY' }, { status: 503 })
   }
   try {
-    const { messages } = await req.json()
+    const { messages, projects } = await req.json()
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: '沒有訊息' }, { status: 400 })
     }
     const lastUser = [...messages].reverse().find((m: any) => m.role === 'user')?.content ?? ''
+
+    // ① 先判斷這句是「要記進度」還是「要問問題」。是進度就回傳草稿讓前端確認，不直接寫入。
+    const projList: { id: string; name: string }[] = Array.isArray(projects)
+      ? projects.filter((p: any) => p?.id && p?.name).map((p: any) => ({ id: String(p.id), name: String(p.name) }))
+      : []
+    if (projList.length > 0 && lastUser.trim()) {
+      const intent = await routeChatIntent(lastUser, projList.map(p => p.name), taipeiToday())
+      if (intent.intent === 'progress' && intent.description.trim()) {
+        // 把 AI 對應到的專案名稱，比對回實際專案（完全相符 → 包含關係 → 都沒有就列候選）
+        const norm = (s: string) => s.replace(/\s/g, '').toLowerCase()
+        const hint = intent.project ? norm(intent.project) : ''
+        let matched = hint ? projList.find(p => norm(p.name) === hint) : undefined
+        let candidates: { id: string; name: string }[] = []
+        if (!matched && hint) {
+          candidates = projList.filter(p => norm(p.name).includes(hint) || hint.includes(norm(p.name)))
+          if (candidates.length === 1) { matched = candidates[0]; candidates = [] }
+        }
+        const draft: ProgressDraft = {
+          date: intent.date || taipeiToday(),
+          description: intent.description.trim(),
+          matchedId: matched?.id ?? null,
+          matchedName: matched?.name ?? null,
+          candidates,
+        }
+        const reply = matched
+          ? `我看起來你是要記一筆進度到【${matched.name}】。確認一下內容，沒問題就按「確認新增」👇`
+          : candidates.length > 0
+            ? '這筆進度要記到哪個專案？請點選一個👇'
+            : '這筆進度要記到哪個專案？我沒對應到，請從清單選一個👇'
+        return NextResponse.json({ reply, progressDraft: draft })
+      }
+    }
 
     let knowledge = ''
     const fileResults: FileResult[] = []
