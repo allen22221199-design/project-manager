@@ -709,14 +709,42 @@ export async function getKnowledgeQueue() {
     })
 }
 
-// 取出知識庫中已處理的內容（給 AI 規劃檢索用）
+// 另一個知識來源：SOP知識庫（獨立資料庫；正文在頁面內文、沒有摘要屬性）
+const SOP_KNOWLEDGE_DB_ID = '91c0def97560427194be54b76198378c'
+
+// 讀 SOP知識庫：沒有摘要欄，先用「檔名／分類／子路徑／原始檔名」當 stage-1 排序依據，
+// 真正的內文在 stage-2 由 readPagePlainText 讀頁面內文（與檔案庫共用同一套檢索）。
+export async function getSopKnowledge() {
+  const results: any[] = []
+  let cursor: string | undefined = undefined
+  do {
+    const res: any = await notion.databases.query({ database_id: SOP_KNOWLEDGE_DB_ID, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) })
+    results.push(...res.results)
+    cursor = res.has_more ? res.next_cursor : undefined
+  } while (cursor)
+  const rt = (p: any, name: string) => (p.properties[name]?.rich_text ?? []).map((r: any) => r.plain_text).join('')
+  return results
+    .filter((p: any) => !p.archived && !p.in_trash)
+    .map((p: any) => {
+      const title = p.properties['文件名稱']?.title?.[0]?.plain_text ?? '(未命名)'
+      const main = p.properties['主分類']?.select?.name ?? ''
+      const sub = rt(p, '分類')
+      const path = rt(p, '子路徑')
+      const orig = rt(p, '原始檔名')
+      const tags = [main, sub].filter(Boolean)
+      const summary = [title, main, sub, path, orig].filter(Boolean).join(' ')
+      return { id: p.id, title, tags, summary, text: '', externalUrl: '', attachments: [] as { name: string; url: string }[] }
+    })
+}
+
+// 取出知識庫中已處理的內容（給 AI 規劃檢索用）；同時併入 SOP知識庫，兩個資料庫都當知識來源
 export async function getKnowledgeBase() {
   const res = await notion.databases.query({
     database_id: KNOWLEDGE_DB_ID,
     filter: { property: '狀態', select: { equals: '已處理' } },
     page_size: 100,
   })
-  return (res.results as any[]).map(p => {
+  const fileItems = (res.results as any[]).map(p => {
     const summary = (p.properties['萃取摘要']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
     // 取得可下載的連結：外部 URL 或 Notion 檔案附件（有時效性，每次即時取）
     const externalUrl: string = p.properties['連結']?.url ?? ''
@@ -733,6 +761,10 @@ export async function getKnowledgeBase() {
       attachments,   // Notion 附件（URL 約 1 小時有效，每次即時取得）
     }
   })
+  // 併入 SOP知識庫；若整合尚未連到該資料庫或讀取失敗，不影響檔案庫的結果
+  let sopItems: Awaited<ReturnType<typeof getSopKnowledge>> = []
+  try { sopItems = await getSopKnowledge() } catch { /* SOP知識庫讀取失敗就略過 */ }
+  return [...fileItems, ...sopItems]
 }
 
 // 寫回知識庫處理結果（摘要 + 狀態 + 全文進內文）
