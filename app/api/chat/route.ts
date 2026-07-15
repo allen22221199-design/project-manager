@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getKnowledgeBase } from '@/lib/notion'
+import { getKnowledgeBase, readPagePlainText } from '@/lib/notion'
 import { chatWithAssistant, routeChatIntent } from '@/lib/gemini'
-import { rankKnowledge } from '@/lib/kbsearch'
+import { rankKnowledge, rankChunks } from '@/lib/kbsearch'
 
 // 進度回報草稿：聊天室偵測到「要記進度」時回傳給前端，讓使用者確認後才真正寫入
 export type ProgressDraft = {
@@ -90,19 +90,49 @@ export async function POST(req: NextRequest) {
     const fileResults: FileResult[] = []
     try {
       const kb = await getKnowledgeBase()
-      const top = await rankKnowledge(lastUser, kb, 6, 0.62)
-      // 在語意排序結果中，額外依檔名相關度做提升
-      const boosted = boostByFilename(lastUser, top)
 
-      knowledge = boosted
-        .map((it, idx) => {
-          const limit = TEXT_LIMITS[idx] ?? 800
-          const body = (it.text || it.summary).slice(0, limit)
-          const rank = idx === 0 ? '⭐ 最相關' : `參考${idx + 1}`
-          const tags = it.tags.length ? `(${it.tags.join('/')})` : ''
-          return `[${rank}] 【${it.title}】${tags}\n${body}`
-        })
-        .join('\n\n---\n\n')
+      // ── 兩階段 RAG 檢索 ──────────────────────────────────────
+      // 階段①：先用「摘要」語意排序，挑出最相關的候選文件（便宜、避免每篇都讀全文）
+      const candDocs = await rankKnowledge(lastUser, kb, 5, 0.5)
+      // 階段②：只對候選文件抓「完整內文」，切成有重疊、彼此銜接的段落，再用語意挑最相關的段落
+      const withFull = await Promise.all(candDocs.map(async d => {
+        let fullText = ''
+        try { fullText = await readPagePlainText(d.id) } catch {}
+        // 頁面內文抓不到（或很短）就退回摘要，確保仍有內容可用
+        if (fullText.replace(/【AI 萃取內容】/g, '').trim().length < (d.summary || d.text || '').length) {
+          fullText = (d.text || d.summary || fullText)
+        }
+        return { docId: d.id, title: d.title, tags: d.tags, fullText: fullText.replace(/【AI 萃取內容】/g, '').trim() }
+      }))
+      const chunks = await rankChunks(lastUser, withFull, 8, 0.5)
+
+      if (chunks.length > 0) {
+        // 依文件分組、段落依序排列，讓相鄰段落接在一起（AI 才能判斷是完整內容）
+        const byDoc = new Map<string, typeof chunks>()
+        for (const c of chunks) {
+          const list = byDoc.get(c.docId) ?? []
+          list.push(c); byDoc.set(c.docId, list)
+        }
+        const header = '以下是從公司資料庫依相關度找到的內容片段。同一份資料會標【第 i/n 段】，段落之間有刻意重疊銜接；看到相鄰的段落編號代表那是同一份完整內容的接續部分，請合併理解後再回答；若某份資料只回傳部分段落，回答時要留意可能還有未顯示的內容。'
+        knowledge = header + '\n\n' + [...byDoc.values()].map(list => {
+          const sorted = [...list].sort((a, b) => a.idx - b.idx)
+          const title = sorted[0].title
+          const tags = sorted[0].tags.length ? `(${sorted[0].tags.join('/')})` : ''
+          return `【${title}】${tags}\n` + sorted.map(c => `〔第 ${c.idx}/${c.total} 段〕\n${c.text}`).join('\n（…接續…）\n')
+        }).join('\n\n---\n\n')
+      } else {
+        // 後備：沿用舊的「摘要」組裝（切塊沒抓到內容時）
+        const boosted = boostByFilename(lastUser, candDocs)
+        knowledge = boosted
+          .map((it, idx) => {
+            const limit = TEXT_LIMITS[idx] ?? 800
+            const body = (it.text || it.summary).slice(0, limit)
+            const rank = idx === 0 ? '⭐ 最相關' : `參考${idx + 1}`
+            const tags = it.tags.length ? `(${it.tags.join('/')})` : ''
+            return `[${rank}] 【${it.title}】${tags}\n${body}`
+          })
+          .join('\n\n---\n\n')
+      }
 
       // 只有問到檔案相關內容時，才附上下載連結
       if (isAskingForFile(lastUser)) {
