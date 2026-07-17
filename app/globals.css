@@ -2,51 +2,80 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===== 極光 / 磨砂玻璃 設計 tokens（換主題只改這裡）===== */
 :root {
-  --accent: #4f46e5; /* indigo-600 */
+  --surface: #f2f5fc;
+  --text: #20222c; --text-2: #5a5e70; --text-3: #9599a8;
+  --hairline: rgba(120,130,170,0.14);
+  --glass-bg: rgba(255,255,255,0.58); --glass-2: rgba(255,255,255,0.60);
+  --glass-border: rgba(255,255,255,0.85);
+  --au1: #9db8ff; --au2: #c8a6ff; --au3: #8ff0d0;   /* 三顆極光光暈 */
+  --acc1: #6ea8fe; --acc2: #a86efe;                 /* 主色漸層 */
+  --accent: #6ea8fe;
 }
 
-html {
-  scroll-behavior: smooth;
-}
+html { scroll-behavior: smooth; }
 
 body {
-  background: #f6f7f9;
-  color: #18181b;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  background: var(--surface);
+  color: var(--text);
+  font-family: 'Manrope', system-ui, -apple-system, BlinkMacSystemFont, 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 選取顏色 */
-::selection {
-  background: rgba(79, 70, 229, 0.15);
-}
+/* 等寬數字 */
+.mono-num { font-family: 'JetBrains Mono', ui-monospace, monospace; font-feature-settings: 'tnum'; }
+
+::selection { background: rgba(110,168,254,0.18); }
 
 /* 細緻捲軸 */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(120,130,170,0.35); border-radius: 9999px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(120,130,170,0.55); background-clip: padding-box; }
+
+/* ===== 招牌配方 ===== */
+
+/* 玻璃卡片：取代原本 bg-white border rounded-xl shadow-sm */
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 12px 34px -20px rgba(80,110,200,0.45);
+  border-radius: 18px;
+  transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+.glass-card:hover {
+  box-shadow: 0 18px 40px -20px rgba(80,110,200,0.5);
+  border-color: rgba(120,130,240,0.35);
 }
-::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
-  border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #a1a1aa;
-  background-clip: padding-box;
-}
+/* 可點擊的卡片（專案卡 / 列）額外加 .lift 才會浮起 */
+.glass-card.lift { cursor: pointer; }
+.glass-card.lift:hover { transform: translateY(-5px); border-color: rgba(120,130,240,0.5); }
+
+/* 背景極光光暈（絕對定位、模糊、緩慢漂浮）*/
+.aurora-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(60px); opacity: .42; pointer-events: none; }
+.orb1 { width: 520px; height: 520px; top: -120px; left: -100px; background: radial-gradient(circle, var(--au1), transparent 70%); animation: auroraFloat 17s ease-in-out infinite; }
+.orb2 { width: 460px; height: 460px; top: -80px; right: -120px; background: radial-gradient(circle, var(--au2), transparent 70%); animation: auroraFloat2 19s ease-in-out infinite; }
+.orb3 { width: 420px; height: 420px; bottom: -140px; left: 18%; background: radial-gradient(circle, var(--au3), transparent 70%); animation: auroraFloat 15s ease-in-out infinite; }
+.orb4 { width: 380px; height: 380px; bottom: -120px; right: -80px; background: radial-gradient(circle, var(--au2), transparent 70%); animation: auroraFloat2 18s ease-in-out infinite; }
+@keyframes auroraFloat  { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px,-26px) scale(1.18); } }
+@keyframes auroraFloat2 { 0%,100% { transform: translate(0,0) scale(1.1); } 50% { transform: translate(-34px,22px) scale(.95); } }
+
+/* 主色漸層背景（按鈕 / logo）— 用 !important 覆蓋原 Tailwind 底色 */
+.aurora-grad { background-image: linear-gradient(135deg, var(--acc1), var(--acc2)) !important; box-shadow: 0 8px 20px -6px rgba(120,110,240,0.55); }
+.aurora-grad:hover { filter: brightness(1.06); }
+
+/* 漸層文字 */
+.gradient-text { background: linear-gradient(120deg, var(--acc1), var(--acc2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* 進度條流光 */
+@keyframes shimmer { 0% { transform: translateX(-140%); } 100% { transform: translateX(260%); } }
+.shine { position: absolute; inset: 0; animation: shimmer 2.4s infinite; background: linear-gradient(90deg, transparent, rgba(255,255,255,.85), transparent); }
 
 /* 卡片淡入 */
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.animate-fade-in {
-  animation: fadeInUp 0.25s ease both;
-}
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.animate-fade-in { animation: fadeInUp 0.3s ease both; }

@@ -1497,7 +1497,7 @@ export default function Page() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => saveDetail(t.id)} disabled={savingDetail}
-            className="bg-indigo-600 text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:bg-indigo-700 disabled:opacity-40">
+            className="aurora-grad text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:brightness-105 disabled:opacity-40">
             {savingDetail ? '儲存中...' : '儲存'}
           </button>
           {saveDetailOk && <span className="text-xs text-green-600 font-medium">✓ 已儲存</span>}
@@ -1509,10 +1509,17 @@ export default function Page() {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-200/80 px-4 py-2.5 flex items-center gap-3">
+    <div className="min-h-screen relative">
+      {/* 背景極光光暈層（固定、不擋點擊） */}
+      <div className="aurora-bg" aria-hidden="true">
+        <span className="orb orb1" />
+        <span className="orb orb2" />
+        <span className="orb orb3" />
+        <span className="orb orb4" />
+      </div>
+      <header className="sticky top-0 z-20 backdrop-blur-xl border-b px-4 py-2.5 flex items-center gap-3" style={{ background: 'var(--glass-2)', borderColor: 'var(--hairline)' }}>
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-sm font-bold shadow-sm">煌</div>
+          <div className="w-7 h-7 rounded-lg aurora-grad text-white flex items-center justify-center text-sm font-bold shadow-sm">煌</div>
           <div className="text-base font-semibold text-gray-900 tracking-tight">專案進度管理</div>
         </div>
         {/* 電腦版：頂部分頁列（手機版隱藏，改用底部導覽列） */}
@@ -1550,7 +1557,7 @@ export default function Page() {
             {loginErr && <p className="text-xs text-red-500 mb-2">{loginErr}</p>}
             <div className="flex gap-2 mt-2">
               <button type="submit" disabled={loginLoading}
-                className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                className="flex-1 aurora-grad text-white rounded-lg py-2 text-sm font-medium hover:brightness-105 disabled:opacity-40">
                 {loginLoading ? '登入中…' : '登入'}
               </button>
               <button type="button" onClick={() => setShowLogin(false)} className="px-3 text-sm text-gray-400 hover:text-gray-600">取消</button>
@@ -1588,7 +1595,7 @@ export default function Page() {
             <p className="text-[11px] text-gray-400 mb-3">開始時間留空＝全天行程；截止時間留空＝預設開始後 1 小時</p>
             <div className="flex items-center gap-2">
               <button onClick={saveEventForm} disabled={evSaving || !evTitle.trim()}
-                className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                className="flex-1 aurora-grad text-white rounded-lg py-2 text-sm font-medium hover:brightness-105 disabled:opacity-40">
                 {evSaving ? '儲存中…' : '儲存'}
               </button>
               {evId && <button onClick={deleteEventForm} className="text-xs text-red-500 hover:text-red-600 border border-red-200 rounded-lg px-2.5 py-2">刪除</button>}
@@ -1612,7 +1619,7 @@ export default function Page() {
               className="w-full mt-0.5 mb-4 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-indigo-400" />
             <div className="flex items-center gap-2">
               <button onClick={savePrivateTaskForm} disabled={addingPrivateTask || !ptTaskText.trim()}
-                className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                className="flex-1 aurora-grad text-white rounded-lg py-2 text-sm font-medium hover:brightness-105 disabled:opacity-40">
                 {addingPrivateTask ? '儲存中…' : '儲存'}
               </button>
               <button onClick={() => setShowPrivateTaskForm(false)} className="text-sm text-gray-400 hover:text-gray-600 px-2">取消</button>
@@ -1621,7 +1628,7 @@ export default function Page() {
         </div>
       )}
 
-      <main className={`mx-auto p-4 pb-24 md:pb-4 animate-fade-in ${view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' || view === 'training' ? 'max-w-3xl' : 'max-w-2xl'}`}>
+      <main className={`relative z-10 mx-auto p-4 pb-24 md:pb-4 animate-fade-in ${view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' || view === 'training' ? 'max-w-3xl' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
@@ -1649,7 +1656,7 @@ export default function Page() {
             .filter(p => p.latestProgress && p.latestProgressDate && p.latestProgressDate >= cutPStr)
             .sort((a, b) => (b.latestProgressDate ?? '').localeCompare(a.latestProgressDate ?? ''))
           const recentProgressCard = (
-            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+            <div className="glass-card p-4">
               <p className="text-sm font-medium text-gray-700 mb-3">最新進度回報 {recentProg.length > 0 && <span className="text-emerald-500">({recentProg.length})</span>}</p>
               {recentProg.length === 0 ? (
                 <p className="text-sm text-gray-400">近兩天尚無進度回報</p>
@@ -1675,7 +1682,7 @@ export default function Page() {
             <div className="flex flex-col 2xl:flex-row gap-4 2xl:items-start">
             <div className="flex flex-col gap-4 flex-1 min-w-0">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <button onClick={() => { setView('daily'); fetchDailyTasks() }} className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 text-left hover:border-indigo-300 transition-colors">
+                <button onClick={() => { setView('daily'); fetchDailyTasks() }} className="glass-card p-4 text-left hover:border-indigo-300 transition-colors">
                   <p className="text-xs text-gray-400">今日待辦</p>
                   <p className="text-3xl font-bold text-gray-900 mt-1">{todayTasks.length}</p>
                 </button>
@@ -1683,19 +1690,19 @@ export default function Page() {
                   <p className={`text-xs ${overdue.length > 0 ? 'text-red-500' : 'text-gray-400'}`}>逾期任務</p>
                   <p className={`text-3xl font-bold mt-1 ${overdue.length > 0 ? 'text-red-600' : 'text-gray-900'}`}>{overdue.length}</p>
                 </button>
-                <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+                <div className="glass-card p-4">
                   <p className="text-xs text-gray-400">本週完成率</p>
                   <p className="text-3xl font-bold text-gray-900 mt-1">{rate}<span className="text-lg">%</span></p>
                   <p className="text-xs text-gray-400 mt-0.5">{weekDone.length}/{weekTasks.length} 項</p>
                 </div>
-                <button onClick={() => setView('list')} className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 text-left hover:border-indigo-300 transition-colors">
+                <button onClick={() => setView('list')} className="glass-card p-4 text-left hover:border-indigo-300 transition-colors">
                   <p className="text-xs text-gray-400">進行中案件</p>
                   <p className="text-3xl font-bold text-gray-900 mt-1">{projects.filter(p => !INACTIVE_STATUSES.includes(p.status)).length}</p>
                 </button>
               </div>
 
               {/* 各狀態案件數 */}
-              <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+              <div className="glass-card p-4">
                 <p className="text-sm font-medium text-gray-700 mb-3">案件狀態分布</p>
                 {statusList.length === 0 ? (
                   <p className="text-sm text-gray-400">尚無案件</p>
@@ -1733,7 +1740,7 @@ export default function Page() {
                 }
 
                 return (
-                  <div className="order-first bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+                  <div className="order-first glass-card p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div>
                         <p className="text-base font-semibold text-gray-800">流程排程表</p>
@@ -1871,7 +1878,7 @@ export default function Page() {
             <div className="relative mb-3">
               <input type="text" value={searchText} onChange={e => setSearchText(e.target.value)}
                 placeholder="搜尋案件名稱、聯絡人或地址..."
-                className="w-full bg-white border border-gray-200/70 rounded-xl shadow-sm px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 pr-8" />
+                className="w-full glass-card px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 pr-8" />
               {searchText && (
                 <button onClick={() => setSearchText('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
               )}
@@ -1887,7 +1894,7 @@ export default function Page() {
                 const count = tab === '全部' ? projects.filter(p => !INACTIVE_STATUSES.includes(p.status)).length : projects.filter(p => p.status === tab).length
                 return (
                   <button key={tab} onClick={() => setFilterStatus(tab)}
-                    className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${filterStatus === tab ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                    className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${filterStatus === tab ? 'aurora-grad text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
                     {tab}
                     <span className={`ml-1 ${filterStatus === tab ? 'text-gray-300' : 'text-gray-400'}`}>{count}</span>
                   </button>
@@ -1915,7 +1922,7 @@ export default function Page() {
                   )}
                   {filtered.map(p => (
                     <div key={p.id}
-                      className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 hover:border-gray-400 transition-colors flex items-center gap-3"
+                      className="glass-card p-4 hover:border-gray-400 transition-colors flex items-center gap-3"
                       style={p.color ? { borderLeftWidth: 4, borderLeftColor: p.color } : {}}>
                       {/* 顏色圓點 + picker */}
                       <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
@@ -1978,7 +1985,7 @@ export default function Page() {
           <div>
             <button onClick={() => setView('list')} className="text-sm text-gray-500 hover:text-gray-800 mb-4 flex items-center gap-1">← 返回清單</button>
 
-            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4">
+            <div className="glass-card p-4 mb-4">
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-900">{selected.name}</p>
@@ -2009,7 +2016,7 @@ export default function Page() {
             {projectDetail && (
               <div className="mb-4 space-y-3">
                 {(projectDetail.itemRows ?? []).length > 0 && (
-                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 overflow-x-auto">
+                  <div className="glass-card p-4 overflow-x-auto">
                     <p className="text-xs font-medium text-gray-500 mb-3">📋 項目清單（可直接修改／✕ 刪除）</p>
                     <table className="w-full text-sm border-collapse">
                       <thead>
@@ -2040,7 +2047,7 @@ export default function Page() {
                   </div>
                 )}
                 {(projectDetail.progressRows ?? []).length > 0 && (
-                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+                  <div className="glass-card p-4">
                     <p className="text-xs font-medium text-gray-500 mb-3">📑 進度紀錄（可直接修改／✕ 刪除；最新在最下）</p>
                     <div className="space-y-1">
                       {projectDetail.progressRows.map((r: any, ri: number) => (
@@ -2076,7 +2083,7 @@ export default function Page() {
             </div>
 
             {reportTab === 'progress' && (
-              <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 space-y-4">
+              <div className="glass-card p-4 space-y-4">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">日期</label>
                   <input type="text" value={date} onChange={e => setDate(e.target.value)}
@@ -2097,7 +2104,7 @@ export default function Page() {
                   </select>
                 </div>
                 <button onClick={submitProgress} disabled={submitting || !desc.trim()}
-                  className="w-full bg-indigo-600 text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
+                  className="w-full aurora-grad text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:brightness-105 transition-colors">
                   {submitting ? '寫入中...' : '確認送出 → 寫入 Notion'}
                 </button>
                 {submitMsg && <p className={`text-sm text-center font-medium ${submitOk ? 'text-green-600' : 'text-red-500'}`}>{submitMsg}</p>}
@@ -2105,7 +2112,7 @@ export default function Page() {
             )}
 
             {reportTab === 'item' && (
-              <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 space-y-3">
+              <div className="glass-card p-4 space-y-3">
                 {/* 上傳辨識 / 手動新增 */}
                 <div className="flex items-center gap-2">
                   <p className="text-xs text-gray-400 flex-1">📷 上傳報價單／材料清單照片，AI 自動辨識品項；可再編輯或新增，最後一次寫入</p>
@@ -2148,7 +2155,7 @@ export default function Page() {
                 )}
 
                 <button onClick={submitItemBatch} disabled={submitting || itemList.filter(it => (it.item ?? '').trim()).length === 0}
-                  className="w-full bg-indigo-600 text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
+                  className="w-full aurora-grad text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:brightness-105 transition-colors">
                   {submitting ? '寫入中...' : `一次新增 ${itemList.filter(it => (it.item ?? '').trim()).length} 筆品項 → 寫入 Notion`}
                 </button>
                 {submitMsg && <p className={`text-sm text-center font-medium ${submitOk ? 'text-green-600' : 'text-red-500'}`}>{submitMsg}</p>}
@@ -2166,7 +2173,7 @@ export default function Page() {
                 placeholder="輸入專案名稱、地址或人員姓名..."
                 className="flex-1 border border-gray-200 rounded-xl px-5 py-3.5 text-base focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white shadow-sm" />
               <button onClick={doSearch} disabled={searching}
-                className="bg-indigo-600 text-white shadow-sm rounded-xl px-6 py-3.5 text-base font-medium hover:bg-indigo-700 disabled:opacity-40">
+                className="aurora-grad text-white shadow-sm rounded-xl px-6 py-3.5 text-base font-medium hover:brightness-105 disabled:opacity-40">
                 {searching ? '...' : '查詢'}
               </button>
             </div>
@@ -2174,7 +2181,7 @@ export default function Page() {
             {!searchDetail && (
               <>
                 {/* 手動新增任務並指派 */}
-                <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-3 mb-4 flex flex-wrap items-center gap-2">
+                <div className="glass-card p-3 mb-4 flex flex-wrap items-center gap-2">
                   <span className="text-sm text-gray-500 shrink-0">＋ 新增任務</span>
                   <select value={newTaskPerson} onChange={e => setNewTaskPerson(e.target.value)}
                     className="border border-gray-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-indigo-400 shrink-0">
@@ -2185,7 +2192,7 @@ export default function Page() {
                     placeholder="任務內容…（指派給上方人員，截止日為今天）"
                     className="flex-1 min-w-[180px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
                   <button onClick={() => addManualTask(todayISO(), fetchInProgress)} disabled={addingTask || !newTaskText.trim()}
-                    className="bg-indigo-600 text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 shrink-0">
+                    className="aurora-grad text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:brightness-105 disabled:opacity-40 shrink-0">
                     {addingTask ? '新增中…' : '新增'}
                   </button>
                 </div>
@@ -2337,7 +2344,7 @@ export default function Page() {
                     <p className="text-xs font-medium text-gray-400 mb-2 px-1">專案 ({searchProjectResults.length})</p>
                     {searchProjectResults.map(p => (
                       <div key={p.id} onClick={() => loadDetail(p)}
-                        className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-2 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
+                        className="glass-card p-4 mb-2 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 truncate">{p.name}</p>
                           <p className="text-sm text-gray-500">{p.contact}</p>
@@ -2353,7 +2360,7 @@ export default function Page() {
                     <p className="text-xs font-medium text-gray-400 mb-2 px-1">任務事項 ({searchTaskResults.length})</p>
                     {searchTaskResults.map(t => (
                       <a key={t.id} href={t.url} target="_blank" rel="noopener noreferrer"
-                        className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-2 flex items-start gap-3 hover:border-gray-400 transition-colors block no-underline">
+                        className="glass-card p-4 mb-2 flex items-start gap-3 hover:border-gray-400 transition-colors block no-underline">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 truncate">{t.taskName}</p>
                           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
@@ -2409,7 +2416,7 @@ export default function Page() {
                 <button onClick={() => setSearchDetail(null)} className="text-sm text-gray-500 hover:text-gray-800 mb-3 flex items-center gap-1">← 返回</button>
 
                 {/* Header */}
-                <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-3">
+                <div className="glass-card p-4 mb-3">
                   <h2 className="font-medium text-gray-900 text-base">{searchDetail.name}</h2>
                   <div className="flex gap-2 mt-1 flex-wrap">
                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[searchDetail.status] ?? 'bg-gray-100 text-gray-600'}`}>{searchDetail.status}</span>
@@ -2424,7 +2431,7 @@ export default function Page() {
                 )}
 
                 {/* 📑 進度紀錄 */}
-                <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-3">
+                <div className="glass-card p-4 mb-3">
                   <p className="text-xs font-medium text-gray-500 mb-3">📑 進度紀錄</p>
                   {(searchDetail.progressRows ?? []).length === 0
                     ? <p className="text-sm text-gray-400">尚無進度紀錄</p>
@@ -2465,7 +2472,7 @@ export default function Page() {
         {view === 'create' && (
           <div>
             <button onClick={() => setView('list')} className="text-sm text-gray-500 hover:text-gray-800 mb-4 flex items-center gap-1">← 返回清單</button>
-            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 space-y-4">
+            <div className="glass-card p-4 space-y-4">
               <p className="text-sm font-medium text-gray-700">新增專案</p>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">專案名稱 <span className="text-red-400">*</span></label>
@@ -2534,7 +2541,7 @@ export default function Page() {
               </div>
 
               <button onClick={submitCreateProject} disabled={creating || !newName.trim()}
-                className="w-full bg-indigo-600 text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
+                className="w-full aurora-grad text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:brightness-105 transition-colors">
                 {creating ? '建立中...' : `建立專案${newItems.filter(it => (it.item ?? '').trim()).length ? `（含 ${newItems.filter(it => (it.item ?? '').trim()).length} 筆品項）` : ''} → 寫入 Notion`}
               </button>
               {createMsg && <p className={`text-sm text-center font-medium ${createOk ? 'text-green-600' : 'text-red-500'}`}>{createMsg}</p>}
@@ -2545,7 +2552,7 @@ export default function Page() {
         {/* DAILY */}
         {view === 'daily' && (() => {
           const addTaskCard = (
-            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-3 flex flex-wrap items-center gap-2">
+            <div className="glass-card p-3 flex flex-wrap items-center gap-2">
               <span className="text-sm text-gray-500 shrink-0">＋ 新增任務</span>
               <select value={newTaskPerson} onChange={e => setNewTaskPerson(e.target.value)}
                 className="border border-gray-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-indigo-400 shrink-0">
@@ -2556,7 +2563,7 @@ export default function Page() {
                 placeholder="任務內容…（指派給上方人員）"
                 className="flex-1 min-w-[180px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
               <button onClick={() => addManualTask(selectedDate || todayISO(), fetchDailyTasks)} disabled={addingTask || !newTaskText.trim()}
-                className="bg-indigo-600 text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 shrink-0">
+                className="aurora-grad text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:brightness-105 disabled:opacity-40 shrink-0">
                 {addingTask ? '新增中…' : '新增'}
               </button>
             </div>
@@ -2603,7 +2610,7 @@ export default function Page() {
             )}
 
             {/* 貼上 Plaud 內容 → Gemini 整理 */}
-            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 space-y-3">
+            <div className="glass-card p-4 mb-4 space-y-3">
               <p className="text-sm font-medium text-gray-700">📥 貼上 Plaud 逐字稿自動整理</p>
               <p className="text-xs text-gray-400 -mt-2">AI 會自動修正錯字、判斷負責人、拆解成可勾選的執行步驟；無法判斷負責人的項目會列在「待確認」欄，可拖曳指派</p>
               <textarea value={plaudText} onChange={e => setPlaudText(e.target.value)} rows={5}
@@ -2614,7 +2621,7 @@ export default function Page() {
                 整理完同時發送到 LINE 群組
               </label>
               <button onClick={organizePlaud} disabled={organizing || !plaudText.trim()}
-                className="w-full bg-indigo-600 text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
+                className="w-full aurora-grad text-white shadow-sm rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 hover:brightness-105 transition-colors">
                 {organizing ? '整理中...' : '✦ 整理並寫入今日工作'}
               </button>
               {organizeMsg && <p className={`text-sm text-center font-medium ${organizeOk ? 'text-green-600' : 'text-red-500'}`}>{organizeMsg}</p>}
@@ -2647,7 +2654,7 @@ export default function Page() {
                     : <div className="flex gap-1.5 flex-wrap">
                       {dates.map(d => (
                         <button key={d} onClick={() => { setSelectedDate(d); setFilterPerson(null) }}
-                          className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${selectedDate === d ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                          className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${selectedDate === d ? 'aurora-grad text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
                           {fmt(d)}
                         </button>
                       ))}
@@ -2668,7 +2675,7 @@ export default function Page() {
                         )}
                         {people.map(p => (
                           <button key={p} onClick={() => setFilterPerson(filterPerson === p ? null : p)}
-                            className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${filterPerson === p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                            className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${filterPerson === p ? 'aurora-grad text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
                             {p}
                             <span className={`ml-1 text-xs ${filterPerson === p ? 'opacity-60' : 'text-gray-400'}`}>
                               {dayTasks.filter(t => t.person === p).length}
@@ -2697,7 +2704,7 @@ export default function Page() {
             {dailyLoading ? (
               <p className="text-gray-400 text-sm py-8 text-center">載入中...</p>
             ) : dailyAll.length === 0 ? (
-              <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-6 text-center">
+              <div className="glass-card p-6 text-center">
                 <p className="text-sm text-gray-400">目前沒有工作項目</p>
                 <p className="text-xs text-gray-300 mt-2">貼上 Plaud 內容整理，或每天 9:30 自動生成</p>
               </div>
@@ -2719,7 +2726,7 @@ export default function Page() {
                         onDrop={e => { e.preventDefault(); setDragOverPerson(null); if (draggingId) reassignTask(draggingId, person); setDraggingId(null) }}
                         className={`bg-white border rounded-xl p-4 transition-colors ${isOver ? 'border-gray-900 bg-gray-50' : person === '待確認' ? 'border-amber-300 bg-amber-50/40' : 'border-gray-200'}`}>
                         <div className="flex items-center gap-2 mb-3">
-                          <span className={`w-7 h-7 rounded-full text-white text-xs flex items-center justify-center font-medium shrink-0 ${person === '待確認' ? 'bg-amber-500' : 'bg-indigo-600'}`}>
+                          <span className={`w-7 h-7 rounded-full text-white text-xs flex items-center justify-center font-medium shrink-0 ${person === '待確認' ? 'bg-amber-500' : 'aurora-grad'}`}>
                             {person === '待確認' ? '⚠️' : person.slice(0, 1)}
                           </span>
                           <p className="font-medium text-gray-900">{person}</p>
@@ -2830,7 +2837,7 @@ export default function Page() {
             )}
             <div className="flex-1 overflow-y-auto space-y-3 pb-4">
               {chatMessages.length === 0 && (
-                <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-5 text-sm text-gray-600">
+                <div className="glass-card p-5 text-sm text-gray-600">
                   <p className="font-medium text-gray-800 mb-2">👋 我是公司 AI 助理</p>
                   <p className="text-gray-500 mb-2">我會優先用「檔案庫」裡的公司資料回答。你可以問我：</p>
                   <ul className="list-disc pl-5 space-y-1 text-gray-500">
@@ -2845,7 +2852,7 @@ export default function Page() {
               )}
               {chatMessages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${m.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200/70 shadow-sm text-gray-800'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${m.role === 'user' ? 'aurora-grad text-white' : 'bg-white border border-gray-200/70 shadow-sm text-gray-800'}`}>
                     {m.content}
                     {m.files && m.files.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
@@ -2923,7 +2930,7 @@ export default function Page() {
                 rows={1} placeholder="輸入問題…（Enter 送出、Shift+Enter 換行）"
                 className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white resize-none" />
               <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()}
-                className="bg-indigo-600 text-white shadow-sm rounded-xl px-5 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">送出</button>
+                className="aurora-grad text-white shadow-sm rounded-xl px-5 text-sm font-medium hover:brightness-105 disabled:opacity-40">送出</button>
               {chatMessages.length > 0 && (
                 <button onClick={() => setChatMessages([])} title="清空對話"
                   className="text-gray-400 hover:text-gray-700 text-sm px-2">清空</button>
@@ -2950,7 +2957,7 @@ export default function Page() {
             <div className="space-y-4">
 
             {/* 呂理論待辦（只有管理者看得到，公開區已隱藏） */}
-            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+            <div className="glass-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="text-base font-semibold text-gray-900">🙋 {PRIVATE_PERSON_LABEL} 待辦</p>
@@ -2958,7 +2965,7 @@ export default function Page() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button onClick={openAddPrivateTask} disabled={addingPrivateTask}
-                    className="text-xs bg-indigo-600 text-white rounded-lg px-2.5 py-1 hover:bg-indigo-700 disabled:opacity-40">＋ 新增任務</button>
+                    className="text-xs aurora-grad text-white rounded-lg px-2.5 py-1 hover:brightness-105 disabled:opacity-40">＋ 新增任務</button>
                   <button onClick={fetchPrivatePersonTasks} className="text-xs text-gray-400 hover:text-gray-700 border border-gray-200 rounded-lg px-2 py-1">↻ 重新整理</button>
                   <button onClick={() => setShowPrivateDone(v => !v)}
                     className={`text-xs rounded-lg px-2 py-1 border ${showPrivateDone ? 'bg-green-100 text-green-700 border-green-200' : 'text-gray-400 border-gray-200 hover:border-gray-400'}`}>
@@ -2997,7 +3004,7 @@ export default function Page() {
               )}
             </div>
 
-            <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4">
+            <div className="glass-card p-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-base font-semibold text-gray-900">🔐 私人行事曆</p>
@@ -3022,7 +3029,7 @@ export default function Page() {
                   <p className="text-sm text-gray-700 mb-1">尚未連結 Google 日曆</p>
                   <p className="text-xs text-gray-400 mb-3">連結後，這裡新增的行程會直接同步到你的 Google 日曆（雙向）</p>
                   <a href="/api/google/auth"
-                    className="inline-block bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700">
+                    className="inline-block aurora-grad text-white rounded-lg px-4 py-2 text-sm font-medium hover:brightness-105">
                     🔗 連結 Google 日曆
                   </a>
                 </div>
@@ -3038,7 +3045,7 @@ export default function Page() {
                       className="text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-400" />
                     {gcalLoading && <span className="text-xs text-gray-400">讀取中…</span>}
                     <button onClick={() => openAddEvent(agendaDate)}
-                      className="ml-auto text-xs bg-indigo-600 text-white rounded px-2.5 py-1 hover:bg-indigo-700">＋ 新增行程</button>
+                      className="ml-auto text-xs aurora-grad text-white rounded px-2.5 py-1 hover:brightness-105">＋ 新增行程</button>
                   </div>
                   {(() => {
                     const list = privateEvents.filter(e => e.date === agendaDate)
@@ -3110,14 +3117,14 @@ export default function Page() {
                   <p className="text-base font-semibold text-gray-900">📚 教育訓練</p>
                   {isAdmin && (
                     <button onClick={() => setShowTrainingCreate(v => !v)}
-                      className="text-sm bg-indigo-600 text-white rounded-lg px-3 py-1.5 hover:bg-indigo-700">
+                      className="text-sm aurora-grad text-white rounded-lg px-3 py-1.5 hover:brightness-105">
                       {showTrainingCreate ? '取消新增' : '＋ 新增課程'}
                     </button>
                   )}
                 </div>
 
                 {showTrainingCreate && (
-                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-4 space-y-3">
+                  <div className="glass-card p-4 mb-4 space-y-3">
                     <p className="text-sm font-medium text-gray-700">貼上教材內容，AI 會自動拆解成「生活案例 → 橋接案例 → 正式案例」三階段字卡</p>
                     <textarea value={trainingSourceText} onChange={e => setTrainingSourceText(e.target.value)} rows={6}
                       placeholder="貼上 SOP、規範、教材文字..."
@@ -3128,7 +3135,7 @@ export default function Page() {
                     </label>
                     {trainingCreateErr && <p className="text-xs text-red-500">{trainingCreateErr}</p>}
                     <button onClick={createTrainingCourse2} disabled={trainingCreating || !trainingSourceText.trim()}
-                      className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                      className="aurora-grad text-white rounded-lg px-4 py-2 text-sm font-medium hover:brightness-105 disabled:opacity-40">
                       {trainingCreating ? 'AI 生成中…（約需 10-20 秒）' : '生成課程'}
                     </button>
                   </div>
@@ -3137,20 +3144,20 @@ export default function Page() {
                 {trainingLoading ? (
                   <p className="text-sm text-gray-400 text-center py-8">載入中...</p>
                 ) : trainingCourses.length === 0 ? (
-                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-6 text-center">
+                  <div className="glass-card p-6 text-center">
                     <p className="text-sm text-gray-400">目前還沒有課程</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {trainingCourses.map(c => (
-                      <div key={c.id} className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 flex items-center gap-3">
+                      <div key={c.id} className="glass-card p-4 flex items-center gap-3">
                         {trainingEditId === c.id ? (
                           <div className="flex-1 flex gap-2">
                             <input autoFocus value={trainingEditTitle} onChange={e => setTrainingEditTitle(e.target.value)}
                               onKeyDown={e => { if (e.key === 'Enter') saveTrainingTitle(c.id); if (e.key === 'Escape') setTrainingEditId(null) }}
                               className="flex-1 border border-indigo-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500" />
                             <button onClick={() => saveTrainingTitle(c.id)}
-                              className="bg-indigo-600 text-white rounded-lg px-3 py-1.5 text-sm font-medium hover:bg-indigo-700 whitespace-nowrap">儲存</button>
+                              className="aurora-grad text-white rounded-lg px-3 py-1.5 text-sm font-medium hover:brightness-105 whitespace-nowrap">儲存</button>
                             <button onClick={() => setTrainingEditId(null)}
                               className="text-gray-400 hover:text-gray-600 text-sm px-1">取消</button>
                           </div>
@@ -3191,8 +3198,8 @@ export default function Page() {
               <div className="flex items-center justify-between mb-4">
                 <button onClick={() => setTrainingCourseId(null)} className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1">← 返回課程列表</button>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setTrainingLang('zh')} className={`text-sm px-2.5 py-1 rounded-lg ${lang === 'zh' ? 'bg-indigo-600 text-white' : 'border border-gray-200 text-gray-500'}`}>中文</button>
-                  <button onClick={() => setTrainingLang('id')} className={`text-sm px-2.5 py-1 rounded-lg ${lang === 'id' ? 'bg-indigo-600 text-white' : 'border border-gray-200 text-gray-500'}`}>Indonesia</button>
+                  <button onClick={() => setTrainingLang('zh')} className={`text-sm px-2.5 py-1 rounded-lg ${lang === 'zh' ? 'aurora-grad text-white' : 'border border-gray-200 text-gray-500'}`}>中文</button>
+                  <button onClick={() => setTrainingLang('id')} className={`text-sm px-2.5 py-1 rounded-lg ${lang === 'id' ? 'aurora-grad text-white' : 'border border-gray-200 text-gray-500'}`}>Indonesia</button>
                 </div>
               </div>
 
@@ -3237,7 +3244,7 @@ export default function Page() {
                   setTrainingRevealed(r => r + 1); setTrainingGuessInput('')
                 }
                 return (
-                  <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-5">
+                  <div className="glass-card p-5">
                     <p className="text-lg font-semibold text-gray-900 mb-4">{t(stage.title)}</p>
                     <div className="space-y-2.5">
                       {stage.fields.slice(0, trainingRevealed).map((f, i) => {
@@ -3289,7 +3296,7 @@ export default function Page() {
                             placeholder={lang === 'zh' ? '先用自己的話寫寫看（也可以直接看答案）' : 'Tulis dengan kata-katamu sendiri'}
                             className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
                           <button onClick={revealAnswer}
-                            className="bg-indigo-600 text-white rounded-lg px-3 py-2 text-sm font-medium hover:bg-indigo-700 whitespace-nowrap">
+                            className="aurora-grad text-white rounded-lg px-3 py-2 text-sm font-medium hover:brightness-105 whitespace-nowrap">
                             {lang === 'zh' ? '看答案' : 'Lihat'}
                           </button>
                         </div>
@@ -3301,7 +3308,7 @@ export default function Page() {
                         <button onClick={() => {
                           if (trainingStageIdx === stages.length - 1) startTrainingQuiz(stage)
                           setTrainingStageIdx(i => i + 1); setTrainingRevealed(1); setTrainingGuessInput(''); setTrainingAskAnswer('')
-                        }} className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700">
+                        }} className="aurora-grad text-white rounded-lg px-4 py-2 text-sm font-medium hover:brightness-105">
                           {trainingStageIdx === stages.length - 1 ? (lang === 'zh' ? '進入小測驗 →' : 'Mulai kuis →') : (lang === 'zh' ? '進入下一階段 →' : 'Ke tahap berikutnya →')}
                         </button>
                       </div>
@@ -3325,7 +3332,7 @@ export default function Page() {
                   </div>
                 )
               })() : (
-                <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-5">
+                <div className="glass-card p-5">
                   {trainingQuizLoading || !trainingQuiz ? (
                     <p className="text-sm text-gray-400 text-center py-8">{lang === 'zh' ? '出題中...' : 'Membuat soal...'}</p>
                   ) : (
@@ -3343,7 +3350,7 @@ export default function Page() {
                           <input value={trainingHow} onChange={e => setTrainingHow(e.target.value)} placeholder={lang === 'zh' ? '該怎麼辦？' : 'Bagaimana solusinya?'}
                             className="w-full mb-3 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
                           <button onClick={submitTrainingAnswer} disabled={trainingGrading}
-                            className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                            className="aurora-grad text-white rounded-lg px-4 py-2 text-sm font-medium hover:brightness-105 disabled:opacity-40">
                             {trainingGrading ? (lang === 'zh' ? '批改中...' : 'Menilai...') : (lang === 'zh' ? '對答案' : 'Lihat jawaban')}
                           </button>
                         </>
@@ -3400,7 +3407,7 @@ export default function Page() {
 
 function SectionTable({ title, headers, rows }: { title: string; headers: string[]; rows: string[][] }) {
   return (
-    <div className="bg-white border border-gray-200/70 rounded-xl shadow-sm p-4 mb-3 overflow-x-auto">
+    <div className="glass-card p-4 mb-3 overflow-x-auto">
       <p className="text-xs font-medium text-gray-500 mb-3">{title}</p>
       <table className="w-full text-sm border-collapse">
         <thead>
