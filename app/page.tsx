@@ -1508,6 +1508,27 @@ export default function Page() {
     )
   }
 
+  // 導覽項目：電腦版側欄與手機版底部導覽共用（label 給側欄、short 給底部列）
+  const NAV_ITEMS: { v: View; icon: string; label: string; short: string; onClick: () => void }[] = [
+    { v: 'dashboard', icon: '📊', label: '總覽', short: '總覽', onClick: () => { setView('dashboard'); fetchProjects(); fetchDailyTasks() } },
+    { v: 'list', icon: '📋', label: '案件清單', short: '案件', onClick: () => setView('list') },
+    { v: 'daily', icon: '✅', label: '今日工作', short: '今日', onClick: () => { setView('daily'); fetchDailyTasks() } },
+    { v: 'search', icon: '🔍', label: '任務查詢', short: '查詢', onClick: () => { setView('search'); fetchInProgress() } },
+    { v: 'chat', icon: '💬', label: 'AI 助理', short: 'AI', onClick: () => setView('chat') },
+    { v: 'training', icon: '📚', label: '教育訓練', short: '培訓', onClick: () => { setView('training'); fetchTrainingCourses() } },
+    ...(isAdmin ? [{ v: 'private' as View, icon: '🔐', label: '私人行事曆', short: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } }] : []),
+  ]
+
+  // 側欄底部小卡：本週完成率（用真實任務資料計算，非假數字）
+  const wkNow = new Date(Date.now() + 8 * 3600 * 1000)
+  const wkMon = new Date(wkNow); wkMon.setUTCDate(wkNow.getUTCDate() - ((wkNow.getUTCDay() + 6) % 7))
+  const wkStart = wkMon.toISOString().slice(0, 10)
+  const wkSun = new Date(wkMon); wkSun.setUTCDate(wkMon.getUTCDate() + 6)
+  const wkEnd = wkSun.toISOString().slice(0, 10)
+  const wkTasks = dailyAll.filter(t => t.date >= wkStart && t.date <= wkEnd)
+  const wkDone = wkTasks.filter(t => t.status === '完成').length
+  const wkRate = wkTasks.length ? Math.round((wkDone / wkTasks.length) * 100) : 0
+
   return (
     <div className="min-h-screen relative">
       {/* 背景極光光暈層（固定、不擋點擊） */}
@@ -1517,27 +1538,71 @@ export default function Page() {
         <span className="orb orb3" />
         <span className="orb orb4" />
       </div>
-      <header className="sticky top-0 z-20 backdrop-blur-xl border-b px-4 py-2.5 flex items-center gap-3" style={{ background: 'var(--glass-2)', borderColor: 'var(--hairline)' }}>
+      {/* 電腦版：左側固定側欄（手機隱藏，手機改用底部導覽列） */}
+      <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-[246px] z-20 flex-col px-[18px] py-[26px] border-r"
+        style={{ background: 'var(--glass-2)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderColor: 'var(--hairline)' }}>
+        {/* logo */}
+        <div className="flex items-center gap-2.5 px-2 mb-6">
+          <div className="w-9 h-9 rounded-xl aurora-grad text-white flex items-center justify-center text-base font-bold">煌</div>
+          <div className="leading-tight">
+            <p className="text-sm font-extrabold" style={{ color: 'var(--text)' }}>煌盛專案</p>
+            <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>施工進度回報</p>
+          </div>
+        </div>
+        {/* 導覽項 */}
+        <nav className="flex flex-col gap-1">
+          {NAV_ITEMS.map(item => {
+            const on = view === item.v
+            return (
+              <button key={item.v} onClick={item.onClick}
+                className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-left transition-colors ${on ? '' : 'hover:bg-[rgba(120,130,170,0.10)]'}`}
+                style={{ background: on ? 'rgba(110,168,254,0.14)' : undefined, color: on ? '#4a7fd6' : 'var(--text-2)', fontWeight: on ? 700 : 500 }}>
+                <span className="text-base leading-none" style={{ filter: on ? 'none' : 'grayscale(.4) opacity(.7)' }}>{item.icon}</span>
+                {item.label}
+              </button>
+            )
+          })}
+        </nav>
+        {/* 底部：本週完成率 + 帳號列 */}
+        <div className="mt-auto pt-4 space-y-2.5">
+          <div className="rounded-xl p-3" style={{ background: 'rgba(120,130,170,0.08)' }}>
+            <div className="flex items-baseline justify-between mb-1.5">
+              <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>本週完成率</span>
+              <span className="text-sm font-bold mono-num" style={{ color: 'var(--st-done)' }}>{wkRate}%</span>
+            </div>
+            <div className="pg-track">
+              <div className="pg-fill" style={{ width: `${wkRate}%`, background: 'var(--st-done)' }}><span className="shine" /></div>
+            </div>
+            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>{wkDone}/{wkTasks.length} 項工作</p>
+          </div>
+          {isAdmin ? (
+            <button onClick={doLogout}
+              className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-xs transition-colors hover:bg-[rgba(120,130,170,0.10)]"
+              style={{ color: 'var(--text-2)' }}>
+              <span>👷 管理者</span><span style={{ color: 'var(--text-3)' }}>登出</span>
+            </button>
+          ) : (
+            <button onClick={() => { setShowLogin(true); setLoginErr('') }}
+              className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-xs transition-colors hover:bg-[rgba(120,130,170,0.10)]"
+              style={{ color: 'var(--text-2)' }}>
+              <span>🔒 管理者登入</span><span style={{ color: 'var(--text-3)' }}>›</span>
+            </button>
+          )}
+        </div>
+      </aside>
+
+      {/* 手機版：頂部列（電腦版由側欄取代） */}
+      <header className="md:hidden sticky top-0 z-20 backdrop-blur-xl border-b px-4 py-2.5 flex items-center gap-3" style={{ background: 'var(--glass-2)', borderColor: 'var(--hairline)' }}>
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg aurora-grad text-white flex items-center justify-center text-sm font-bold shadow-sm">煌</div>
-          <div className="text-base font-semibold text-gray-900 tracking-tight">專案進度管理</div>
-        </div>
-        {/* 電腦版：頂部分頁列（手機版隱藏，改用底部導覽列） */}
-        <div className="hidden md:flex md:ml-auto gap-1 bg-gray-100/80 rounded-xl p-1">
-          <NavBtn active={view === 'dashboard'} onClick={() => { setView('dashboard'); fetchProjects(); fetchDailyTasks() }}>總覽</NavBtn>
-          <NavBtn active={view === 'list'} onClick={() => setView('list')}>案件清單</NavBtn>
-          <NavBtn active={view === 'daily'} onClick={() => { setView('daily'); fetchDailyTasks() }}>今日工作</NavBtn>
-          <NavBtn active={view === 'search'} onClick={() => { setView('search'); fetchInProgress() }}>任務查詢</NavBtn>
-          <NavBtn active={view === 'chat'} onClick={() => setView('chat')}>AI 助理</NavBtn>
-          <NavBtn active={view === 'training'} onClick={() => { setView('training'); fetchTrainingCourses() }}>📚 教育訓練</NavBtn>
-          {isAdmin && <NavBtn active={view === 'private'} onClick={() => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() }}>🔐 私人行事曆</NavBtn>}
+          <div className="text-base font-semibold tracking-tight" style={{ color: 'var(--text)' }}>專案進度管理</div>
         </div>
         {isAdmin ? (
           <button onClick={doLogout} title="登出管理者"
-            className="ml-auto md:ml-2 text-xs text-gray-400 hover:text-gray-700 border border-gray-200 rounded-lg px-2 py-1.5">登出</button>
+            className="ml-auto text-xs border rounded-lg px-2 py-1.5" style={{ color: 'var(--text-3)', borderColor: 'var(--hairline)' }}>登出</button>
         ) : (
           <button onClick={() => { setShowLogin(true); setLoginErr('') }} title="管理者登入"
-            className="ml-auto md:ml-2 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-2 py-1.5">🔒 登入</button>
+            className="ml-auto text-xs border rounded-lg px-2 py-1.5" style={{ color: 'var(--text-2)', borderColor: 'var(--hairline)' }}>🔒 登入</button>
         )}
       </header>
 
@@ -1628,7 +1693,8 @@ export default function Page() {
         </div>
       )}
 
-      <main className={`relative z-10 mx-auto p-4 pb-24 md:pb-4 animate-fade-in ${view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' || view === 'training' ? 'max-w-3xl' : 'max-w-2xl'}`}>
+      <div className="md:pl-[246px]">
+      <main className={`relative z-10 mx-auto p-4 pb-24 md:px-[34px] md:pt-[26px] md:pb-10 animate-fade-in ${view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' || view === 'training' ? 'max-w-3xl' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
@@ -3379,6 +3445,7 @@ export default function Page() {
           )
         })()}
       </main>
+      </div>
 
       {/* 手機版：底部導覽列（電腦版隱藏）。用圖示＋短標籤，方便單手點選 */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch pb-[env(safe-area-inset-bottom)]"
@@ -3388,22 +3455,14 @@ export default function Page() {
           WebkitBackdropFilter: 'blur(24px)',
           borderTop: '1px solid var(--glass-border)',
         }}>
-        {[
-          { v: 'dashboard', icon: '📊', label: '總覽', onClick: () => { setView('dashboard'); fetchProjects(); fetchDailyTasks() } },
-          { v: 'list', icon: '📋', label: '案件', onClick: () => setView('list') },
-          { v: 'daily', icon: '✅', label: '今日', onClick: () => { setView('daily'); fetchDailyTasks() } },
-          { v: 'search', icon: '🔍', label: '查詢', onClick: () => { setView('search'); fetchInProgress() } },
-          { v: 'chat', icon: '💬', label: 'AI', onClick: () => setView('chat') },
-          { v: 'training', icon: '📚', label: '培訓', onClick: () => { setView('training'); fetchTrainingCourses() } },
-          ...(isAdmin ? [{ v: 'private', icon: '🔐', label: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } }] : []),
-        ].map(item => {
+        {NAV_ITEMS.map(item => {
           const on = view === item.v
           return (
             <button key={item.v} onClick={item.onClick}
               className="flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 transition-all">
               {/* 作用中：icon 原色、label 主色粗體；非作用中：icon 去飽和、label 次要色 */}
               <span className="text-lg leading-none" style={{ filter: on ? 'none' : 'grayscale(.5) opacity(.65)' }}>{item.icon}</span>
-              <span className="text-[10px] leading-none" style={{ color: on ? '#4a7fd6' : 'var(--text-3)', fontWeight: on ? 700 : 500 }}>{item.label}</span>
+              <span className="text-[10px] leading-none" style={{ color: on ? '#4a7fd6' : 'var(--text-3)', fontWeight: on ? 700 : 500 }}>{item.short}</span>
             </button>
           )
         })}
@@ -3435,14 +3494,5 @@ function SectionTable({ title, headers, rows }: { title: string; headers: string
         </tbody>
       </table>
     </div>
-  )
-}
-
-function NavBtn({ children, active, onClick }: { children: React.ReactNode; active: boolean; onClick: () => void }) {
-  return (
-    <button onClick={onClick}
-      className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-all ${active ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}>
-      {children}
-    </button>
   )
 }

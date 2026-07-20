@@ -4,13 +4,13 @@
 
 /* ===== 極光 / 磨砂玻璃 設計 tokens（換主題只改這裡）===== */
 :root {
-  /* 背景壓深、卡片提亮 → 拉開背景與 UI 的對比 */
-  --surface: #e3eaf7;
-  --text: #191b24; --text-2: #4e5265; --text-3: #868b9c;
-  --hairline: rgba(110,125,170,0.24);
-  --glass-bg: rgba(255,255,255,0.82); --glass-2: rgba(255,255,255,0.86);
-  --glass-border: rgba(255,255,255,0.95);
-  --au1: #8aa9ff; --au2: #bd93ff; --au3: #6fe6c2;   /* 三顆極光光暈（加深飽和）*/
+  /* 背景與 UI 的對比：介於原本(太扁)與加強版(太重)之間 */
+  --surface: #edf1fa;
+  --text: #1d1f29; --text-2: #545869; --text-3: #8f94a4;
+  --hairline: rgba(115,128,170,0.18);
+  --glass-bg: rgba(255,255,255,0.72); --glass-2: rgba(255,255,255,0.78);
+  --glass-border: rgba(255,255,255,0.92);
+  --au1: #95b1ff; --au2: #c39dff; --au3: #7ceacb;   /* 三顆極光光暈 */
   --acc1: #6ea8fe; --acc2: #a86efe;                 /* 主色漸層 */
   --accent: #6ea8fe;
 
@@ -51,13 +51,13 @@ body {
   -webkit-backdrop-filter: blur(20px) saturate(1.2);
   border: 1px solid var(--glass-border);
   /* 雙層陰影：貼邊細影 + 擴散深影，讓卡片從彩色背景上「浮起來」*/
-  box-shadow: 0 1px 2px rgba(40,60,120,0.06), 0 18px 40px -22px rgba(45,70,150,0.55);
+  box-shadow: 0 1px 2px rgba(40,60,120,0.04), 0 16px 36px -24px rgba(45,70,150,0.42);
   border-radius: 18px;
   transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
 }
 .glass-card:hover {
-  box-shadow: 0 1px 2px rgba(40,60,120,0.08), 0 26px 52px -22px rgba(45,70,150,0.62);
-  border-color: rgba(120,130,240,0.4);
+  box-shadow: 0 1px 2px rgba(40,60,120,0.06), 0 22px 46px -24px rgba(45,70,150,0.5);
+  border-color: rgba(120,130,240,0.32);
 }
 /* 可點擊的卡片（專案卡 / 列）額外加 .lift 才會浮起 */
 .glass-card.lift { cursor: pointer; }
@@ -65,7 +65,7 @@ body {
 
 /* 背景極光光暈（絕對定位、模糊、緩慢漂浮）*/
 .aurora-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
-.orb { position: absolute; border-radius: 50%; filter: blur(56px); opacity: .68; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(58px); opacity: .5; pointer-events: none; }
 .orb1 { width: 520px; height: 520px; top: -120px; left: -100px; background: radial-gradient(circle, var(--au1), transparent 70%); animation: auroraFloat 17s ease-in-out infinite; }
 .orb2 { width: 460px; height: 460px; top: -80px; right: -120px; background: radial-gradient(circle, var(--au2), transparent 70%); animation: auroraFloat2 19s ease-in-out infinite; }
 .orb3 { width: 420px; height: 420px; bottom: -140px; left: 18%; background: radial-gradient(circle, var(--au3), transparent 70%); animation: auroraFloat 15s ease-in-out infinite; }
@@ -75,7 +75,7 @@ body {
 
 /* 手機：光暈縮小、模糊收斂，避免在小螢幕上糊成一片 */
 @media (max-width: 767px) {
-  .orb  { filter: blur(34px); opacity: .6; }
+  .orb  { filter: blur(32px); opacity: .46; }
   .orb1 { width: 300px; height: 300px; top: -90px; left: -80px; }
   .orb2 { width: 280px; height: 280px; top: -70px; right: -90px; }
   .orb3 { width: 260px; height: 260px; bottom: 90px; left: 8%; }
