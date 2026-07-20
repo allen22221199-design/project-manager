@@ -12,6 +12,12 @@
   --au1: #9db8ff; --au2: #c8a6ff; --au3: #8ff0d0;   /* 三顆極光光暈 */
   --acc1: #6ea8fe; --acc2: #a86efe;                 /* 主色漸層 */
   --accent: #6ea8fe;
+
+  /* 狀態語意色（固定，不隨主題變） */
+  --st-progress: #6ea8fe; --st-progress-bg: rgba(110,168,254,0.14);  /* 進行中 */
+  --st-done:     #4ea87a; --st-done-bg:     rgba(78,168,122,0.14);   /* 已完工 */
+  --st-late:     #cf6b5c; --st-late-bg:     rgba(207,107,92,0.14);   /* 逾期 */
+  --st-wait:     #c99a3f; --st-wait-bg:     rgba(201,154,63,0.14);   /* 待開工 */
 }
 
 html { scroll-behavior: smooth; }
@@ -65,6 +71,16 @@ body {
 @keyframes auroraFloat  { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px,-26px) scale(1.18); } }
 @keyframes auroraFloat2 { 0%,100% { transform: translate(0,0) scale(1.1); } 50% { transform: translate(-34px,22px) scale(.95); } }
 
+/* 手機：光暈縮小、模糊收斂，避免在小螢幕上糊成一片 */
+@media (max-width: 767px) {
+  .orb  { filter: blur(30px); opacity: .34; }
+  .orb1 { width: 300px; height: 300px; top: -90px; left: -80px; }
+  .orb2 { width: 280px; height: 280px; top: -70px; right: -90px; }
+  .orb3 { width: 260px; height: 260px; bottom: 90px; left: 8%; }
+  .orb4 { width: 240px; height: 240px; bottom: -70px; right: -70px; }
+  .glass-card { backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+}
+
 /* 主色漸層背景（按鈕 / logo）— 用 !important 覆蓋原 Tailwind 底色 */
 .aurora-grad { background-image: linear-gradient(135deg, var(--acc1), var(--acc2)) !important; box-shadow: 0 8px 20px -6px rgba(120,110,240,0.55); }
 .aurora-grad:hover { filter: brightness(1.06); }
@@ -72,9 +88,11 @@ body {
 /* 漸層文字 */
 .gradient-text { background: linear-gradient(120deg, var(--acc1), var(--acc2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
-/* 進度條流光 */
+/* 進度條 + 流光（用法：<div class="pg-track"><div class="pg-fill" style="width:62%"><span class="shine"/></div></div>）*/
 @keyframes shimmer { 0% { transform: translateX(-140%); } 100% { transform: translateX(260%); } }
-.shine { position: absolute; inset: 0; animation: shimmer 2.4s infinite; background: linear-gradient(90deg, transparent, rgba(255,255,255,.85), transparent); }
+.pg-track { height: 6px; border-radius: 999px; background: rgba(120,130,170,0.16); overflow: hidden; }
+.pg-fill { height: 100%; position: relative; overflow: hidden; border-radius: 999px; background: linear-gradient(90deg, var(--acc1), var(--acc2)); }
+.shine { position: absolute; inset: 0; animation: shimmer 2.8s infinite; background: linear-gradient(90deg, transparent, rgba(255,255,255,.8), transparent); }
 
 /* 卡片淡入 */
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }

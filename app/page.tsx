@@ -3381,7 +3381,13 @@ export default function Page() {
       </main>
 
       {/* 手機版：底部導覽列（電腦版隱藏）。用圖示＋短標籤，方便單手點選 */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-gray-200 flex items-stretch pb-[env(safe-area-inset-bottom)]">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch pb-[env(safe-area-inset-bottom)]"
+        style={{
+          background: 'var(--glass-2)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          borderTop: '1px solid var(--glass-border)',
+        }}>
         {[
           { v: 'dashboard', icon: '📊', label: '總覽', onClick: () => { setView('dashboard'); fetchProjects(); fetchDailyTasks() } },
           { v: 'list', icon: '📋', label: '案件', onClick: () => setView('list') },
@@ -3394,9 +3400,10 @@ export default function Page() {
           const on = view === item.v
           return (
             <button key={item.v} onClick={item.onClick}
-              className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 ${on ? 'text-indigo-600' : 'text-gray-400'}`}>
-              <span className="text-lg leading-none">{item.icon}</span>
-              <span className={`text-[10px] leading-none ${on ? 'font-semibold' : ''}`}>{item.label}</span>
+              className="flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 transition-all">
+              {/* 作用中：icon 原色、label 主色粗體；非作用中：icon 去飽和、label 次要色 */}
+              <span className="text-lg leading-none" style={{ filter: on ? 'none' : 'grayscale(.5) opacity(.65)' }}>{item.icon}</span>
+              <span className="text-[10px] leading-none" style={{ color: on ? '#4a7fd6' : 'var(--text-3)', fontWeight: on ? 700 : 500 }}>{item.label}</span>
             </button>
           )
         })}
