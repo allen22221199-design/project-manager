@@ -199,15 +199,33 @@ export async function suggestFollowups(question: string, answer: string): Promis
       model: 'gemini-2.5-flash',
       generationConfig: { responseMimeType: 'application/json' },
     })
-    const prompt = `根據以下一問一答，幫使用者想 3 個「他接下來最可能想繼續問」的後續問題。
-規則：繁體中文、口語、每個 16 字以內、具體可直接點；要延伸這個主題、不要重複原本的問題；若答案已說「查不到／不確定」，可給「換個方式問」或相關方向。
-只輸出 JSON 陣列，例如 ["問題一","問題二","問題三"]，不要多餘文字。
+    const noContent = /查不到|找不到|無法確定|沒有.*資料/.test(answer)
+    const prompt = `你是「延伸提問」產生器。使用者剛問了公司 SOP／內部資料的問題並得到答案，請想 3 個他最可能想「深入追問」的問題。
 
-【問】${question}
-【答】${answer.slice(0, 1500)}`
+【最重要】每一題都必須「扣著答案裡實際出現的具體內容」——某個名詞、步驟、數字、參數、材料、機台、注意事項——讓人一看就知道是延伸這個主題、而且答案裡有東西可以繼續問。
+
+【嚴禁】以下這種空泛、跟內容無關的問題一律不要（這是最常見的錯誤）：
+「這是最新版嗎」「相關同仁是誰」「要問誰／找誰」「哪裡可以查到」「怎麼進資料庫」「要聯絡哪個原廠」「還有哪些SOP」這類與實際內容無關的萬用問句。
+
+範例（假設答案在講丈量）：
+✅ 好：「內開門為什麼要用1mm鋁板測試？」「門框內縮1mm是為了什麼？」「現場丈量要帶哪些工具？」
+❌ 壞：「這是最新版嗎？」「丈量要問誰？」「還能在哪裡查？」
+
+規則：
+1. 緊扣答案內容裡的具體字詞來延伸，不可空泛。
+2. ${noContent ? '答案顯示「查不到資料」→ 改成 3 個「換個說法、可能問得到」的同領域具體問法（用相關的具體名詞重問），不要問「要找誰／哪裡查」。' : '不要重複原本的問題。'}
+3. 繁體中文、口語、每個 8～22 字、具體可直接點。
+4. 只輸出 JSON 陣列 ["...","...","..."]，不要多餘文字。
+
+【使用者的問題】${question}
+【得到的答案】${answer.slice(0, 1800)}`
     const res = await model.generateContent(prompt)
     const arr = JSON.parse(res.response.text().replace(/```json|```/g, '').trim())
-    return Array.isArray(arr) ? arr.filter((s: any) => typeof s === 'string' && s.trim()).map((s: string) => s.trim()).slice(0, 3) : []
+    // 後備過濾：即使 AI 沒遵守，也把明顯空泛的萬用問句擋掉
+    const banned = /最新版|相關同仁|要問誰|找誰|哪裡.*查|哪裡.*找|怎麼.*進.*資料|聯絡.*原廠|還有.*哪些.*SOP/
+    return Array.isArray(arr)
+      ? arr.filter((s: any) => typeof s === 'string' && s.trim() && !banned.test(s)).map((s: string) => s.trim()).slice(0, 3)
+      : []
   } catch {
     return []
   }
