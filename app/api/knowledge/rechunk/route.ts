@@ -17,29 +17,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '未授權（請先登入管理者）' }, { status: 401 })
   }
   try {
-    const kb = await getFileKnowledgeBase()
+    // 穩定排序（依 id）讓 offset 游標在多次呼叫間可靠推進
+    const kb = (await getFileKnowledgeBase()).sort((a, b) => (a.id < b.id ? -1 : 1))
+    const offset = Math.max(0, parseInt(req.headers.get('x-offset') || '0', 10) || 0)
     const started = Date.now()
-    const results: { title: string; chunks: number; skipped: boolean }[] = []
-    let remaining = 0
-    for (const item of kb) {
-      // 12 秒後不再開始新項目（單頁重整可能含多次 Notion 刪除/新增）
-      if (Date.now() - started > 12000) { remaining = kb.length - results.length; break }
+    const done: string[] = []
+    let processedThisCall = 0
+    let idx = offset
+    for (; idx < kb.length; idx++) {
+      // 至少處理 1 筆；之後每 12 秒收手，剩下的下一批（用 nextOffset）接續
+      if (idx > offset && Date.now() - started > 12000) break
+      const item = kb[idx]
+      processedThisCall++
       try {
         const r = await rechunkKnowledgePage(item.id)
-        results.push({ title: item.title, chunks: r.chunks, skipped: r.skipped })
-      } catch (e: any) {
-        results.push({ title: item.title, chunks: 0, skipped: true })
-      }
+        if (!r.skipped) done.push(item.title)
+      } catch { /* 個別頁失敗略過，繼續下一頁 */ }
     }
-    // 尚未處理到的（時間預算用完）
-    const processedDone = results.filter(r => !r.skipped).length
+    const nextOffset = idx
     return NextResponse.json({
       ok: true,
-      processed: results.length,
-      chunked: processedDone,
-      remaining,
-      more: remaining > 0,
-      results,
+      total: kb.length,
+      offset,
+      nextOffset,
+      processedThisCall,
+      chunkedThisCall: done.length,
+      chunkedTitles: done,
+      more: nextOffset < kb.length,
     })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
