@@ -216,10 +216,20 @@ export async function suggestFollowups(question: string, answer: string): Promis
 // 文字向量嵌入（語意搜尋用）；一次批次嵌入多筆
 export async function embedTexts(texts: string[]): Promise<number[][]> {
   const model = genAI.getGenerativeModel({ model: 'text-embedding-004' })
-  const res: any = await model.batchEmbedContents({
-    requests: texts.map(t => ({ content: { role: 'user', parts: [{ text: (t || ' ').slice(0, 8000) }] } })),
-  })
-  const out = (res.embeddings || []).map((e: any) => e.values as number[])
+  // Gemini batchEmbedContents 單次上限 100 筆 → 切成多批、並行送出後依序合併，
+  // 避免文件量大時整批失敗、退回粗略的關鍵字比對（知識庫已達數百筆）。
+  const BATCH = 100
+  const groups: string[][] = []
+  for (let i = 0; i < texts.length; i += BATCH) groups.push(texts.slice(i, i + BATCH))
+  const perGroup = await Promise.all(groups.map(async group => {
+    const res: any = await model.batchEmbedContents({
+      requests: group.map(t => ({ content: { role: 'user', parts: [{ text: (t || ' ').slice(0, 8000) }] } })),
+    })
+    const vecs = (res.embeddings || []).map((e: any) => e.values as number[])
+    if (vecs.length !== group.length) throw new Error('embedding 數量不符')
+    return vecs
+  }))
+  const out = perGroup.flat()
   if (out.length !== texts.length) throw new Error('embedding 數量不符')
   return out
 }
