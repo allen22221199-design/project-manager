@@ -107,16 +107,19 @@ export async function rankChunks(
 // minScore: 最低相似度門檻，低於此分數視為不相關不回傳
 export async function rankKnowledge(query: string, items: KbItem[], k = 5, minScore = 0.55): Promise<RankedItem[]> {
   if (items.length === 0) return []
+  // 語料很大時，先用關鍵字(bigram)粗篩到 ~110 篇候選，再做語意排序 →
+  // 只嵌入候選而非全部數百篇，大幅降低延遲，且相關文件通常都有詞彙重疊不會被漏掉。
+  const pool: KbItem[] = items.length > 130 ? keywordRank(query, items, 110) : items
   try {
-    const docs = items.map(it => `${it.title} ${it.tags.join(' ')} ${it.summary || it.text}`.slice(0, 4000))
+    const docs = pool.map(it => `${it.title} ${it.tags.join(' ')} ${it.summary || it.text}`.slice(0, 4000))
     const vectors = await embedTexts([query, ...docs])
     const qv = vectors[0]
-    return items
+    return pool
       .map((it, i) => ({ ...it, score: cosine(qv, vectors[i + 1]) }))
       .filter(s => s.score >= minScore)   // 低於門檻的直接排除
       .sort((a, b) => b.score - a.score)
       .slice(0, k)
   } catch {
-    return keywordRank(query, items, k)
+    return keywordRank(query, pool, k)
   }
 }
