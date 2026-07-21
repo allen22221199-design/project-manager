@@ -498,7 +498,20 @@ export default function Page() {
   // 報告頁品項分頁：批次品項列表（辨識/手動，最後一次寫入）
   const [itemList, setItemList] = useState<any[]>([])
 
-  useEffect(() => { fetchProjects(); fetchDailyTasks() }, [])
+  useEffect(() => {
+    fetchProjects(); fetchDailyTasks()
+    // 支援用網址參數 ?v=<view> 直接開啟指定頁面（截圖／分享用）
+    try {
+      const v = new URLSearchParams(window.location.search).get('v') as View | null
+      const valid: View[] = ['dashboard', 'list', 'daily', 'search', 'chat', 'training', 'private']
+      if (v && valid.includes(v)) {
+        setView(v)
+        if (v === 'search') fetchInProgress()
+        else if (v === 'training') fetchTrainingCourses()
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   useEffect(() => {
     if (!colorPickerOpenId) return
     const handler = () => setColorPickerOpenId(null)
