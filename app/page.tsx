@@ -523,8 +523,9 @@ export default function Page() {
         if (v === 'search') fetchInProgress()
         else if (v === 'training') fetchTrainingCourses()
       }
-      // ?tour=1 直接開啟新手教學（分享／截圖用）
-      if (new URLSearchParams(window.location.search).has('tour')) setTourStep(0)
+      // ?tour 直接開啟新手教學（?tour=2 可從第 3 步開始，分享／截圖用）
+      const tourParam = new URLSearchParams(window.location.search).get('tour')
+      if (tourParam !== null) setTourStep(Math.max(0, Math.min(parseInt(tourParam) || 0, TOUR_STEPS.length - 1)))
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
