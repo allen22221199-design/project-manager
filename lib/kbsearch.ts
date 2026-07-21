@@ -65,23 +65,30 @@ export async function rankChunks(
     parts.forEach((text, i) => all.push({ docId: d.docId, title: d.title, tags: d.tags, idx: i + 1, total: parts.length, text }))
   }
   if (all.length === 0) return []
+  // 多樣化挑選：先給「每份相關文件」各挑最高分的 1 段（確保所有相關 SOP 都被涵蓋、能通盤彙整），
+  // 再用剩餘名額補上全域最高分的段落。避免前 k 段全被 1～2 份文件佔滿、漏掉其他相關 SOP。
+  const pickDiverse = <T extends { c: Chunk }>(scored: T[]): Chunk[] => {
+    const best = new Map<string, T>()
+    for (const s of scored) if (!best.has(s.c.docId)) best.set(s.c.docId, s)  // scored 已排序 → 每 doc 首個即最高分
+    const diverse = Array.from(best.values())
+    const rest = scored.filter(s => best.get(s.c.docId) !== s)
+    return [...diverse, ...rest].slice(0, k).map(s => s.c)
+  }
   try {
     const vectors = await embedTexts([query, ...all.map(c => `${c.title} ${c.text}`.slice(0, 4000))])
     const qv = vectors[0]
-    return all
+    const scored = all
       .map((c, i) => ({ c, score: cosine(qv, vectors[i + 1]) }))
       .filter(s => s.score >= minScore)
       .sort((a, b) => b.score - a.score)
-      .slice(0, k)
-      .map(s => s.c)
+    return pickDiverse(scored)
   } catch {
     // 後備：關鍵字挑段落
     const terms = Array.from(new Set((query.match(/[一-龥]{2,}|[a-zA-Z0-9]{2,}/g) || [])))
-    return all
+    const scored = all
       .map(c => ({ c, s: terms.filter(t => c.text.includes(t)).length }))
       .sort((a, b) => b.s - a.s)
-      .slice(0, k)
-      .map(s => s.c)
+    return pickDiverse(scored)
   }
 }
 

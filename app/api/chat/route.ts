@@ -114,7 +114,8 @@ export async function POST(req: NextRequest) {
         }
         return { docId: d.id, title: d.title, tags: d.tags, fullText: stripMarkers(fullText) }
       }))
-      const chunks = await rankChunks(retrievalQuery, withFull, 12, 0.45)
+      // 每份相關 SOP 至少貢獻最相關的一段（多樣化），再補全域最高分，讓 AI 能通盤彙整
+      const chunks = await rankChunks(retrievalQuery, withFull, 16, 0.45)
 
       if (chunks.length > 0) {
         // 依文件分組、段落依序排列，讓相鄰段落接在一起（AI 才能判斷是完整內容）
