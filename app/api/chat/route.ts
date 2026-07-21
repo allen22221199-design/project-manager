@@ -105,14 +105,18 @@ export async function POST(req: NextRequest) {
         .replace(/【AI 萃取內容】/g, '')
         .replace(/〔第\s*\d+\s*\/\s*\d+\s*段〕/g, '')
         .trim()
-      const withFull = await Promise.all(candDocs.map(async d => {
-        let fullText = ''
-        try { fullText = await readPagePlainText(d.id) } catch {}
-        // 頁面內文抓不到（或很短）就退回摘要，確保仍有內容可用
-        if (stripMarkers(fullText).length < (d.summary || d.text || '').length) {
-          fullText = (d.text || d.summary || fullText)
+      const withFull = await Promise.all(candDocs.map(async (d, idx) => {
+        const stored = stripMarkers(d.text || d.summary || '')
+        // 短文件：儲存的摘要通常就等於全文 → 直接用，不再讀 Notion（大幅省時、避免逾時）。
+        // 只有「儲存內容接近上限(疑似被截斷的長文)」且排名前段(前6)時，才即時讀完整內文補齊。
+        let fullText = stored
+        if (stored.length >= 1800 && idx < 6) {
+          try {
+            const body = stripMarkers(await readPagePlainText(d.id))
+            if (body.length > stored.length) fullText = body
+          } catch { /* 讀取失敗就用儲存摘要 */ }
         }
-        return { docId: d.id, title: d.title, tags: d.tags, fullText: stripMarkers(fullText) }
+        return { docId: d.id, title: d.title, tags: d.tags, fullText }
       }))
       // 每份相關 SOP 至少貢獻最相關的一段（多樣化），再補全域最高分，讓 AI 能通盤彙整
       const chunks = await rankChunks(retrievalQuery, withFull, 16, 0.45)

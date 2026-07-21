@@ -666,10 +666,14 @@ const KNOWLEDGE_DB_ID = '457fee4d9e8345618e4507cc2c363b74'
 // 因為很多 SOP 內容都藏在表格/欄位裡，只讀頂層會抓不到（導致 AI「找不到內容」）。
 export async function readPagePlainText(pageId: string): Promise<string> {
   const out: string[] = []
+  let calls = 0
+  const MAX_CALLS = 40  // 每頁最多 40 次 children.list，避免超深頁面拖垮延遲
   async function walk(blockId: string, depth: number) {
-    if (depth > 4) return  // 限制深度，避免過深或循環
+    if (depth > 4 || calls >= MAX_CALLS) return  // 限制深度與呼叫次數，避免過深/循環/逾時
     let cursor: string | undefined = undefined
     do {
+      if (calls >= MAX_CALLS) return
+      calls++
       const res: any = await notion.blocks.children.list({ block_id: blockId, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) })
       for (const b of res.results as any[]) {
         if (b.type === 'child_page' || b.type === 'child_database') continue  // 子頁各自獨立，不展開
