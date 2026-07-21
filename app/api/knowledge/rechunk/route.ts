@@ -4,17 +4,12 @@ import { getFileKnowledgeBase, rechunkKnowledgePage } from '@/lib/notion'
 
 export const maxDuration = 60
 
-// 一次性稽核/維護 token（跑完會移除此 bypass）
-const MAINT_KEY = 'audit-once-4b1e7d09af'
-
 // 把「檔案庫」（已處理）項目的內文，重新整理成 Notion 內的「切塊」區塊。
 // 具冪等性 + 分批：每次只處理一小段（時間預算內），連續呼叫直到 more=false。
 // 注意：只針對檔案庫，不動 SOP知識庫（其內含表格排版，切塊會破壞）。
 // 回報依原因分類，方便稽核「有沒有缺漏沒切塊」。
 export async function POST(req: NextRequest) {
-  const authed = verifySession(req.cookies.get(SESSION_COOKIE)?.value)
-  const maint = req.headers.get('x-maint-key') === MAINT_KEY
-  if (!authed && !maint) {
+  if (!verifySession(req.cookies.get(SESSION_COOKIE)?.value)) {
     return NextResponse.json({ error: '未授權（請先登入管理者）' }, { status: 401 })
   }
   try {
