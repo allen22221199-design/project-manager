@@ -1252,11 +1252,27 @@ export default function Page() {
           break
         }
       }
-      if (totalProcessed === 0) {
-        setKbMsg('沒有待處理的項目（檔案庫都是最新的）')
+      // 接著同步 SOP知識庫：讀內文、產生「檢索摘要」讓搜尋更準（也是分批）
+      let sopDone = 0
+      for (let round = 0; round < 100; round++) {
+        setKbMsg(`檔案庫完成，正在同步 SOP知識庫...（已處理 ${sopDone} 筆）`)
+        const r = await fetch('/api/knowledge/sync-sop', { method: 'POST' })
+        const raw = await r.text()
+        let data: any
+        try { data = JSON.parse(raw) } catch {
+          setKbMsg(`檔案庫 ${totalOk} 筆已完成；SOP 同步中斷，請再按一次「同步」接續`); setKbOk(false); return
+        }
+        if (!r.ok) { setKbMsg('SOP 同步錯誤：' + (data.error ?? '失敗')); setKbOk(false); return }
+        sopDone += data.processed
+        if (!data.more) break
+      }
+
+      if (totalProcessed === 0 && sopDone === 0) {
+        setKbMsg('沒有待處理的項目（檔案庫與 SOP知識庫都是最新的）')
         setKbOk(true)
       } else {
-        setKbMsg(`完成：成功 ${totalOk} 筆${allFails.length ? `；失敗 ${allFails.length} 筆：${allFails.map((x: any) => `${x.title}(${x.error})`).join('、')}` : ' ✓'}`)
+        const sopMsg = sopDone > 0 ? `；SOP知識庫 產生 ${sopDone} 筆檢索摘要` : ''
+        setKbMsg(`完成：檔案庫成功 ${totalOk} 筆${allFails.length ? `；失敗 ${allFails.length} 筆：${allFails.map((x: any) => `${x.title}(${x.error})`).join('、')}` : ''}${sopMsg} ✓`)
         setKbOk(allFails.length === 0)
       }
     } catch (e: any) {
@@ -2652,7 +2668,7 @@ export default function Page() {
                 <button
                   onClick={syncKnowledge}
                   disabled={kbSyncing}
-                  title="同步檔案庫"
+                  title="同步檔案庫 + SOP知識庫（產生檢索摘要）"
                   className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 whitespace-nowrap">
                   {kbSyncing ? '…' : '📚 同步'}
                 </button>

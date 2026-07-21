@@ -709,11 +709,17 @@ export async function getKnowledgeQueue() {
     })
 }
 
-// 另一個知識來源：SOP知識庫（獨立資料庫；正文在頁面內文、沒有摘要屬性）
+// 另一個知識來源：SOP知識庫（獨立資料庫；正文在頁面內文）
 const SOP_KNOWLEDGE_DB_ID = '91c0def97560427194be54b76198378c'
+const SOP_SUMMARY_PROP = '檢索摘要'  // 同步時把內文摘要寫進這個欄位，供 stage-1 語意排序
 
-// 讀 SOP知識庫：沒有摘要欄，先用「檔名／分類／子路徑／原始檔名」當 stage-1 排序依據，
-// 真正的內文在 stage-2 由 readPagePlainText 讀頁面內文（與檔案庫共用同一套檢索）。
+const sopRt = (p: any, name: string) => (p.properties[name]?.rich_text ?? []).map((r: any) => r.plain_text).join('')
+function sopMetaSummary(p: any, title: string): string {
+  const main = p.properties['主分類']?.select?.name ?? ''
+  return [title, main, sopRt(p, '分類'), sopRt(p, '子路徑'), sopRt(p, '原始檔名')].filter(Boolean).join(' ')
+}
+
+// 讀 SOP知識庫：stage-1 排序優先用「檢索摘要」（真實內文摘要）；還沒同步的退回檔名/分類等中繼資料。
 export async function getSopKnowledge() {
   const results: any[] = []
   let cursor: string | undefined = undefined
@@ -722,19 +728,34 @@ export async function getSopKnowledge() {
     results.push(...res.results)
     cursor = res.has_more ? res.next_cursor : undefined
   } while (cursor)
-  const rt = (p: any, name: string) => (p.properties[name]?.rich_text ?? []).map((r: any) => r.plain_text).join('')
   return results
     .filter((p: any) => !p.archived && !p.in_trash)
     .map((p: any) => {
       const title = p.properties['文件名稱']?.title?.[0]?.plain_text ?? '(未命名)'
       const main = p.properties['主分類']?.select?.name ?? ''
-      const sub = rt(p, '分類')
-      const path = rt(p, '子路徑')
-      const orig = rt(p, '原始檔名')
-      const tags = [main, sub].filter(Boolean)
-      const summary = [title, main, sub, path, orig].filter(Boolean).join(' ')
-      return { id: p.id, title, tags, summary, text: '', externalUrl: '', attachments: [] as { name: string; url: string }[] }
+      const idxSummary = sopRt(p, SOP_SUMMARY_PROP).trim()
+      const meta = sopMetaSummary(p, title)
+      // 有檢索摘要 → 用「摘要 + 中繼資料」排序（內容為主）；沒有 → 只能用中繼資料
+      const summary = idxSummary ? `${idxSummary}\n${meta}` : meta
+      return { id: p.id, title, tags: [main, sopRt(p, '分類')].filter(Boolean), summary, text: idxSummary, externalUrl: '', attachments: [] as { name: string; url: string }[] }
     })
+}
+
+// 同步用：取出「檢索摘要」還是空的 SOP 頁面（尚未產生摘要）
+export async function getSopPagesNeedingSummary(): Promise<{ id: string; title: string }[]> {
+  const res: any = await notion.databases.query({
+    database_id: SOP_KNOWLEDGE_DB_ID,
+    filter: { property: SOP_SUMMARY_PROP, rich_text: { is_empty: true } },
+    page_size: 100,
+  })
+  return (res.results as any[])
+    .filter(p => !p.archived && !p.in_trash)
+    .map(p => ({ id: p.id, title: p.properties['文件名稱']?.title?.[0]?.plain_text ?? '(未命名)' }))
+}
+
+// 同步用：把某頁 SOP 內文摘要寫入「檢索摘要」欄位（rich_text 上限 2000，取內文前段代表全文主題）
+export async function saveSopSummary(pageId: string, summary: string) {
+  await notion.pages.update({ page_id: pageId, properties: { [SOP_SUMMARY_PROP]: { rich_text: toRichText(summary.slice(0, 1900)) } } })
 }
 
 // 只取「檔案庫」已處理項目（切塊只針對這個庫；SOP知識庫有表格排版，不切塊）
