@@ -10,9 +10,20 @@ function cosine(a: number[], b: number[]): number {
   return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1)
 }
 
+// 取關鍵字：英數詞照舊；中文因為沒空格，改取「2 字滑動窗（bigram）」，
+// 否則整串中文會被當成一個詞，比對不到任何文件（導致後備檢索永遠找不到）。
+export function extractTerms(query: string): string[] {
+  const terms = new Set<string>()
+  for (const m of query.match(/[a-zA-Z0-9]{2,}/g) || []) terms.add(m.toLowerCase())
+  for (const run of query.match(/[一-龥]{2,}/g) || []) {
+    for (let i = 0; i < run.length - 1; i++) terms.add(run.slice(i, i + 2))
+  }
+  return Array.from(terms)
+}
+
 // 關鍵字檢索（語意失敗時的後備）
 function keywordRank(query: string, items: KbItem[], k: number): RankedItem[] {
-  const terms = Array.from(new Set((query.match(/[一-龥]{2,}|[a-zA-Z0-9]{2,}/g) || [])))
+  const terms = extractTerms(query)
   if (terms.length === 0) return items.slice(0, k).map(it => ({ ...it, score: 0 }))
   const scored = items.map(it => {
     const hay = `${it.title} ${it.tags.join(' ')} ${it.summary} ${it.text}`
@@ -83,8 +94,8 @@ export async function rankChunks(
       .sort((a, b) => b.score - a.score)
     return pickDiverse(scored)
   } catch {
-    // 後備：關鍵字挑段落
-    const terms = Array.from(new Set((query.match(/[一-龥]{2,}|[a-zA-Z0-9]{2,}/g) || [])))
+    // 後備：關鍵字挑段落（中文用 bigram，否則比對不到）
+    const terms = extractTerms(query)
     const scored = all
       .map(c => ({ c, s: terms.filter(t => c.text.includes(t)).length }))
       .sort((a, b) => b.s - a.s)

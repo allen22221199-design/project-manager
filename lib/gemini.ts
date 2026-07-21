@@ -239,14 +239,14 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   const BATCH = 100
   const groups: string[][] = []
   for (let i = 0; i < texts.length; i += BATCH) groups.push(texts.slice(i, i + BATCH))
-  const perGroup = await Promise.all(groups.map(async group => {
+  const perGroup = await Promise.all(groups.map(group => withRetry(async () => {
     const res: any = await model.batchEmbedContents({
       requests: group.map(t => ({ content: { role: 'user', parts: [{ text: (t || ' ').slice(0, 8000) }] } })),
     })
     const vecs = (res.embeddings || []).map((e: any) => e.values as number[])
     if (vecs.length !== group.length) throw new Error('embedding 數量不符')
     return vecs
-  }))
+  })))
   const out = perGroup.flat()
   if (out.length !== texts.length) throw new Error('embedding 數量不符')
   return out
