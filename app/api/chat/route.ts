@@ -53,6 +53,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '沒有訊息' }, { status: 400 })
     }
     const lastUser = [...messages].reverse().find((m: any) => m.role === 'user')?.content ?? ''
+    // 檢索用查詢：合併最近 3 則使用者訊息，讓「給我內容」「詳細說」這類追問也能帶到前文主題
+    const recentUserMsgs: string[] = messages.filter((m: any) => m.role === 'user').map((m: any) => String(m.content ?? ''))
+    const retrievalQuery = recentUserMsgs.slice(-3).join('\n').trim() || lastUser
 
     // ① 先判斷這句是「要記進度」還是「要問問題」。是進度就回傳草稿讓前端確認，不直接寫入。
     const projList: { id: string; name: string }[] = Array.isArray(projects)
@@ -94,7 +97,7 @@ export async function POST(req: NextRequest) {
       // ── 兩階段 RAG 檢索 ──────────────────────────────────────
       // 階段①：先用「摘要」語意排序，挑出最相關的候選文件（便宜、避免每篇都讀全文）
       // 知識庫已達數百筆、同類 SOP 很多，候選數放寬到 12 以免正確文件被擠出前段
-      const candDocs = await rankKnowledge(lastUser, kb, 12, 0.45)
+      const candDocs = await rankKnowledge(retrievalQuery, kb, 12, 0.45)
       // 階段②：只對候選文件抓「完整內文」，切成有重疊、彼此銜接的段落，再用語意挑最相關的段落
       // 去掉 Notion 內文裡的切塊標記（標題、〔第 i/n 段〕），避免污染送進 AI 的內容
       const stripMarkers = (s: string) => s
@@ -111,7 +114,7 @@ export async function POST(req: NextRequest) {
         }
         return { docId: d.id, title: d.title, tags: d.tags, fullText: stripMarkers(fullText) }
       }))
-      const chunks = await rankChunks(lastUser, withFull, 12, 0.45)
+      const chunks = await rankChunks(retrievalQuery, withFull, 12, 0.45)
 
       if (chunks.length > 0) {
         // 依文件分組、段落依序排列，讓相鄰段落接在一起（AI 才能判斷是完整內容）
@@ -129,7 +132,7 @@ export async function POST(req: NextRequest) {
         }).join('\n\n---\n\n')
       } else {
         // 後備：沿用舊的「摘要」組裝（切塊沒抓到內容時）
-        const boosted = boostByFilename(lastUser, candDocs)
+        const boosted = boostByFilename(retrievalQuery, candDocs)
         knowledge = boosted
           .map((it, idx) => {
             const limit = TEXT_LIMITS[idx] ?? 800

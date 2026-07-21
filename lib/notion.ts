@@ -662,18 +662,31 @@ export async function addDailyTask(person: string, task: string, dateStr: string
 // ===== 知識庫（使用 Notion「檔案庫」資料庫）=====
 const KNOWLEDGE_DB_ID = '457fee4d9e8345618e4507cc2c363b74'
 
-// 讀取一個頁面內文的純文字（抓常見 block 的 rich_text）
+// 讀取一個頁面內文的純文字：遞迴讀取巢狀區塊（表格、欄位、折疊、縮排清單…），
+// 因為很多 SOP 內容都藏在表格/欄位裡，只讀頂層會抓不到（導致 AI「找不到內容」）。
 export async function readPagePlainText(pageId: string): Promise<string> {
   const out: string[] = []
-  let cursor: string | undefined = undefined
-  do {
-    const res: any = await notion.blocks.children.list({ block_id: pageId, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) })
-    for (const b of res.results as any[]) {
-      const rt = b[b.type]?.rich_text
-      if (Array.isArray(rt)) out.push(rt.map((r: any) => r.plain_text).join(''))
-    }
-    cursor = res.has_more ? res.next_cursor : undefined
-  } while (cursor)
+  async function walk(blockId: string, depth: number) {
+    if (depth > 4) return  // 限制深度，避免過深或循環
+    let cursor: string | undefined = undefined
+    do {
+      const res: any = await notion.blocks.children.list({ block_id: blockId, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) })
+      for (const b of res.results as any[]) {
+        if (b.type === 'child_page' || b.type === 'child_database') continue  // 子頁各自獨立，不展開
+        const rt = b[b.type]?.rich_text
+        if (Array.isArray(rt) && rt.length) out.push(rt.map((r: any) => r.plain_text).join(''))
+        // 表格列：內容在 cells（陣列的陣列），不在 rich_text
+        if (b.type === 'table_row') {
+          const line = (b.table_row?.cells ?? [])
+            .map((cell: any[]) => (cell ?? []).map((r: any) => r.plain_text).join('')).filter(Boolean).join(' | ')
+          if (line) out.push(line)
+        }
+        if (b.has_children && b.type !== 'table_row') await walk(b.id, depth + 1)  // 巢狀 → 遞迴
+      }
+      cursor = res.has_more ? res.next_cursor : undefined
+    } while (cursor)
+  }
+  await walk(pageId, 0)
   return out.filter(Boolean).join('\n')
 }
 
@@ -741,15 +754,25 @@ export async function getSopKnowledge() {
     })
 }
 
-// 同步用：取出「檢索摘要」還是空的 SOP 頁面（尚未產生摘要）
+// 同步用：取出「還需要產生檢索摘要」的 SOP 頁面。
+// 條件：摘要為空，或「摘要很短但字數不小」（代表之前抓不到藏在表格/欄位裡的內文，要重抓）。
 export async function getSopPagesNeedingSummary(): Promise<{ id: string; title: string }[]> {
-  const res: any = await notion.databases.query({
-    database_id: SOP_KNOWLEDGE_DB_ID,
-    filter: { property: SOP_SUMMARY_PROP, rich_text: { is_empty: true } },
-    page_size: 100,
-  })
-  return (res.results as any[])
+  const results: any[] = []
+  let cursor: string | undefined = undefined
+  do {
+    const res: any = await notion.databases.query({ database_id: SOP_KNOWLEDGE_DB_ID, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) })
+    results.push(...res.results)
+    cursor = res.has_more ? res.next_cursor : undefined
+  } while (cursor)
+  return results
     .filter(p => !p.archived && !p.in_trash)
+    .filter(p => {
+      const sum = sopRt(p, SOP_SUMMARY_PROP).trim()
+      const words = p.properties['字數']?.number ?? 0
+      if (!sum) return true                       // 還沒摘要
+      if (sum.length < 40 && words >= 30) return true  // 摘要疑似只有標題、但實際有內容 → 重抓
+      return false
+    })
     .map(p => ({ id: p.id, title: p.properties['文件名稱']?.title?.[0]?.plain_text ?? '(未命名)' }))
 }
 

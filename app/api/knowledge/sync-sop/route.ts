@@ -14,9 +14,10 @@ export async function POST() {
       if (results.length > 0 && Date.now() - started > 12000) break  // 12 秒後收手，剩下的下一批
       try {
         const text = (await readPagePlainText(item.id)).trim()
-        // 空白頁也寫一個標記，避免每次同步都重讀（用「（無內文）」佔位）
-        await saveSopSummary(item.id, text || '（此頁無內文）')
-        results.push({ title: item.title, ok: !!text })
+        // 抓不到可讀內文時，寫一個「夠長」的標記（>40字），避免被判定成「摘要過短」而無限重抓
+        const summary = text.length >= 20 ? text : '（此頁沒有可擷取的文字內容，可能是純圖片、掃描檔或影片檔；本次同步已處理，不需再重試）'
+        await saveSopSummary(item.id, summary)
+        results.push({ title: item.title, ok: text.length >= 20 })
       } catch {
         results.push({ title: item.title, ok: false })
       }
