@@ -96,8 +96,9 @@ export async function POST(req: NextRequest) {
 
       // ── 兩階段 RAG 檢索 ──────────────────────────────────────
       // 階段①：先用「摘要」語意排序，挑出最相關的候選文件（便宜、避免每篇都讀全文）
-      // 知識庫已達數百筆、同類 SOP 很多，候選數放寬到 12 以免正確文件被擠出前段
-      const candDocs = await rankKnowledge(retrievalQuery, kb, 12, 0.45)
+      // 知識庫已達數百筆、同類 SOP 很多，候選數放寬到 14；門檻放低(0.3)靠「排名」取前段，
+      // 避免換個問法、相似度略低就整批被濾掉而「找不到」（提高檢索敏感度）
+      const candDocs = await rankKnowledge(retrievalQuery, kb, 14, 0.3)
       // 階段②：只對候選文件抓「完整內文」，切成有重疊、彼此銜接的段落，再用語意挑最相關的段落
       // 去掉 Notion 內文裡的切塊標記（標題、〔第 i/n 段〕），避免污染送進 AI 的內容
       const stripMarkers = (s: string) => s
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
         // 短文件：儲存的摘要通常就等於全文 → 直接用，不再讀 Notion（大幅省時、避免逾時）。
         // 只有「儲存內容接近上限(疑似被截斷的長文)」且排名前段(前6)時，才即時讀完整內文補齊。
         let fullText = stored
-        if (stored.length >= 1800 && idx < 6) {
+        if (stored.length >= 1800 && idx < 4) {
           try {
             const body = stripMarkers(await readPagePlainText(d.id))
             if (body.length > stored.length) fullText = body
@@ -119,7 +120,7 @@ export async function POST(req: NextRequest) {
         return { docId: d.id, title: d.title, tags: d.tags, fullText }
       }))
       // 每份相關 SOP 至少貢獻最相關的一段（多樣化），再補全域最高分，讓 AI 能通盤彙整
-      const chunks = await rankChunks(retrievalQuery, withFull, 16, 0.45)
+      const chunks = await rankChunks(retrievalQuery, withFull, 16, 0.3)
 
       if (chunks.length > 0) {
         // 依文件分組、段落依序排列，讓相鄰段落接在一起（AI 才能判斷是完整內容）
