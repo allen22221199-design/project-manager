@@ -1,5 +1,18 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
+import Tour, { type TourStep } from './tour'
+
+// 新手教學引導步驟（後台登入不列入）
+const TOUR_STEPS: TourStep[] = [
+  { title: '歡迎使用煌盛專案 App 👋', body: '第一次用嗎？我帶你花 1 分鐘認識每個功能。點「下一步」開始，隨時可按右上角「跳過」。' },
+  { view: 'dashboard', target: '[data-tour="nav-dashboard"]', title: '📊 總覽', body: '一進來的主畫面：流程排程表（看每個案子排在哪天、哪個工序）、今日待辦、逾期任務、本週完成率一次看清楚。' },
+  { view: 'list', target: '[data-tour="nav-list"]', title: '📋 案件清單', body: '所有專案都在這。可以依狀態（報價中／打樣中／施工中…）篩選、搜尋，或新增專案；點進去看每個案子的細節。' },
+  { view: 'daily', target: '[data-tour="nav-daily"]', title: '✅ 今日工作', body: '看每位同事今天要做什麼、直接勾選完成。還能把會議逐字稿貼上來，AI 自動幫你整理、分配任務。' },
+  { view: 'search', target: '[data-tour="nav-search"]', title: '🔍 任務查詢', body: '用關鍵字或點人名，快速查任務、看每個人手上的工作量。' },
+  { view: 'chat', target: '[data-tour="nav-chat"]', title: '💬 AI 助理', body: '不會的直接問它！查公司 SOP、機具參數、排除困難，都幫你從公司資料找答案；也能講一句話就幫你記錄專案進度。' },
+  { view: 'training', target: '[data-tour="nav-training"]', title: '📚 教育訓練', body: '新人互動式學習區：一步步的字卡＋小測驗，邊做邊懂，AI 還會給回饋。' },
+  { title: '這樣就會用囉！🎉', body: '之後想再看一次，隨時點左下角的「🎓 新手教學」。開始操作看看吧！' },
+]
 
 const STATUS_COLORS: Record<string, string> = {
   '生產中': 'bg-yellow-100 text-yellow-800',
@@ -121,6 +134,7 @@ async function readJson(r: Response): Promise<any> {
 
 export default function Page() {
   const [view, setView] = useState<View>('dashboard')
+  const [tourStep, setTourStep] = useState<number>(-1)  // -1 = 未開啟教學
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Project | null>(null)
@@ -509,9 +523,23 @@ export default function Page() {
         if (v === 'search') fetchInProgress()
         else if (v === 'training') fetchTrainingCourses()
       }
+      // ?tour=1 直接開啟新手教學（分享／截圖用）
+      if (new URLSearchParams(window.location.search).has('tour')) setTourStep(0)
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // 教學進行中：跟著步驟切換到對應頁面，讓引導的功能在背景顯示
+  useEffect(() => {
+    if (tourStep < 0) return
+    const s = TOUR_STEPS[tourStep]
+    if (s?.view && s.view !== view) {
+      setView(s.view as View)
+      if (s.view === 'search') fetchInProgress()
+      else if (s.view === 'training') fetchTrainingCourses()
+      else if (s.view === 'daily') fetchDailyTasks()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tourStep])
   useEffect(() => {
     if (!colorPickerOpenId) return
     const handler = () => setColorPickerOpenId(null)
@@ -1583,7 +1611,7 @@ export default function Page() {
           {NAV_ITEMS.map(item => {
             const on = view === item.v
             return (
-              <button key={item.v} onClick={item.onClick}
+              <button key={item.v} onClick={item.onClick} data-tour={`nav-${item.v}`}
                 className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-left transition-colors ${on ? '' : 'hover:bg-[rgba(120,130,170,0.10)]'}`}
                 style={{ background: on ? 'rgba(110,168,254,0.14)' : undefined, color: on ? '#4a7fd6' : 'var(--text-2)', fontWeight: on ? 700 : 500 }}>
                 <span className="text-base leading-none" style={{ filter: on ? 'none' : 'grayscale(.4) opacity(.7)' }}>{item.icon}</span>
@@ -1604,6 +1632,12 @@ export default function Page() {
             </div>
             <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>{wkDone}/{wkTasks.length} 項工作</p>
           </div>
+          {/* 新手教學：一步步引導認識每個功能 */}
+          <button onClick={() => setTourStep(0)}
+            className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-colors hover:bg-[rgba(110,168,254,0.12)]"
+            style={{ color: '#4a7fd6', background: 'rgba(110,168,254,0.10)' }}>
+            <span>🎓</span><span>新手教學</span><span className="ml-auto" style={{ color: 'var(--text-3)' }}>引導導覽 ›</span>
+          </button>
           {isAdmin ? (
             <button onClick={doLogout}
               className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-xs transition-colors hover:bg-[rgba(120,130,170,0.10)]"
@@ -1626,12 +1660,14 @@ export default function Page() {
           <div className="w-7 h-7 rounded-lg aurora-grad text-white flex items-center justify-center text-sm font-bold shadow-sm">煌</div>
           <div className="text-base font-semibold tracking-tight" style={{ color: 'var(--text)' }}>專案進度管理</div>
         </div>
+        <button onClick={() => setTourStep(0)} title="新手教學"
+          className="ml-auto text-xs rounded-lg px-2 py-1.5 font-semibold" style={{ color: '#4a7fd6', background: 'rgba(110,168,254,0.12)' }}>🎓 教學</button>
         {isAdmin ? (
           <button onClick={doLogout} title="登出管理者"
-            className="ml-auto text-xs border rounded-lg px-2 py-1.5" style={{ color: 'var(--text-3)', borderColor: 'var(--hairline)' }}>登出</button>
+            className="text-xs border rounded-lg px-2 py-1.5" style={{ color: 'var(--text-3)', borderColor: 'var(--hairline)' }}>登出</button>
         ) : (
           <button onClick={() => { setShowLogin(true); setLoginErr('') }} title="管理者登入"
-            className="ml-auto text-xs border rounded-lg px-2 py-1.5" style={{ color: 'var(--text-2)', borderColor: 'var(--hairline)' }}>🔒 登入</button>
+            className="text-xs border rounded-lg px-2 py-1.5" style={{ color: 'var(--text-2)', borderColor: 'var(--hairline)' }}>🔒 登入</button>
         )}
       </header>
 
@@ -3487,7 +3523,7 @@ export default function Page() {
         {NAV_ITEMS.map(item => {
           const on = view === item.v
           return (
-            <button key={item.v} onClick={item.onClick}
+            <button key={item.v} onClick={item.onClick} data-tour={`nav-${item.v}`}
               className="flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 transition-all">
               {/* 作用中：icon 原色、label 主色粗體；非作用中：icon 去飽和、label 次要色 */}
               <span className="text-lg leading-none" style={{ filter: on ? 'none' : 'grayscale(.5) opacity(.65)' }}>{item.icon}</span>
@@ -3496,6 +3532,17 @@ export default function Page() {
           )
         })}
       </nav>
+
+      {/* 新手教學引導層 */}
+      {tourStep >= 0 && (
+        <Tour
+          steps={TOUR_STEPS}
+          step={tourStep}
+          onNext={() => setTourStep(s => Math.min(s + 1, TOUR_STEPS.length - 1))}
+          onPrev={() => setTourStep(s => Math.max(s - 1, 0))}
+          onClose={() => setTourStep(-1)}
+        />
+      )}
     </div>
   )
 }
