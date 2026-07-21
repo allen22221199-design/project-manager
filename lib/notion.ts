@@ -737,14 +737,14 @@ export async function getSopKnowledge() {
     })
 }
 
-// 取出知識庫中已處理的內容（給 AI 規劃檢索用）；同時併入 SOP知識庫，兩個資料庫都當知識來源
-export async function getKnowledgeBase() {
+// 只取「檔案庫」已處理項目（切塊只針對這個庫；SOP知識庫有表格排版，不切塊）
+export async function getFileKnowledgeBase() {
   const res = await notion.databases.query({
     database_id: KNOWLEDGE_DB_ID,
     filter: { property: '狀態', select: { equals: '已處理' } },
     page_size: 100,
   })
-  const fileItems = (res.results as any[]).map(p => {
+  return (res.results as any[]).map(p => {
     const summary = (p.properties['萃取摘要']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
     // 取得可下載的連結：外部 URL 或 Notion 檔案附件（有時效性，每次即時取）
     const externalUrl: string = p.properties['連結']?.url ?? ''
@@ -761,6 +761,11 @@ export async function getKnowledgeBase() {
       attachments,   // Notion 附件（URL 約 1 小時有效，每次即時取得）
     }
   })
+}
+
+// 取出知識庫內容（給 AI 檢索用）：檔案庫 + SOP知識庫 兩個資料庫都當知識來源
+export async function getKnowledgeBase() {
+  const fileItems = await getFileKnowledgeBase()
   // 併入 SOP知識庫；若整合尚未連到該資料庫或讀取失敗，不影響檔案庫的結果
   let sopItems: Awaited<ReturnType<typeof getSopKnowledge>> = []
   try { sopItems = await getSopKnowledge() } catch { /* SOP知識庫讀取失敗就略過 */ }
