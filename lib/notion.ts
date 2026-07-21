@@ -803,7 +803,8 @@ function buildChunkBlocks(fullText: string): any[] {
 
 // 把某個知識庫頁面的「已萃取內文」重新整理成切塊區塊（給既有資料一鍵重整用）。
 // 具冪等性：若頁面已經有切塊標題就直接跳過，方便前端分批連續呼叫直到全部處理完。
-export async function rechunkKnowledgePage(pageId: string): Promise<{ done: boolean; skipped: boolean; chunks: number }> {
+export type RechunkReason = 'already' | 'empty' | 'chunked'
+export async function rechunkKnowledgePage(pageId: string): Promise<{ reason: RechunkReason; chunks: number; bodyLen: number }> {
   // 讀出全部 top-level 區塊
   const blocks: any[] = []
   let cursor: string | undefined = undefined
@@ -815,20 +816,20 @@ export async function rechunkKnowledgePage(pageId: string): Promise<{ done: bool
 
   const textOf = (b: any) => { const rt = b[b.type]?.rich_text; return Array.isArray(rt) ? rt.map((r: any) => r.plain_text).join('') : '' }
   // 已經切過塊 → 跳過
-  if (blocks.some(b => textOf(b).includes(CHUNK_HEADING))) return { done: true, skipped: true, chunks: 0 }
+  if (blocks.some(b => textOf(b).includes(CHUNK_HEADING))) return { reason: 'already', chunks: 0, bodyLen: 0 }
 
   // 找舊的「【AI 萃取內容】」標題；標題之後（含標題）視為要重整的內容區
   const headIdx = blocks.findIndex(b => /萃取內容|已切塊|切塊整理/.test(textOf(b)))
   const contentBlocks = headIdx >= 0 ? blocks.slice(headIdx + 1) : blocks
   const fullText = contentBlocks.map(textOf).filter(Boolean).join('\n').replace(/【AI 萃取內容】/g, '').trim()
   const chunkBlocks = buildChunkBlocks(fullText)
-  if (chunkBlocks.length === 0) return { done: true, skipped: true, chunks: 0 }
+  if (chunkBlocks.length === 0) return { reason: 'empty', chunks: 0, bodyLen: fullText.length }
 
   // 移除舊的內容區塊（標題與其後），保留標題前的原始內容
   const toRemove = headIdx >= 0 ? blocks.slice(headIdx) : blocks
   for (const b of toRemove) { try { await notion.blocks.delete({ block_id: b.id }) } catch { /* 個別刪除失敗不中斷 */ } }
   await notion.blocks.children.append({ block_id: pageId, children: chunkBlocks as any })
-  return { done: true, skipped: false, chunks: (chunkBlocks.length - 1) / 2 }
+  return { reason: 'chunked', chunks: (chunkBlocks.length - 1) / 2, bodyLen: fullText.length }
 }
 
 const TASKS_DATABASE_ID = '25d2cda48d7781fdb48be99fcf824daf'
