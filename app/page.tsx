@@ -6,23 +6,23 @@ import Tour, { type TourStep } from './tour'
 const TOUR_STEPS: TourStep[] = [
   { title: '歡迎使用煌盛專案 App 👋', body: '第一次用嗎？我帶你花 2 分鐘認識每個功能和常用操作。點「下一步」開始，隨時可按右上角「跳過」。' },
   // 總覽
-  { view: 'dashboard', target: '[data-tour="nav-dashboard"]', title: '📊 總覽（主畫面）', body: '一進來就在這頁。上面是流程排程表，下面有今日待辦、逾期任務、本週完成率、進行中案件數。' },
-  { view: 'dashboard', target: '[data-tour="schedule"]', title: '🗓️ 流程排程表', body: '每個案子排在哪天、哪個工序，一格一格看清楚。操作：① 先點上方要排的「案件」→ ② 在格子上「按住滑鼠拖過去」就會塗上顏色；同一案件再塗一次可清除。' },
+  { view: 'dashboard', target: '[data-tour="nav-dashboard"]', title: '📊 總覽（主畫面）', body: '一進來就在這頁。上面是流程排程表，下面有今日待辦、逾期任務、本週完成率、進行中案件數。', demo: { type: 'click' } },
+  { view: 'dashboard', target: '[data-tour="schedule"]', title: '🗓️ 流程排程表', body: '每個案子排在哪天、哪個工序，一格一格看清楚。操作：① 先點上方要排的「案件」→ ② 在格子上「按住滑鼠拖過去」就會塗上顏色；同一案件再塗一次可清除。', demo: { type: 'drag' } },
   // 案件清單
-  { view: 'list', target: '[data-tour="nav-list"]', title: '📋 案件清單', body: '所有專案都在這，點任一個案子可看細節、改負責人與狀態。' },
-  { view: 'list', target: '[data-tour="case-filters"]', title: '🔎 篩選 / 搜尋 / 新增專案', body: '用上面的狀態標籤（報價中／打樣中／施工中…）快速篩選；上方搜尋框可找名稱／聯絡人／地址；點「＋ 新增專案」建立新案子。' },
+  { view: 'list', target: '[data-tour="nav-list"]', title: '📋 案件清單', body: '所有專案都在這，點任一個案子可看細節、改負責人與狀態。', demo: { type: 'click' } },
+  { view: 'list', target: '[data-tour="case-filters"]', title: '🔎 篩選 / 搜尋 / 新增專案', body: '用上面的狀態標籤（報價中／打樣中／施工中…）快速篩選；上方搜尋框可找名稱／聯絡人／地址；點「＋ 新增專案」建立新案子。', demo: { type: 'click' } },
   // 今日工作
-  { view: 'daily', target: '[data-tour="nav-daily"]', title: '✅ 今日工作', body: '看每位同事今天要做什麼、直接勾選完成。下面幾個常用操作我一個一個講。' },
-  { view: 'daily', target: '[data-tour="plaud"]', title: '📥 晨會記錄放這裡', body: '開完晨會，把 Plaud 的逐字稿或摘要「貼到這個框」，按下按鈕，AI 會自動修正錯字、判斷負責人、拆解成可勾選步驟，寫進今日工作（可同時發到 LINE 群組）。' },
-  { view: 'daily', target: '[data-tour="add-task"]', title: '➕ 怎麼新增任務', body: '想手動加一項工作：先在「選人員」下拉選負責人 → 在旁邊輸入任務內容 → 按「新增」，就會指派給那個人。' },
-  { view: 'daily', target: '[data-tour="task-drag"]', title: '✋ 怎麼拖移任務', body: '任務卡片可以「拖曳」搬到別人名下換負責人；點卡片上的「狀態」可切換進行中／完成；點任務文字可直接編輯——這些都會即時同步到 Notion。' },
+  { view: 'daily', target: '[data-tour="nav-daily"]', title: '✅ 今日工作', body: '看每位同事今天要做什麼、直接勾選完成。下面幾個常用操作我一個一個講。', demo: { type: 'click' } },
+  { view: 'daily', target: '[data-tour="plaud"]', title: '📥 晨會記錄放這裡', body: '開完晨會，把 Plaud 的逐字稿或摘要「貼到這個框」，按下按鈕，AI 會自動修正錯字、判斷負責人、拆解成可勾選步驟，寫進今日工作（可同時發到 LINE 群組）。', demo: { type: 'type', text: '晨會：阿蔡負責前處理、艾里包裝，今天陶大要出貨…' } },
+  { view: 'daily', target: '[data-tour="add-task"]', title: '➕ 怎麼新增任務', body: '想手動加一項工作：先在「選人員」下拉選負責人 → 在旁邊輸入任務內容 → 按「新增」，就會指派給那個人。', demo: { type: 'type', text: '櫃體包裝完成、回報進度' } },
+  { view: 'daily', target: '[data-tour="task-drag"]', title: '✋ 怎麼拖移任務', body: '任務卡片可以「拖曳」搬到別人名下換負責人；點卡片上的「狀態」可切換進行中／完成；點任務文字可直接編輯——這些都會即時同步到 Notion。', demo: { type: 'drag' } },
   // 任務查詢
-  { view: 'search', target: '[data-tour="nav-search"]', title: '🔍 任務查詢', body: '用關鍵字或點人名，快速查任務、看每個人手上的工作量。' },
+  { view: 'search', target: '[data-tour="nav-search"]', title: '🔍 任務查詢', body: '用關鍵字或點人名，快速查任務、看每個人手上的工作量。', demo: { type: 'click' } },
   // AI 助理
-  { view: 'chat', target: '[data-tour="nav-chat"]', title: '💬 AI 助理', body: '不會的直接問它！查公司 SOP、機具參數、排除困難，都幫你從公司資料找答案。' },
-  { view: 'chat', target: '[data-tour="chat-input"]', title: '⌨️ 怎麼問 / 怎麼記進度', body: '在這個框打字問問題（Enter 送出）。也能直接講一句進度，例如「冠德的箱蓋今天噴好了」，它會幫你對應專案、確認後寫進進度紀錄。' },
+  { view: 'chat', target: '[data-tour="nav-chat"]', title: '💬 AI 助理', body: '不會的直接問它！查公司 SOP、機具參數、排除困難，都幫你從公司資料找答案。', demo: { type: 'click' } },
+  { view: 'chat', target: '[data-tour="chat-input"]', title: '⌨️ 怎麼問 / 怎麼記進度', body: '在這個框打字問問題（Enter 送出）。也能直接講一句進度，例如「冠德的箱蓋今天噴好了」，它會幫你對應專案、確認後寫進進度紀錄。', demo: { type: 'type', text: '冠德的箱蓋今天噴好了' } },
   // 教育訓練
-  { view: 'training', target: '[data-tour="nav-training"]', title: '📚 教育訓練', body: '新人互動式學習區：一步步的字卡＋小測驗，邊做邊懂，AI 還會給回饋。' },
+  { view: 'training', target: '[data-tour="nav-training"]', title: '📚 教育訓練', body: '新人互動式學習區：一步步的字卡＋小測驗，邊做邊懂，AI 還會給回饋。', demo: { type: 'click' } },
   { title: '這樣就會用囉！🎉', body: '之後想再看一次，隨時點左下角的「🎓 新手教學」。開始操作看看吧！' },
 ]
 

@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 
-export type TourStep = { view?: string; target?: string; title: string; body: string }
+export type TourStep = { view?: string; target?: string; title: string; body: string; demo?: { type: 'type' | 'click' | 'drag'; text?: string } }
 
 // 新手引導：背景變暗、框住(spotlight)重點區域、一步步說明每項功能
 export default function Tour({
@@ -14,7 +14,24 @@ export default function Tour({
   onClose: () => void
 }) {
   const [box, setBox] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const [typed, setTyped] = useState('')
   const cur = steps[step]
+
+  // 打字示範：一個字一個字打出，打完停一下再重來
+  useEffect(() => {
+    const demo = cur?.demo
+    if (!demo || demo.type !== 'type' || !demo.text) { setTyped(''); return }
+    const full = demo.text
+    let i = 0
+    let timer: ReturnType<typeof setTimeout>
+    const tick = () => {
+      if (i <= full.length) { setTyped(full.slice(0, i)); i += 1; timer = setTimeout(tick, 115) }
+      else { timer = setTimeout(() => { i = 0; setTyped(''); timer = setTimeout(tick, 350) }, 1500) }
+    }
+    tick()
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, cur])
 
   useEffect(() => {
     if (!cur) return
@@ -81,6 +98,30 @@ export default function Tour({
         }} />
       ) : (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,16,28,0.66)' }} />
+      )}
+
+      {/* 示範動畫：打字 / 點擊 / 拖曳 */}
+      {box && cur.demo?.type === 'type' && (
+        <div className="tour-type" style={{
+          left: box.left + 18,
+          top: box.top + (box.height > 120 ? 60 : Math.max(10, box.height / 2 - 15)),
+          maxWidth: box.width - 40,
+        }}>
+          {typed}<span className="tour-caret" style={{ height: 16 }}>&nbsp;</span>
+        </div>
+      )}
+      {box && cur.demo?.type === 'click' && (
+        <div style={{ position: 'absolute', left: box.left + box.width / 2, top: box.top + box.height / 2 }}>
+          <span className="tour-ripple" />
+          <span className="tour-pointer">👆</span>
+        </div>
+      )}
+      {box && cur.demo?.type === 'drag' && (
+        <div className="tour-drag" style={{
+          top: box.top + box.height / 2 - 14,
+          ['--x0' as any]: `${box.left + 24}px`,
+          ['--x1' as any]: `${box.left + box.width - 48}px`,
+        }}>✊</div>
       )}
 
       {/* 說明卡片 */}
