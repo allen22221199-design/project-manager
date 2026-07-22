@@ -248,6 +248,10 @@ export default function Page() {
   // 流程排程表：按住拖曳塗色用（像 Excel 拖曳選取一樣直覺）
   const [ganttDragStart, setGanttDragStart] = useState<{ proc: string; ampm: string; date: string } | null>(null)
   const [ganttDragOver, setGanttDragOver] = useState<string | null>(null)
+  // 用 ref 同步保存拖曳狀態，讓「放開滑鼠/手指」時一定拿得到最新值（避免 useEffect 掛監聽的時間差造成「塗不上」）
+  const ganttDragStartRef = useRef<{ proc: string; ampm: string; date: string } | null>(null)
+  const ganttDragOverRef = useRef<string | null>(null)
+  const commitGanttRef = useRef<(proc: string, ampm: string, d1: string, d2: string) => void>(() => {})
 
   // 流程排程表用：讀取／寫入某案件的排程資料（key 格式：流程|AM或PM|日期）
   function parseGanttSchedule(p: Project): Record<string, string> {
@@ -317,41 +321,49 @@ export default function Page() {
       if (op) saveGanttSchedule(op, otherEdits[pid])
     }
   }
-  // 拖曳結束（放開滑鼠／手指）時套用整段塗色，任何位置放開都算數
+  // 讓下面「掛一次就好」的監聽器永遠呼叫到最新的 commitGanttDrag（帶最新的 projects / 選定案件）
+  commitGanttRef.current = commitGanttDrag
+  // 拖曳結束（放開滑鼠／手指）時套用整段塗色。監聽器只在掛載時掛一次，狀態改讀 ref，
+  // 這樣即使快速點一下或快速拖曳（在 useEffect 來得及執行前就放開），也一定會完成塗色。
   useEffect(() => {
-    if (!ganttDragStart) return
-    function onUp() {
-      setGanttDragStart(cur => {
-        if (cur) {
-          setGanttDragOver(over => { commitGanttDrag(cur.proc, cur.ampm, cur.date, over ?? cur.date); return null })
-        }
-        return null
-      })
+    function endDrag() {
+      const start = ganttDragStartRef.current
+      if (start) {
+        const over = ganttDragOverRef.current
+        commitGanttRef.current(start.proc, start.ampm, start.date, over ?? start.date)
+      }
+      ganttDragStartRef.current = null
+      ganttDragOverRef.current = null
+      setGanttDragStart(null)
+      setGanttDragOver(null)
     }
     // 手機／平板：用手指拖曳。滑鼠 onMouseEnter 在觸控不會觸發，改用 elementFromPoint 找目前手指下的格子
     function onTouchMove(e: TouchEvent) {
+      const start = ganttDragStartRef.current
+      if (!start) return
       const t = e.touches[0]
       if (!t) return
       const cell = (document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null)?.closest('[data-gcell]')
       const key = cell?.getAttribute('data-gcell')
       if (!key) return
       const [proc, ampm, date] = key.split('|')
-      if (proc === ganttDragStart!.proc && ampm === ganttDragStart!.ampm) {
+      if (proc === start.proc && ampm === start.ampm) {
         e.preventDefault()  // 拖曳塗色時不要讓頁面跟著捲動
+        ganttDragOverRef.current = date
         setGanttDragOver(date)
       }
     }
-    window.addEventListener('mouseup', onUp)
-    window.addEventListener('touchend', onUp)
-    window.addEventListener('touchcancel', onUp)
+    window.addEventListener('mouseup', endDrag)
+    window.addEventListener('touchend', endDrag)
+    window.addEventListener('touchcancel', endDrag)
     window.addEventListener('touchmove', onTouchMove, { passive: false })
     return () => {
-      window.removeEventListener('mouseup', onUp)
-      window.removeEventListener('touchend', onUp)
-      window.removeEventListener('touchcancel', onUp)
+      window.removeEventListener('mouseup', endDrag)
+      window.removeEventListener('touchend', endDrag)
+      window.removeEventListener('touchcancel', endDrag)
       window.removeEventListener('touchmove', onTouchMove)
     }
-  }, [ganttDragStart])
+  }, [])
 
   // 知識庫同步
   const [kbSyncing, setKbSyncing] = useState(false)
@@ -1912,8 +1924,8 @@ export default function Page() {
                     <div className="flex items-center justify-between mb-3">
                       <div>
                         <p className="text-base font-semibold text-gray-800">流程排程表</p>
-                        <p className="text-sm text-gray-400 mt-0.5">
-                          {ganttActiveProject ? '在格子上按住滑鼠拖過去塗色，放開就完成；同一案件再塗一次會清除' : '① 先點下面的案件　② 在格子上按住拖曳塗色'}
+                        <p className={`text-sm mt-0.5 ${ganttActiveProject ? 'text-gray-400' : 'text-amber-600 font-medium'}`}>
+                          {ganttActiveProject ? '在日期格子上「點一下」標記單格，或「按住拖過去」標記多天；點已標記的同案件格子可清除' : '① 先點一下下面的「案件」色塊　②再到日期格子上「點一下」或「按住拖曳」即可標記'}
                         </p>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -2004,9 +2016,9 @@ export default function Page() {
                                       return (
                                         <td key={d}
                                           data-gcell={`${proc}|${ampm}|${ds}`}
-                                          onMouseDown={() => { if (ganttActiveProject) { setGanttDragStart({ proc, ampm, date: ds }); setGanttDragOver(ds) } }}
-                                          onMouseEnter={() => { if (inDragRow) setGanttDragOver(ds) }}
-                                          onTouchStart={() => { if (ganttActiveProject) { setGanttDragStart({ proc, ampm, date: ds }); setGanttDragOver(ds) } }}
+                                          onMouseDown={() => { if (ganttActiveProject) { ganttDragStartRef.current = { proc, ampm, date: ds }; ganttDragOverRef.current = ds; setGanttDragStart({ proc, ampm, date: ds }); setGanttDragOver(ds) } }}
+                                          onMouseEnter={() => { if (inDragRow) { ganttDragOverRef.current = ds; setGanttDragOver(ds) } }}
+                                          onTouchStart={() => { if (ganttActiveProject) { ganttDragStartRef.current = { proc, ampm, date: ds }; ganttDragOverRef.current = ds; setGanttDragStart({ proc, ampm, date: ds }); setGanttDragOver(ds) } }}
                                           title={owner ? owner.name : ganttActiveProject ? '按住拖曳塗色（手機可用手指）' : '請先點選上面的案件'}
                                           className={`relative border-y border-gray-100 ${sameLeft ? '' : 'border-l'} ${sameRight ? '' : 'border-r'} hover:opacity-70 ${ganttActiveProject ? 'cursor-pointer' : 'cursor-not-allowed'} ${isPreview ? 'ring-2 ring-inset ring-indigo-500' : isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
                                           style={{
