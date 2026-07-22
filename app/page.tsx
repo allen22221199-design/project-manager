@@ -11,6 +11,9 @@ const TOUR_STEPS: TourStep[] = [
   // 案件清單
   { view: 'list', target: '[data-tour="nav-list"]', title: '📋 案件清單', body: '所有專案都在這，點任一個案子可看細節、改負責人與狀態。', demo: { type: 'click' } },
   { view: 'list', target: '[data-tour="case-filters"]', title: '🔎 篩選 / 搜尋 / 新增專案', body: '用上面的狀態標籤（報價中／打樣中／施工中…）快速篩選；上方搜尋框可找名稱／聯絡人／地址；點「＋ 新增專案」建立新案子。', demo: { type: 'click' } },
+  // 新增專案 + 報價單
+  { view: 'create', target: '[data-tour="create-form"]', title: '➕ 怎麼新增專案', body: '填「專案名稱」（必填）、聯絡人、地址、狀態，就能建立一個新案子。', demo: { type: 'type', text: '惠宇-新竹關埔案' } },
+  { view: 'create', target: '[data-tour="quote-upload"]', title: '📷 放上報價單（自動辨識品項）', body: '在「產品品項」按「📷 上傳圖片辨識」，拍或選一張報價單／材料清單照片，AI 會自動把品項、材質、規格、數量、單位辨識填進來，不用一項一項手打。', demo: { type: 'click' } },
   // 今日工作
   { view: 'daily', target: '[data-tour="nav-daily"]', title: '✅ 今日工作', body: '看每位同事今天要做什麼、直接勾選完成。下面幾個常用操作我一個一個講。', demo: { type: 'click' } },
   { view: 'daily', target: '[data-tour="plaud"]', title: '📥 晨會記錄放這裡', body: '開完晨會，把 Plaud 的逐字稿或摘要「貼到這個框」，按下按鈕，AI 會自動修正錯字、判斷負責人、拆解成可勾選步驟，寫進今日工作（可同時發到 LINE 群組）。', demo: { type: 'type', text: '晨會：阿蔡負責前處理、艾里包裝，今天陶大要出貨…' } },
@@ -314,7 +317,7 @@ export default function Page() {
       if (op) saveGanttSchedule(op, otherEdits[pid])
     }
   }
-  // 拖曳結束（放開滑鼠）時套用整段塗色，任何位置放開都算數
+  // 拖曳結束（放開滑鼠／手指）時套用整段塗色，任何位置放開都算數
   useEffect(() => {
     if (!ganttDragStart) return
     function onUp() {
@@ -325,8 +328,29 @@ export default function Page() {
         return null
       })
     }
+    // 手機／平板：用手指拖曳。滑鼠 onMouseEnter 在觸控不會觸發，改用 elementFromPoint 找目前手指下的格子
+    function onTouchMove(e: TouchEvent) {
+      const t = e.touches[0]
+      if (!t) return
+      const cell = (document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null)?.closest('[data-gcell]')
+      const key = cell?.getAttribute('data-gcell')
+      if (!key) return
+      const [proc, ampm, date] = key.split('|')
+      if (proc === ganttDragStart!.proc && ampm === ganttDragStart!.ampm) {
+        e.preventDefault()  // 拖曳塗色時不要讓頁面跟著捲動
+        setGanttDragOver(date)
+      }
+    }
     window.addEventListener('mouseup', onUp)
-    return () => window.removeEventListener('mouseup', onUp)
+    window.addEventListener('touchend', onUp)
+    window.addEventListener('touchcancel', onUp)
+    window.addEventListener('touchmove', onTouchMove, { passive: false })
+    return () => {
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('touchend', onUp)
+      window.removeEventListener('touchcancel', onUp)
+      window.removeEventListener('touchmove', onTouchMove)
+    }
   }, [ganttDragStart])
 
   // 知識庫同步
@@ -1979,12 +2003,14 @@ export default function Page() {
                                         ds <= (ganttDragStart!.date <= ganttDragOver ? ganttDragOver : ganttDragStart!.date)
                                       return (
                                         <td key={d}
+                                          data-gcell={`${proc}|${ampm}|${ds}`}
                                           onMouseDown={() => { if (ganttActiveProject) { setGanttDragStart({ proc, ampm, date: ds }); setGanttDragOver(ds) } }}
                                           onMouseEnter={() => { if (inDragRow) setGanttDragOver(ds) }}
-                                          title={owner ? owner.name : ganttActiveProject ? '按住拖曳塗色' : '請先點選上面的案件'}
+                                          onTouchStart={() => { if (ganttActiveProject) { setGanttDragStart({ proc, ampm, date: ds }); setGanttDragOver(ds) } }}
+                                          title={owner ? owner.name : ganttActiveProject ? '按住拖曳塗色（手機可用手指）' : '請先點選上面的案件'}
                                           className={`relative border-y border-gray-100 ${sameLeft ? '' : 'border-l'} ${sameRight ? '' : 'border-r'} hover:opacity-70 ${ganttActiveProject ? 'cursor-pointer' : 'cursor-not-allowed'} ${isPreview ? 'ring-2 ring-inset ring-indigo-500' : isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
                                           style={{
-                                            minWidth: CELL_W,
+                                            minWidth: CELL_W, touchAction: ganttActiveProject ? 'none' : undefined,
                                             background: isPreview ? `${(projects.find(p => p.id === ganttActiveProject)?.color) || '#AEC6E8'}99` : owner ? owner.color : isWknd ? '#F3F0FF22' : 'transparent',
                                           }}>
                                           <div className="h-10">
@@ -2616,7 +2642,7 @@ export default function Page() {
         {view === 'create' && (
           <div>
             <button onClick={() => setView('list')} className="text-sm text-gray-500 hover:text-gray-800 mb-4 flex items-center gap-1">← 返回清單</button>
-            <div className="glass-card p-4 space-y-4">
+            <div className="glass-card p-4 space-y-4" data-tour="create-form">
               <p className="text-sm font-medium text-gray-700">新增專案</p>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">專案名稱 <span className="text-red-400">*</span></label>
@@ -2644,7 +2670,7 @@ export default function Page() {
                 </select>
               </div>
               {/* 產品品項（圖片辨識自動填入） */}
-              <div className="border-t border-gray-200 pt-3">
+              <div className="border-t border-gray-200 pt-3" data-tour="quote-upload">
                 <div className="flex items-center gap-2 mb-2">
                   <p className="text-sm font-medium text-gray-700">產品品項</p>
                   <span className="text-xs text-gray-400">（可選，建立專案時一起寫入）</span>
