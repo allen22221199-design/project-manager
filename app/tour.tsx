@@ -25,6 +25,11 @@ export default function Tour({
       const els = Array.from(document.querySelectorAll(cur.target)) as HTMLElement[]
       const el = els.find(e => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4 }) || els[0]
       if (!el) { setBox(null); return }
+      // 若重點區域不在畫面內（頁面下方），先「立即」捲進畫面（用 auto 避免動畫造成量測偏差）
+      const r0 = el.getBoundingClientRect()
+      if (r0.top < 8 || r0.bottom > window.innerHeight - 8) {
+        el.scrollIntoView({ block: 'center', behavior: 'auto' })
+      }
       const r = el.getBoundingClientRect()
       if (r.width < 4 || r.height < 4) { setBox(null); return }
       const pad = 8
