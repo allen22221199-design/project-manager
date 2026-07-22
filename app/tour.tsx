@@ -21,10 +21,12 @@ export default function Tour({
     let raf = 0
     const measure = () => {
       if (!cur.target) { setBox(null); return }
-      const el = document.querySelector(cur.target) as HTMLElement | null
+      // 同一個 target 可能有電腦版側欄與手機版底部列兩個 → 挑「看得到」(有實際大小)的那個
+      const els = Array.from(document.querySelectorAll(cur.target)) as HTMLElement[]
+      const el = els.find(e => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4 }) || els[0]
       if (!el) { setBox(null); return }
-      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
       const r = el.getBoundingClientRect()
+      if (r.width < 4 || r.height < 4) { setBox(null); return }
       const pad = 8
       setBox({ top: r.top - pad, left: r.left - pad, width: r.width + pad * 2, height: r.height + pad * 2 })
     }
