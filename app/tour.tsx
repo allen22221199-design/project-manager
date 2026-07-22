@@ -15,6 +15,8 @@ export default function Tour({
 }) {
   const [box, setBox] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [typed, setTyped] = useState('')
+  const [cursor, setCursor] = useState<{ x: number; y: number; down: boolean } | null>(null)
+  const [paint, setPaint] = useState(0)   // 拖曳塗色示範：目前塗了幾格
   const cur = steps[step]
 
   // 打字示範：一個字一個字打出，打完停一下再重來
@@ -32,6 +34,49 @@ export default function Tour({
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, cur])
+
+  // 滑鼠箭頭示範：游標移動 →（點擊 / 打字 / 拖曳塗色），循環播放，讓觀看者看到實際操作
+  useEffect(() => {
+    const demo = cur?.demo
+    if (!demo || !box) { setCursor(null); setPaint(0); return }
+    const b = box
+    let timers: ReturnType<typeof setTimeout>[] = []
+    const at = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms))
+    const clearAll = () => { timers.forEach(clearTimeout); timers = [] }
+    const run = () => {
+      clearAll()
+      if (demo.type === 'click') {
+        setCursor({ x: b.left + b.width * 0.78, y: b.top - 38, down: false })
+        at(80, () => setCursor({ x: b.left + b.width / 2, y: b.top + b.height / 2, down: false }))  // 游標滑向目標
+        at(820, () => setCursor(c => c && { ...c, down: true }))   // 按下
+        at(1040, () => setCursor(c => c && { ...c, down: false }))
+        at(2400, run)  // 循環
+      } else if (demo.type === 'type') {
+        const inputY = b.top + (b.height > 120 ? 66 : b.height / 2)
+        setCursor({ x: b.left + b.width * 0.62, y: b.top - 26, down: false })
+        at(80, () => setCursor({ x: b.left + 40, y: inputY, down: false }))  // 滑到輸入框
+        at(760, () => setCursor(c => c && { ...c, down: true }))   // 點進去
+        at(940, () => setCursor(c => c && { ...c, down: false }))
+        // 之後打字由 typed 動畫接手；游標停在輸入框附近
+      } else if (demo.type === 'drag') {
+        const y = b.top + Math.min(b.height * 0.5, b.height - 70)
+        const x0 = b.left + b.width * 0.14
+        const x1 = b.left + b.width * 0.42
+        setPaint(0)
+        setCursor({ x: b.left + b.width * 0.5, y: b.top - 30, down: false })
+        at(80, () => setCursor({ x: x0, y, down: false }))         // 滑到起點
+        at(760, () => { setCursor(c => c && { ...c, down: true }); setPaint(1) })  // 按住
+        at(1020, () => { setCursor({ x: x0 + (x1 - x0) * 0.35, y, down: true }); setPaint(2) })  // 拖…塗色
+        at(1300, () => { setCursor({ x: x0 + (x1 - x0) * 0.7, y, down: true }); setPaint(3) })
+        at(1580, () => { setCursor({ x: x1, y, down: true }); setPaint(4) })
+        at(1860, () => setCursor(c => c && { ...c, down: false }))  // 放開
+        at(2900, () => { setPaint(0); run() })  // 重來
+      }
+    }
+    run()
+    return clearAll
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, box])
 
   useEffect(() => {
     if (!cur) return
@@ -100,8 +145,20 @@ export default function Tour({
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,16,28,0.66)' }} />
       )}
 
-      {/* 示範動畫：打字 / 點擊 / 拖曳 */}
-      {box && cur.demo?.type === 'type' && (
+      {/* 拖曳塗色示範：沿路塗出的格子 */}
+      {box && cur.demo?.type === 'drag' && Array.from({ length: paint }).map((_, i) => {
+        const y = box.top + Math.min(box.height * 0.5, box.height - 70)
+        const cw = box.width * 0.066
+        return <div key={i} style={{
+          position: 'absolute', left: box.left + box.width * 0.14 + i * (box.width * 0.072), top: y - 15,
+          width: cw, height: 30, borderRadius: 6,
+          background: 'rgba(110,168,254,0.5)', border: '1.5px solid rgba(110,168,254,0.95)',
+          transition: 'opacity .2s', pointerEvents: 'none',
+        }} />
+      })}
+
+      {/* 打字示範：範例字一個一個打出（配合游標移到輸入框）*/}
+      {box && cur.demo?.type === 'type' && typed && (
         <div className="tour-type" style={{
           left: box.left + 18,
           top: box.top + (box.height > 120 ? 60 : Math.max(10, box.height / 2 - 15)),
@@ -110,18 +167,23 @@ export default function Tour({
           {typed}<span className="tour-caret" style={{ height: 16 }}>&nbsp;</span>
         </div>
       )}
-      {box && cur.demo?.type === 'click' && (
-        <div style={{ position: 'absolute', left: box.left + box.width / 2, top: box.top + box.height / 2 }}>
-          <span className="tour-ripple" />
-          <span className="tour-pointer">👆</span>
-        </div>
-      )}
-      {box && cur.demo?.type === 'drag' && (
-        <div className="tour-drag" style={{
-          top: box.top + box.height / 2 - 14,
-          ['--x0' as any]: `${box.left + 24}px`,
-          ['--x1' as any]: `${box.left + box.width - 48}px`,
-        }}>✊</div>
+
+      {/* 模擬滑鼠箭頭：會移動、按下、拖曳，讓觀看者看到實際操作 */}
+      {cursor && (
+        <>
+          {cursor.down && cur.demo?.type === 'click' && (
+            <span className="tour-ripple" style={{ position: 'absolute', left: cursor.x + 2, top: cursor.y + 2 }} />
+          )}
+          <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"
+            style={{
+              position: 'absolute', left: cursor.x, top: cursor.y, zIndex: 3, pointerEvents: 'none',
+              filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.45))',
+              transition: 'left .55s cubic-bezier(.4,0,.2,1), top .55s cubic-bezier(.4,0,.2,1), transform .12s',
+              transform: cursor.down ? 'scale(.82)' : 'scale(1)',
+            }}>
+            <path d="M4 2 L4 19 L8.5 14.6 L11.7 21.5 L14.2 20.4 L11 13.7 L17.5 13.7 Z" fill="#ffffff" stroke="#2b2f3a" strokeWidth="1.3" strokeLinejoin="round" />
+          </svg>
+        </>
       )}
 
       {/* 說明卡片 */}
