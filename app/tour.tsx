@@ -121,7 +121,11 @@ export default function Tour({
   // 決定說明框位置：右→下→上→左，選第一個放得下的；沒有 target 就置中
   let tip = { left: (vw - TW) / 2, top: (vh - TH) / 2 }
   if (box) {
-    if (box.left + box.width + 16 + TW <= vw) tip = { left: box.left + box.width + 16, top: box.top }
+    const bigTarget = box.width > vw * 0.62 && box.height > vh * 0.5
+    if (bigTarget) {
+      // 目標很大（例如排程表）→ 放右下角，不擋住示範操作
+      tip = { left: vw - TW - 24, top: vh - TH - 24 }
+    } else if (box.left + box.width + 16 + TW <= vw) tip = { left: box.left + box.width + 16, top: box.top }
     else if (box.top + box.height + 16 + TH <= vh) tip = { left: box.left, top: box.top + box.height + 16 }
     else if (box.top - 16 - TH >= 0) tip = { left: box.left, top: box.top - 16 - TH }
     else tip = { left: box.left - 16 - TW, top: box.top }
