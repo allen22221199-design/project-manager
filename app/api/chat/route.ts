@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getKnowledgeBase, readPagePlainText } from '@/lib/notion'
+import { getKnowledgeBase, readPagePlainText, getPageImages } from '@/lib/notion'
 import { chatWithAssistant, routeChatIntent, suggestFollowups } from '@/lib/gemini'
 import { rankKnowledge, rankChunks, type Chunk } from '@/lib/kbsearch'
 
@@ -21,6 +21,8 @@ function taipeiToday(): string {
 export const maxDuration = 60
 
 export type FileResult = { title: string; name: string; url: string }
+// AI 回答時附帶的相關圖片（來自它引用的 SOP／檔案庫頁面）
+export type ImageResult = { source: string; url: string; caption: string }
 
 // 依排名給不同文字長度：第1名最多、之後遞減
 const TEXT_LIMITS = [3000, 2000, 1500, 1200, 1000, 800]
@@ -91,6 +93,8 @@ export async function POST(req: NextRequest) {
 
     let knowledge = ''
     const fileResults: FileResult[] = []
+    const imageResults: ImageResult[] = []
+    let topSources: { id: string; title: string }[] = []  // AI 主要引用的來源頁（用來抓相關圖片）
     try {
       const kb = await getKnowledgeBase()
 
@@ -136,9 +140,12 @@ export async function POST(req: NextRequest) {
           const tags = sorted[0].tags.length ? `(${sorted[0].tags.join('/')})` : ''
           return `【${title}】${tags}\n` + sorted.map(c => `〔第 ${c.idx}/${c.total} 段〕\n${c.text}`).join('\n（…接續…）\n')
         }).join('\n\n---\n\n')
+        // 依相關度排序的來源頁（byDoc 的插入順序 = 段落分數順序），供抓圖用
+        topSources = Array.from(byDoc.entries()).map(([id, list]) => ({ id, title: list[0].title }))
       } else {
         // 後備：沿用舊的「摘要」組裝（切塊沒抓到內容時）
         const boosted = boostByFilename(retrievalQuery, candDocs)
+        topSources = boosted.map(it => ({ id: it.id, title: it.title }))
         knowledge = boosted
           .map((it, idx) => {
             const limit = TEXT_LIMITS[idx] ?? 800
@@ -165,13 +172,22 @@ export async function POST(req: NextRequest) {
           }
         }
       }
+      // 附上「相關圖片」：抓 AI 主要引用的前 2 個來源頁裡的圖（即時抓，網址才有效）
+      try {
+        const picks = topSources.slice(0, 2)
+        const imgLists = await Promise.all(picks.map(s => getPageImages(s.id, 4).catch(() => [])))
+        picks.forEach((s, i) => {
+          for (const im of imgLists[i]) imageResults.push({ source: s.title, url: im.url, caption: im.caption })
+        })
+        if (imageResults.length > 4) imageResults.length = 4  // 最多 4 張，避免洗版
+      } catch { /* 抓圖失敗不影響對話 */ }
     } catch { /* 知識庫讀取失敗不影響對話 */ }
 
     const reply = await chatWithAssistant(messages, knowledge)
     // 產生「後續追問」建議按鈕（失敗不影響回覆）
     let suggestions: string[] = []
     try { suggestions = await suggestFollowups(lastUser, reply) } catch {}
-    return NextResponse.json({ reply, files: fileResults, suggestions })
+    return NextResponse.json({ reply, files: fileResults, images: imageResults, suggestions })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }

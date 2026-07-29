@@ -103,8 +103,9 @@ type ReportTab = 'progress' | 'item'
 type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private' | 'training'
 type PrivateEvent = { id: string; title: string; date: string; note?: string; time?: string; endTime?: string; allDay?: boolean }
 type FileResult = { title: string; name: string; url: string }
+type ImageResult = { source: string; url: string; caption: string }
 type ProgressDraft = { date: string; description: string; matchedId: string | null; matchedName: string | null; candidates: { id: string; name: string }[] }
-type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; draft?: ProgressDraft; draftDone?: boolean; suggestions?: string[] }
+type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; images?: ImageResult[]; draft?: ProgressDraft; draftDone?: boolean; suggestions?: string[] }
 type TaskAttachment = { name: string; url: string }
 type TaskStep = { step: string; done: boolean }
 type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[]; flag?: string; steps?: TaskStep[] }
@@ -766,8 +767,8 @@ export default function Page() {
       if (saved) {
         const parsed: (ChatMsg & { _ts?: number })[] = JSON.parse(saved)
         const sevenDaysAgo = Date.now() - 7 * 24 * 3600 * 1000
-        // 過濾掉超過 7 天的訊息
-        const recent = parsed.filter(m => !m._ts || m._ts > sevenDaysAgo)
+        // 過濾掉超過 7 天的訊息；並清掉舊圖片（Notion 圖片網址約 1 小時就過期，重載後會壞掉）
+        const recent = parsed.filter(m => !m._ts || m._ts > sevenDaysAgo).map(m => m.images ? { ...m, images: undefined } : m)
         setChatMessages(recent)
       }
     } catch {}
@@ -1275,9 +1276,10 @@ export default function Page() {
       const data = await readJson(r)
       const reply = r.ok ? (data.reply || '（沒有回覆）') : ('錯誤：' + (data.error ?? '回覆失敗'))
       const files: FileResult[] = r.ok ? (data.files ?? []) : []
+      const images: ImageResult[] = r.ok ? (data.images ?? []) : []
       const draft: ProgressDraft | undefined = r.ok ? data.progressDraft : undefined
       const suggestions: string[] = r.ok && !draft ? (data.suggestions ?? []) : []
-      setChatMessages([...next, { role: 'assistant', content: reply, files, draft, suggestions }])
+      setChatMessages([...next, { role: 'assistant', content: reply, files, images, draft, suggestions }])
     } catch (e: any) {
       setChatMessages([...next, { role: 'assistant', content: '錯誤：' + e.message }])
     } finally { setChatLoading(false) }
@@ -3050,6 +3052,24 @@ export default function Page() {
                             <span className="text-xs text-indigo-500 shrink-0 group-hover:underline">下載 ↓</span>
                           </a>
                         ))}
+                      </div>
+                    )}
+                    {m.images && m.images.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                        <p className="text-xs text-gray-400 font-medium">🖼️ 相關圖片</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {m.images.map((img, ii) => (
+                            <a key={ii} href={img.url} target="_blank" rel="noopener noreferrer"
+                              className="block rounded-lg overflow-hidden border border-gray-200 bg-gray-50 hover:border-indigo-300 transition-colors no-underline">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={img.url} alt={img.caption || img.source} loading="lazy"
+                                className="w-full h-28 object-cover" />
+                              <p className="text-[10px] text-gray-500 px-1.5 py-1 truncate" title={`${img.source}${img.caption ? '｜' + img.caption : ''}`}>
+                                {img.caption || img.source}
+                              </p>
+                            </a>
+                          ))}
+                        </div>
                       </div>
                     )}
                     {m.draft && !m.draftDone && (() => {

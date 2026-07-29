@@ -694,6 +694,41 @@ export async function readPagePlainText(pageId: string): Promise<string> {
   return out.filter(Boolean).join('\n')
 }
 
+export type PageImage = { url: string; caption: string }
+// 取出某頁裡的圖片（Notion image 區塊，含巢狀欄位/折疊區）。
+// 注意：Notion「上傳檔案」型圖片網址是有時效的簽章網址(約 1 小時)，所以只能在查詢當下即時抓，不能事先存起來。
+export async function getPageImages(pageId: string, maxImages = 6): Promise<PageImage[]> {
+  const out: PageImage[] = []
+  let calls = 0
+  const MAX_CALLS = 14  // 控制延遲：一頁最多 14 次 children.list
+  async function walk(blockId: string, depth: number) {
+    if (depth > 3 || calls >= MAX_CALLS || out.length >= maxImages) return
+    let cursor: string | undefined = undefined
+    do {
+      if (calls >= MAX_CALLS || out.length >= maxImages) return
+      calls++
+      const res: any = await notion.blocks.children.list({ block_id: blockId, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) })
+      for (const b of res.results as any[]) {
+        if (b.type === 'child_page' || b.type === 'child_database') continue
+        if (b.type === 'image') {
+          const img = b.image
+          const url = img?.type === 'external' ? img.external?.url : img?.file?.url
+          if (url) {
+            const caption = (img.caption ?? []).map((r: any) => r.plain_text).join('').trim()
+            out.push({ url, caption })
+            if (out.length >= maxImages) return
+          }
+          continue
+        }
+        if (b.has_children && b.type !== 'table_row') await walk(b.id, depth + 1)  // 巢狀 → 遞迴找圖
+      }
+      cursor = res.has_more ? res.next_cursor : undefined
+    } while (cursor)
+  }
+  await walk(pageId, 0)
+  return out
+}
+
 // 取出知識庫中「待處理」（或狀態空白）的項目
 export async function getKnowledgeQueue() {
   const res = await notion.databases.query({
