@@ -172,14 +172,24 @@ export async function POST(req: NextRequest) {
           }
         }
       }
-      // 附上「相關圖片」：抓 AI 主要引用的前 2 個來源頁裡的圖（即時抓，網址才有效）
+      // 附上「相關圖片」：來自 AI 主要引用的來源頁，兩種來源都抓——
+      //   (1) 頁面內文貼上的圖片區塊；(2) 檔案庫該筆「檔案」欄位上傳的圖片檔(.png/.jpg…)
       try {
-        const picks = topSources.slice(0, 2)
+        const imgExt = /\.(png|jpe?g|gif|webp|bmp|svg|heic|tiff?)(\?|$)/i
+        const picks = topSources.slice(0, 3)
         const imgLists = await Promise.all(picks.map(s => getPageImages(s.id, 4).catch(() => [])))
         picks.forEach((s, i) => {
           for (const im of imgLists[i]) imageResults.push({ source: s.title, url: im.url, caption: im.caption })
+          const kbItem = kb.find(k => k.id === s.id) as any
+          for (const att of (kbItem?.attachments ?? [])) {
+            if (att.url && imgExt.test(att.name || att.url)) imageResults.push({ source: s.title, url: att.url, caption: att.name || '' })
+          }
         })
-        if (imageResults.length > 4) imageResults.length = 4  // 最多 4 張，避免洗版
+        // 去重（同網址只留一張）+ 上限 6 張
+        const seen = new Set<string>()
+        const dedup = imageResults.filter(im => { const k = im.url.split('?')[0]; if (seen.has(k)) return false; seen.add(k); return true })
+        imageResults.length = 0
+        imageResults.push(...dedup.slice(0, 6))
       } catch { /* 抓圖失敗不影響對話 */ }
     } catch { /* 知識庫讀取失敗不影響對話 */ }
 
