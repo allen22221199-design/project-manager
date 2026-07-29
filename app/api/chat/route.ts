@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
         const seen = new Set<string>()
         const dedup = imageResults.filter(im => { const k = im.url.split('?')[0]; if (seen.has(k)) return false; seen.add(k); return true })
         imageResults.length = 0
-        imageResults.push(...dedup.slice(0, 6))
+        imageResults.push(...dedup.slice(0, 3))  // 自動抓的圖最多 3 張，避免洗版（圖庫的精準圖之後會排前面）
       } catch { /* 抓圖失敗不影響對話 */ }
     } catch { /* 知識庫讀取失敗不影響對話 */ }
 
