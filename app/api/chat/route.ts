@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getKnowledgeBase, readPagePlainText, getPageImages } from '@/lib/notion'
+import { getKnowledgeBase, readPagePlainText, getPageImages, getImageLibrary } from '@/lib/notion'
 import { chatWithAssistant, routeChatIntent, suggestFollowups } from '@/lib/gemini'
 import { rankKnowledge, rankChunks, type Chunk } from '@/lib/kbsearch'
 
@@ -194,6 +194,27 @@ export async function POST(req: NextRequest) {
     } catch { /* 知識庫讀取失敗不影響對話 */ }
 
     const reply = await chatWithAssistant(messages, knowledge)
+
+    // 圖庫：使用者自建的圖片來源。把「問題 + 回答」拿去比對關鍵字，命中就把圖片排在最前面顯示。
+    try {
+      const lib = await getImageLibrary()
+      if (lib.length > 0) {
+        const haystack = (retrievalQuery + '\n' + reply).toLowerCase()
+        const libImages: ImageResult[] = []
+        for (const row of lib) {
+          if (row.keywords.some(k => haystack.includes(k))) {
+            for (const im of row.images) libImages.push({ source: row.name, url: im.url, caption: im.caption || row.name })
+          }
+        }
+        // 圖庫（精準、使用者指定）優先於自動從來源頁抓的圖
+        const merged = [...libImages, ...imageResults]
+        const seen = new Set<string>()
+        const dedup = merged.filter(im => { const k = im.url.split('?')[0]; if (seen.has(k)) return false; seen.add(k); return true })
+        imageResults.length = 0
+        imageResults.push(...dedup.slice(0, 6))
+      }
+    } catch { /* 圖庫比對失敗不影響對話 */ }
+
     // 產生「後續追問」建議按鈕（失敗不影響回覆）
     let suggestions: string[] = []
     try { suggestions = await suggestFollowups(lastUser, reply) } catch {}
