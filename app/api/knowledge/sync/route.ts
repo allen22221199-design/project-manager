@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getKnowledgeQueue, readPagePlainText, saveKnowledgeResult } from '@/lib/notion'
-import { extractTextFromMedia, extractTextFromVideo, extractTextFromYouTube } from '@/lib/gemini'
+import { extractTextFromMedia, extractTextFromVideo, extractTextFromAudio, extractTextFromYouTube } from '@/lib/gemini'
 import { extractOfficeText, OFFICE_EXTS } from '@/lib/officetext'
 
 export const maxDuration = 60
@@ -43,6 +43,11 @@ const VIDEO_MIMES: Record<string, string> = {
   mp4: 'video/mp4', mov: 'video/mov', webm: 'video/webm', avi: 'video/avi',
   mpeg: 'video/mpeg', mpg: 'video/mpeg', wmv: 'video/wmv', flv: 'video/x-flv', '3gp': 'video/3gpp',
 }
+// Gemini 可直接聆聽的音訊格式（會議錄音、口述 SOP）
+const AUDIO_MIMES: Record<string, string> = {
+  mp3: 'audio/mp3', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac',
+  flac: 'audio/flac', ogg: 'audio/ogg', aiff: 'audio/aiff',
+}
 
 // 讀取單一附件的文字內容（依副檔名決定用哪種方式）
 async function readOneFile(f: { name: string; url: string }): Promise<string> {
@@ -69,6 +74,13 @@ async function readOneFile(f: { name: string; url: string }): Promise<string> {
       throw new Error(`影片過大（約 ${sizeMB.toFixed(1)}MB，直接上傳上限約 18MB）。請壓縮或剪短後再上傳；長片建議上傳到 YouTube（可設非公開）後，把網址貼在「連結」欄`)
     }
     return await extractTextFromVideo(data, VIDEO_MIMES[ext])
+  }
+  // 錄音檔：直接讓 AI 聽完整理成文字
+  if (AUDIO_MIMES[ext]) {
+    if (sizeMB > 18) {
+      throw new Error(`錄音檔過大（約 ${sizeMB.toFixed(1)}MB，上限約 18MB）。請壓縮或分段後再上傳`)
+    }
+    return await extractTextFromAudio(data, AUDIO_MIMES[ext])
   }
   if (['mkv', 'm4v'].includes(ext)) {
     throw new Error(`此影片格式（.${ext}）不支援。請轉存為 MP4 再上傳，或上傳到 YouTube 後把網址貼在「連結」欄`)

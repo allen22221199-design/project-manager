@@ -792,7 +792,6 @@ export async function getKnowledgeQueue() {
   // 同步時自動跳過「確定無法處理」的格式，不處理也不標失敗。
   // 新版 Office（docx/xlsx/pptx）已可直接解壓讀文字、常見影片已可由 AI 直接看，故不再跳過。
   const SKIP_EXT = [
-    'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', // 純音訊
     'mkv', 'm4v',           // 不支援的影片容器
     'doc', 'xls', 'ppt',    // 舊版二進位 Office（需另存新版或 PDF）
     'xmind', 'zip', 'rar', '7z', // 心智圖／壓縮檔等無法直接辨識

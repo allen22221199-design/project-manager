@@ -103,6 +103,16 @@ export async function extractTextFromVideo(base64: string, mimeType: string) {
   return result.response.text().trim()
 }
 
+// 直接聽「上傳的錄音檔」，整理成文字（會議錄音、口述 SOP 用）
+export async function extractTextFromAudio(base64: string, mimeType: string) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const result = await withRetry(() => model.generateContent([
+    { inlineData: { data: base64, mimeType: mimeType as any } },
+    '請完整聆聽這段錄音，把內容整理成可供查詢的文字：包含主題重點、提到的產品／規格／數據／人名／廠商、決議事項與待辦，以及步驟流程。盡量詳實完整，只輸出內容本身，不要加開場白或評論。',
+  ]))
+  return result.response.text().trim()
+}
+
 // 讓 Gemini 直接讀 YouTube 影片，整理成文字（知識庫用）
 export async function extractTextFromYouTube(url: string) {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
