@@ -3042,7 +3042,7 @@ export default function Page() {
               )}
               {chatMessages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${m.role === 'user' ? 'aurora-grad text-white' : 'bg-white border border-gray-200/70 shadow-sm text-gray-800'}`}>
+                  <div className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${m.images?.some(x => x.kind === 'video' || x.kind === 'embed') ? 'w-full max-w-[96%]' : 'max-w-[85%]'} ${m.role === 'user' ? 'aurora-grad text-white' : 'bg-white border border-gray-200/70 shadow-sm text-gray-800'}`}>
                     {m.content}
                     {m.files && m.files.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
@@ -3072,26 +3072,39 @@ export default function Page() {
                                 {img.caption || img.source}
                               </p>
                             )
-                            // YouTube／Vimeo → 內嵌播放器（整列寬，比較好看）
+                            // 影片的標題列：片名 + 開新視窗看大螢幕
+                            const videoBar = (
+                              <div className="flex items-center justify-between gap-2 px-3 py-2 bg-white">
+                                <p className="text-xs font-semibold text-gray-700 truncate" title={`${img.source}${img.caption ? '｜' + img.caption : ''}`}>
+                                  🎬 {img.caption || img.source}
+                                </p>
+                                <a href={img.url} target="_blank" rel="noopener noreferrer"
+                                  className="text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline shrink-0 no-underline">
+                                  放大觀看 ↗
+                                </a>
+                              </div>
+                            )
+                            // YouTube／Vimeo → 內嵌播放器（整列寬、16:9）
                             if (img.kind === 'embed') {
                               return (
-                                <div key={ii} className="col-span-2 rounded-lg overflow-hidden border border-gray-200 bg-black/5">
+                                <div key={ii} className="col-span-2 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-black">
                                   <div className="relative w-full" style={{ paddingTop: '56.25%' }}>
                                     <iframe src={img.url} title={img.caption || img.source} loading="lazy"
                                       allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                       allowFullScreen
                                       className="absolute inset-0 w-full h-full border-0" />
                                   </div>
-                                  {label}
+                                  {videoBar}
                                 </div>
                               )
                             }
-                            // 上傳的影片檔 → 直接播放
+                            // 上傳的影片檔 → 整支直接播放（大畫面、可全螢幕）
                             if (img.kind === 'video') {
                               return (
-                                <div key={ii} className="col-span-2 rounded-lg overflow-hidden border border-gray-200 bg-black/5">
-                                  <video src={img.url} controls preload="metadata" className="w-full max-h-64 bg-black" />
-                                  {label}
+                                <div key={ii} className="col-span-2 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-black">
+                                  <video src={img.url} controls playsInline preload="metadata"
+                                    className="w-full bg-black block" style={{ maxHeight: '70vh' }} />
+                                  {videoBar}
                                 </div>
                               )
                             }
