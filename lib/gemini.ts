@@ -93,6 +93,16 @@ export async function extractTextFromMedia(base64: string, mimeType: string) {
   return result.response.text().trim()
 }
 
+// 直接分析「上傳的影片檔」，整理成文字（不必先傳到 YouTube）
+export async function extractTextFromVideo(base64: string, mimeType: string) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const result = await withRetry(() => model.generateContent([
+    { inlineData: { data: base64, mimeType: mimeType as any } },
+    '請完整觀看並聆聽這支影片，把內容整理成可供查詢的文字筆記：包含主題重點、操作步驟的先後順序、畫面中出現的文字／規格／數據／工具名稱，以及口頭說明的重點與注意事項。盡量詳實完整，只輸出內容本身，不要加開場白或評論。',
+  ]))
+  return result.response.text().trim()
+}
+
 // 讓 Gemini 直接讀 YouTube 影片，整理成文字（知識庫用）
 export async function extractTextFromYouTube(url: string) {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })

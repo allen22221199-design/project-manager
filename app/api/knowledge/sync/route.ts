@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getKnowledgeQueue, readPagePlainText, saveKnowledgeResult } from '@/lib/notion'
-import { extractTextFromMedia, extractTextFromYouTube } from '@/lib/gemini'
+import { extractTextFromMedia, extractTextFromVideo, extractTextFromYouTube } from '@/lib/gemini'
+import { extractOfficeText, OFFICE_EXTS } from '@/lib/officetext'
 
 export const maxDuration = 60
 
@@ -55,15 +56,32 @@ export async function POST() {
               jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
               webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', heif: 'image/heif',
             }
-            if (['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt'].includes(ext)) {
-              throw new Error('Office 檔（Word/Excel/PPT）請先另存為 PDF 再上傳')
+            // Gemini 可直接理解的影片格式
+            const videoMimes: Record<string, string> = {
+              mp4: 'video/mp4', mov: 'video/mov', webm: 'video/webm', avi: 'video/avi',
+              mpeg: 'video/mpeg', mpg: 'video/mpeg', wmv: 'video/wmv', flv: 'video/x-flv', '3gp': 'video/3gpp',
             }
-            if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', 'flv'].includes(ext)) {
-              throw new Error('影片檔請上傳到 YouTube 後，在「連結」欄貼網址（或擷取重點畫面成圖片）')
+            // 舊版 Office（.doc/.xls/.ppt）是二進位格式，無法解析
+            if (['doc', 'xls', 'ppt'].includes(ext)) {
+              throw new Error(`舊版 Office 檔（.${ext}）無法讀取。請用 Word/Excel 開啟後另存為 .${ext}x（例如 .docx）或 PDF 再上傳`)
             }
             const { data, mime } = await fetchAsBase64(f.url)
+            // Word / Excel / PowerPoint：直接解壓讀出文字，不必先轉 PDF、也不必經過 AI
+            if (OFFICE_EXTS.includes(ext)) {
+              return extractOfficeText(Buffer.from(data, 'base64'), ext)
+            }
             // Gemini 內嵌檔案上限約 20MB（base64 長度 × 0.75 ≈ 原始位元組）
             const sizeMB = (data.length * 0.75) / (1024 * 1024)
+            // 影片：直接讓 AI 看影片內容整理成文字（不必先上傳 YouTube）
+            if (videoMimes[ext]) {
+              if (sizeMB > 18) {
+                throw new Error(`影片過大（約 ${sizeMB.toFixed(1)}MB，直接上傳上限約 18MB）。請壓縮或剪短後再上傳；長片建議上傳到 YouTube（可設非公開）後，把網址貼在「連結」欄`)
+              }
+              return await extractTextFromVideo(data, videoMimes[ext])
+            }
+            if (['mkv', 'm4v'].includes(ext)) {
+              throw new Error(`此影片格式（.${ext}）不支援。請轉存為 MP4 再上傳，或上傳到 YouTube 後把網址貼在「連結」欄`)
+            }
             if (sizeMB > 18) {
               throw new Error(`檔案過大（約 ${sizeMB.toFixed(1)}MB，上限約 20MB）。請壓縮、降低解析度或拆分後再上傳`)
             }
@@ -72,7 +90,7 @@ export async function POST() {
             if (ext === 'pdf') finalMime = 'application/pdf'
             else if (imageMimes[ext]) finalMime = imageMimes[ext]
             else if (mime.startsWith('image/') || mime === 'application/pdf') finalMime = mime
-            else throw new Error(`不支援的檔案格式（${ext || mime}）。可用：PDF、JPG、PNG、WEBP`)
+            else throw new Error(`不支援的檔案格式（${ext || mime}）。可用：Word、Excel、PPT、PDF、圖片、影片`)
             return await extractTextFromMedia(data, finalMime)
           } else if (item.url) {
             if (/youtube\.com|youtu\.be/i.test(item.url)) {
