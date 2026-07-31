@@ -95,6 +95,9 @@ export async function POST(req: NextRequest) {
     const fileResults: FileResult[] = []
     const imageResults: ImageResult[] = []
     let topSources: { id: string; title: string }[] = []  // AI 主要引用的來源頁（用來抓相關圖片）
+    // 圖庫先載（與知識庫平行），它同時是「圖片來源」也是「知識來源」：
+    // 例如「防火標章」這一列的說明，要讓 AI 能拿來回答，而不只是當圖片標題
+    const imageLibPromise = getImageLibrary().catch(() => [])
     try {
       const kb = await getKnowledgeBase()
 
@@ -193,11 +196,24 @@ export async function POST(req: NextRequest) {
       } catch { /* 抓圖失敗不影響對話 */ }
     } catch { /* 知識庫讀取失敗不影響對話 */ }
 
+    // 圖庫也是知識來源：問題命中關鍵字時，把該列的「名稱＋說明」一起給 AI，
+    // 這樣像「防火標章是什麼」這種問題，AI 能用你寫的說明回答（再配上你指定的圖）
+    const imageLib = await imageLibPromise
+    try {
+      const q = retrievalQuery.toLowerCase()
+      const hit = imageLib.filter(r => r.caption && r.keywords.some(k => q.includes(k)))
+      if (hit.length > 0) {
+        const block = hit.slice(0, 6).map(r => `【${r.name}】\n${r.caption}`).join('\n\n')
+        knowledge = (knowledge ? knowledge + '\n\n---\n\n' : '')
+          + '以下是公司「圖庫」中對應名詞／項目的說明（已附上對應圖片給使用者看，回答時可直接引用這些說明）：\n\n' + block
+      }
+    } catch { /* 圖庫知識注入失敗不影響對話 */ }
+
     const reply = await chatWithAssistant(messages, knowledge)
 
     // 圖庫：使用者自建的圖片來源。把「問題 + 回答」拿去比對關鍵字，命中就把圖片排在最前面顯示。
     try {
-      const lib = await getImageLibrary()
+      const lib = imageLib
       if (lib.length > 0) {
         const haystack = (retrievalQuery + '\n' + reply).toLowerCase()
         const libImages: ImageResult[] = []

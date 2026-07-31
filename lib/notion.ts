@@ -932,7 +932,8 @@ export async function getImageLibrary(): Promise<LibImageRow[]> {
       // 名稱本身也算關鍵字；關鍵字用空白/逗號/頓號/分號分隔，全部轉小寫方便比對
       const keywords = [name, ...kwRaw.split(/[\s,，、;；]+/)].map(s => s.trim().toLowerCase()).filter(s => s.length >= 2)
       return { name, keywords, caption, images }
-    }).filter(r => r.images.length > 0 && r.keywords.length > 0)
+    // 有圖片可顯示，或有說明可當知識，兩者其一就保留（讓圖庫也能當名詞解釋用）
+    }).filter(r => (r.images.length > 0 || !!r.caption) && r.keywords.length > 0)
   } catch { return [] }  // 圖庫讀不到（未連整合/尚無資料）不影響對話
 }
 
