@@ -17,11 +17,21 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   ])
 }
 
-async function fetchAsBase64(url: string): Promise<{ data: string; mime: string }> {
+// 下載檔案並轉 base64。務必「先看大小再下載」——過大的檔案若整個讀進記憶體，
+// 函式會直接被系統砍掉(記憶體不足)，變成沒有錯誤訊息的 500，該筆也永遠卡在佇列裡。
+async function fetchAsBase64(url: string, maxBytes: number): Promise<{ data: string; mime: string }> {
   const r = await fetch(url)
   if (!r.ok) throw new Error(`下載檔案失敗 (${r.status})`)
   const mime = r.headers.get('content-type') || 'application/octet-stream'
+  const declared = Number(r.headers.get('content-length') || 0)
+  const overLimit = (bytes: number) =>
+    new Error(`檔案過大（約 ${(bytes / 1048576).toFixed(1)}MB，上限約 ${Math.round(maxBytes / 1048576)}MB）。請壓縮、剪短或分批後再上傳`)
+  if (declared > maxBytes) {
+    try { await r.body?.cancel() } catch { /* 取消下載失敗就算了 */ }
+    throw overLimit(declared)
+  }
   const buf = Buffer.from(await r.arrayBuffer())
+  if (buf.byteLength > maxBytes) throw overLimit(buf.byteLength)   // 沒有 content-length 時的第二道防線
   return { data: buf.toString('base64'), mime }
 }
 
@@ -57,13 +67,17 @@ async function readOneFile(f: { name: string; url: string }): Promise<string> {
   if (['doc', 'xls', 'ppt'].includes(ext)) {
     throw new Error(`舊版 Office 檔（.${ext}）無法讀取。請用 Word/Excel 開啟後另存為 .${ext}x（例如 .docx）或 PDF 再上傳`)
   }
-  const { data, mime } = await fetchAsBase64(f.url)
+  const isOffice = OFFICE_EXTS.includes(ext)
+  const isText = ['txt', 'csv', 'md', 'markdown', 'json', 'log', 'tsv'].includes(ext)
+  // 依類型決定可下載的上限：送 AI 的檔案本來就有約 20MB 限制，Office 只需讀內部 XML 可放寬些
+  const maxBytes = isOffice ? 30 * 1048576 : isText ? 10 * 1048576 : 20 * 1048576
+  const { data, mime } = await fetchAsBase64(f.url, maxBytes)
   // Word / Excel / PowerPoint：直接解壓讀出文字，不必先轉 PDF、也不必經過 AI
-  if (OFFICE_EXTS.includes(ext)) {
+  if (isOffice) {
     return extractOfficeText(Buffer.from(data, 'base64'), ext)
   }
   // 純文字類：直接讀，不必經過 AI
-  if (['txt', 'csv', 'md', 'markdown', 'json', 'log', 'tsv'].includes(ext)) {
+  if (isText) {
     return Buffer.from(data, 'base64').toString('utf8')
   }
   // Gemini 內嵌檔案上限約 20MB（base64 長度 × 0.75 ≈ 原始位元組）
