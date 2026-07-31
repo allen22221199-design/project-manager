@@ -120,8 +120,8 @@ export async function POST() {
     const started = Date.now()
     const results: any[] = []
     for (const item of queue) {
-      // 時間預算：150 秒後不再開始新項目，加上單項最多 120 秒 < 函式 300 秒上限（剩下的下批再處理）
-      if (Date.now() - started > 150000) break
+      // 時間預算：50 秒後不再開始新項目，加上單項最多 240 秒 < 函式 300 秒上限（剩下的下批再處理）
+      if (Date.now() - started > 50000) break
       try {
         // 自動判斷：有附檔→辨識檔案/圖片；有連結→抓網頁；都沒有→讀頁面內文
         const text = (await withTimeout((async (): Promise<string> => {
@@ -129,8 +129,8 @@ export async function POST() {
             // 一筆可能附多個檔案（例如影片切成多段、多份 PDF）→ 依序全部讀取後合併，
             // 不再只讀第一個。時間快用完就先停，剩下的下次同步再補。
             const MAX_FILES = 6
-            // 留足餘裕給「最後一個開始的檔案」跑完，否則外層 120 秒逾時會把已讀到的內容一起丟掉
-            const fileDeadline = Date.now() + 70000
+            // 留足餘裕給「最後一個開始的檔案」跑完，否則外層逾時會把已讀到的內容一起丟掉
+            const fileDeadline = Date.now() + 170000
             const parts: string[] = []
             const errs: string[] = []
             const picked = item.files.slice(0, MAX_FILES)
@@ -154,7 +154,7 @@ export async function POST() {
           } else {
             return await readPagePlainText(item.id)
           }
-        })(), 120000)).trim()
+        })(), 240000)).trim()
         if (!text) throw new Error('未取得內容（請確認有上傳檔案、填連結，或在頁面內文輸入文字）')
         await saveKnowledgeResult(item.id, true, text, '處理成功')
         results.push({ title: item.title, ok: true })
