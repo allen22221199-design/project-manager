@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getKnowledgeBase, readPagePlainText, getPageImages, getImageLibrary } from '@/lib/notion'
+import { getKnowledgeBase, readPagePlainText, getPageMedia, getImageLibrary, classifyMedia, type MediaKind } from '@/lib/notion'
 import { chatWithAssistant, routeChatIntent, suggestFollowups } from '@/lib/gemini'
 import { rankKnowledge, rankChunks, type Chunk } from '@/lib/kbsearch'
 
@@ -21,8 +21,8 @@ function taipeiToday(): string {
 export const maxDuration = 60
 
 export type FileResult = { title: string; name: string; url: string }
-// AI 回答時附帶的相關圖片（來自它引用的 SOP／檔案庫頁面）
-export type ImageResult = { source: string; url: string; caption: string }
+// AI 回答時附帶的相關圖片／影片（來自圖庫，或它引用的 SOP／檔案庫頁面）
+export type ImageResult = { source: string; url: string; caption: string; kind: MediaKind }
 
 // 依排名給不同文字長度：第1名最多、之後遞減
 const TEXT_LIMITS = [3000, 2000, 1500, 1200, 1000, 800]
@@ -172,17 +172,17 @@ export async function POST(req: NextRequest) {
           }
         }
       }
-      // 附上「相關圖片」：來自 AI 主要引用的來源頁，兩種來源都抓——
-      //   (1) 頁面內文貼上的圖片區塊；(2) 檔案庫該筆「檔案」欄位上傳的圖片檔(.png/.jpg…)
+      // 附上「相關圖片／影片」：來自 AI 主要引用的來源頁，兩種來源都抓——
+      //   (1) 頁面內文的圖片/影片/YouTube 區塊；(2) 檔案庫該筆「檔案」欄位上傳的圖片或影片檔
       try {
-        const imgExt = /\.(png|jpe?g|gif|webp|bmp|svg|heic|tiff?)(\?|$)/i
         const picks = topSources.slice(0, 3)
-        const imgLists = await Promise.all(picks.map(s => getPageImages(s.id, 4).catch(() => [])))
+        const imgLists = await Promise.all(picks.map(s => getPageMedia(s.id, 4).catch(() => [])))
         picks.forEach((s, i) => {
-          for (const im of imgLists[i]) imageResults.push({ source: s.title, url: im.url, caption: im.caption })
+          for (const im of imgLists[i]) imageResults.push({ source: s.title, url: im.url, caption: im.caption, kind: im.kind })
           const kbItem = kb.find(k => k.id === s.id) as any
           for (const att of (kbItem?.attachments ?? [])) {
-            if (att.url && imgExt.test(att.name || att.url)) imageResults.push({ source: s.title, url: att.url, caption: att.name || '' })
+            const kind = att.url ? classifyMedia(att.name || att.url) : null
+            if (kind) imageResults.push({ source: s.title, url: att.url, caption: att.name || '', kind })
           }
         })
         // 去重（同網址只留一張）+ 上限 6 張
@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
         const libImages: ImageResult[] = []
         for (const row of lib) {
           if (row.keywords.some(k => haystack.includes(k))) {
-            for (const im of row.images) libImages.push({ source: row.name, url: im.url, caption: im.caption || row.name })
+            for (const im of row.images) libImages.push({ source: row.name, url: im.url, caption: im.caption || row.name, kind: im.kind })
           }
         }
         // 圖庫（精準、使用者指定）優先於自動從來源頁抓的圖

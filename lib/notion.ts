@@ -694,33 +694,83 @@ export async function readPagePlainText(pageId: string): Promise<string> {
   return out.filter(Boolean).join('\n')
 }
 
-export type PageImage = { url: string; caption: string }
-// 取出某頁裡的圖片（Notion image 區塊，含巢狀欄位/折疊區）。
-// 注意：Notion「上傳檔案」型圖片網址是有時效的簽章網址(約 1 小時)，所以只能在查詢當下即時抓，不能事先存起來。
-export async function getPageImages(pageId: string, maxImages = 6): Promise<PageImage[]> {
-  const out: PageImage[] = []
+// 媒體種類：image=圖片、video=可直接播放的影片檔(mp4…)、embed=YouTube/Vimeo 之類要用內嵌播放器
+export type MediaKind = 'image' | 'video' | 'embed'
+export type PageMedia = { url: string; caption: string; kind: MediaKind }
+
+const VIDEO_FILE_RE = /\.(mp4|webm|ogg|mov|m4v)(\?|$)/i
+const IMAGE_FILE_RE = /\.(png|jpe?g|gif|webp|bmp|svg|heic|tiff?)(\?|$)/i
+
+// 把 YouTube/Vimeo 各種網址轉成可內嵌播放的網址；不是影音平台就回傳 null
+export function toEmbedUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw)
+    const h = u.hostname.replace(/^www\./, '')
+    if (h === 'youtube.com' || h === 'm.youtube.com') {
+      const v = u.searchParams.get('v')
+      if (v) return `https://www.youtube.com/embed/${v}`
+      if (u.pathname.startsWith('/embed/')) return raw
+      if (u.pathname.startsWith('/shorts/')) return `https://www.youtube.com/embed/${u.pathname.split('/')[2]}`
+    }
+    if (h === 'youtu.be') return `https://www.youtube.com/embed/${u.pathname.slice(1)}`
+    if (h === 'vimeo.com') return `https://player.vimeo.com/video/${u.pathname.split('/').filter(Boolean)[0]}`
+    if (h === 'player.vimeo.com' || h === 'drive.google.com') return raw
+  } catch { /* 不是合法網址 */ }
+  return null
+}
+
+// 依網址判斷這是圖片、影片檔、還是要內嵌的影音平台連結
+export function classifyMedia(url: string): MediaKind | null {
+  const embed = toEmbedUrl(url)
+  if (embed) return 'embed'
+  if (VIDEO_FILE_RE.test(url)) return 'video'
+  if (IMAGE_FILE_RE.test(url)) return 'image'
+  return null
+}
+
+// 取出某頁裡的圖片與影片（image / video / embed / 上傳的媒體檔區塊，含巢狀欄位、折疊區）。
+// 注意：Notion「上傳檔案」型網址是有時效的簽章網址(約 1 小時)，只能在查詢當下即時抓，不能事先存起來。
+export async function getPageMedia(pageId: string, maxItems = 6): Promise<PageMedia[]> {
+  const out: PageMedia[] = []
   let calls = 0
   const MAX_CALLS = 14  // 控制延遲：一頁最多 14 次 children.list
+  const add = (url: string, caption: string, kind: MediaKind) => {
+    const finalUrl = kind === 'embed' ? (toEmbedUrl(url) ?? url) : url
+    out.push({ url: finalUrl, caption, kind })
+  }
   async function walk(blockId: string, depth: number) {
-    if (depth > 3 || calls >= MAX_CALLS || out.length >= maxImages) return
+    if (depth > 3 || calls >= MAX_CALLS || out.length >= maxItems) return
     let cursor: string | undefined = undefined
     do {
-      if (calls >= MAX_CALLS || out.length >= maxImages) return
+      if (calls >= MAX_CALLS || out.length >= maxItems) return
       calls++
       const res: any = await notion.blocks.children.list({ block_id: blockId, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) })
       for (const b of res.results as any[]) {
         if (b.type === 'child_page' || b.type === 'child_database') continue
-        if (b.type === 'image') {
-          const img = b.image
-          const url = img?.type === 'external' ? img.external?.url : img?.file?.url
+        const cap = (x: any) => (x?.caption ?? []).map((r: any) => r.plain_text).join('').trim()
+        if (b.type === 'image' || b.type === 'video' || b.type === 'file') {
+          const m = b[b.type]
+          const url: string = (m?.type === 'external' ? m.external?.url : m?.file?.url) ?? ''
           if (url) {
-            const caption = (img.caption ?? []).map((r: any) => r.plain_text).join('').trim()
-            out.push({ url, caption })
-            if (out.length >= maxImages) return
+            // image 區塊一律當圖片；video/file 依網址判斷（video 也可能是貼 YouTube 連結）
+            const kind: MediaKind | null = b.type === 'image' ? 'image' : classifyMedia(url)
+            if (kind) {
+              add(url, cap(m) || (m?.name ?? ''), kind)
+              if (out.length >= maxItems) return
+            }
           }
           continue
         }
-        if (b.has_children && b.type !== 'table_row') await walk(b.id, depth + 1)  // 巢狀 → 遞迴找圖
+        // 直接貼上的 YouTube/Vimeo 連結會變成 embed 區塊
+        if (b.type === 'embed' || b.type === 'bookmark') {
+          const url: string = b[b.type]?.url ?? ''
+          if (url && toEmbedUrl(url)) {
+            add(url, cap(b[b.type]), 'embed')
+            if (out.length >= maxItems) return
+          }
+          continue
+        }
+        if (b.has_children && b.type !== 'table_row') await walk(b.id, depth + 1)  // 巢狀 → 遞迴找圖/影片
       }
       cursor = res.has_more ? res.next_cursor : undefined
     } while (cursor)
@@ -857,7 +907,7 @@ export async function getKnowledgeBase() {
 
 // 圖庫：使用者自建的圖片來源（名稱｜關鍵字｜圖片｜說明）。AI 回答命中關鍵字時就顯示對應圖片。
 export const IMAGE_LIBRARY_DB_ID = '8b0e6cb10f684d0ba4969de9a284016a'
-export type LibImageRow = { name: string; keywords: string[]; caption: string; images: { url: string; caption: string }[] }
+export type LibImageRow = { name: string; keywords: string[]; caption: string; images: PageMedia[] }
 export async function getImageLibrary(): Promise<LibImageRow[]> {
   try {
     const res: any = await notion.databases.query({ database_id: IMAGE_LIBRARY_DB_ID, page_size: 100 })
@@ -865,10 +915,20 @@ export async function getImageLibrary(): Promise<LibImageRow[]> {
       const name = (p.properties['名稱']?.title ?? []).map((r: any) => r.plain_text).join('').trim()
       const kwRaw = (p.properties['關鍵字']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
       const caption = (p.properties['說明']?.rich_text ?? []).map((r: any) => r.plain_text).join('').trim()
-      // 圖片檔網址有時效(約1小時)，每次即時取得
-      const images = (p.properties['圖片']?.files ?? [])
-        .map((f: any) => ({ url: f.file?.url ?? f.external?.url ?? '', caption }))
-        .filter((x: any) => x.url)
+      // 上傳的圖片／影片檔（網址有時效約1小時，每次即時取得）
+      const images: PageMedia[] = (p.properties['圖片']?.files ?? [])
+        .map((f: any) => {
+          const url = f.file?.url ?? f.external?.url ?? ''
+          const kind = classifyMedia(f.name || url) ?? classifyMedia(url)
+          return url && kind ? { url, caption: caption || f.name || name, kind } : null
+        })
+        .filter(Boolean) as PageMedia[]
+      // 影片連結欄（YouTube／Vimeo 等，永久有效）
+      const link: string = p.properties['影片連結']?.url ?? ''
+      if (link) {
+        const kind = classifyMedia(link)
+        if (kind) images.push({ url: kind === 'embed' ? (toEmbedUrl(link) ?? link) : link, caption: caption || name, kind })
+      }
       // 名稱本身也算關鍵字；關鍵字用空白/逗號/頓號/分號分隔，全部轉小寫方便比對
       const keywords = [name, ...kwRaw.split(/[\s,，、;；]+/)].map(s => s.trim().toLowerCase()).filter(s => s.length >= 2)
       return { name, keywords, caption, images }
