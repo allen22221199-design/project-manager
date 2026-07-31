@@ -70,6 +70,10 @@ export async function POST() {
             if (OFFICE_EXTS.includes(ext)) {
               return extractOfficeText(Buffer.from(data, 'base64'), ext)
             }
+            // 純文字類：直接讀，不必經過 AI
+            if (['txt', 'csv', 'md', 'markdown', 'json', 'log', 'tsv'].includes(ext)) {
+              return Buffer.from(data, 'base64').toString('utf8')
+            }
             // Gemini 內嵌檔案上限約 20MB（base64 長度 × 0.75 ≈ 原始位元組）
             const sizeMB = (data.length * 0.75) / (1024 * 1024)
             // 影片：直接讓 AI 看影片內容整理成文字（不必先上傳 YouTube）
