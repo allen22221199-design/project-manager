@@ -34,6 +34,57 @@ async function fetchWebText(url: string): Promise<string> {
   return text.slice(0, 20000)
 }
 
+const IMAGE_MIMES: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+  webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', heif: 'image/heif',
+}
+// Gemini 可直接理解的影片格式
+const VIDEO_MIMES: Record<string, string> = {
+  mp4: 'video/mp4', mov: 'video/mov', webm: 'video/webm', avi: 'video/avi',
+  mpeg: 'video/mpeg', mpg: 'video/mpeg', wmv: 'video/wmv', flv: 'video/x-flv', '3gp': 'video/3gpp',
+}
+
+// 讀取單一附件的文字內容（依副檔名決定用哪種方式）
+async function readOneFile(f: { name: string; url: string }): Promise<string> {
+  if (!f?.url) throw new Error('沒有附加檔案（請在「檔案」欄位上傳）')
+  const ext = extOf(f.name || f.url)
+  // 舊版 Office（.doc/.xls/.ppt）是二進位格式，無法解析
+  if (['doc', 'xls', 'ppt'].includes(ext)) {
+    throw new Error(`舊版 Office 檔（.${ext}）無法讀取。請用 Word/Excel 開啟後另存為 .${ext}x（例如 .docx）或 PDF 再上傳`)
+  }
+  const { data, mime } = await fetchAsBase64(f.url)
+  // Word / Excel / PowerPoint：直接解壓讀出文字，不必先轉 PDF、也不必經過 AI
+  if (OFFICE_EXTS.includes(ext)) {
+    return extractOfficeText(Buffer.from(data, 'base64'), ext)
+  }
+  // 純文字類：直接讀，不必經過 AI
+  if (['txt', 'csv', 'md', 'markdown', 'json', 'log', 'tsv'].includes(ext)) {
+    return Buffer.from(data, 'base64').toString('utf8')
+  }
+  // Gemini 內嵌檔案上限約 20MB（base64 長度 × 0.75 ≈ 原始位元組）
+  const sizeMB = (data.length * 0.75) / (1024 * 1024)
+  // 影片：直接讓 AI 看影片內容整理成文字（不必先上傳 YouTube）
+  if (VIDEO_MIMES[ext]) {
+    if (sizeMB > 18) {
+      throw new Error(`影片過大（約 ${sizeMB.toFixed(1)}MB，直接上傳上限約 18MB）。請壓縮或剪短後再上傳；長片建議上傳到 YouTube（可設非公開）後，把網址貼在「連結」欄`)
+    }
+    return await extractTextFromVideo(data, VIDEO_MIMES[ext])
+  }
+  if (['mkv', 'm4v'].includes(ext)) {
+    throw new Error(`此影片格式（.${ext}）不支援。請轉存為 MP4 再上傳，或上傳到 YouTube 後把網址貼在「連結」欄`)
+  }
+  if (sizeMB > 18) {
+    throw new Error(`檔案過大（約 ${sizeMB.toFixed(1)}MB，上限約 20MB）。請壓縮、降低解析度或拆分後再上傳`)
+  }
+  // 依副檔名精準判斷類型；副檔名不明時才退回下載到的 content-type
+  let finalMime = ''
+  if (ext === 'pdf') finalMime = 'application/pdf'
+  else if (IMAGE_MIMES[ext]) finalMime = IMAGE_MIMES[ext]
+  else if (mime.startsWith('image/') || mime === 'application/pdf') finalMime = mime
+  else throw new Error(`不支援的檔案格式（${ext || mime}）。可用：Word、Excel、PPT、PDF、圖片、影片`)
+  return await extractTextFromMedia(data, finalMime)
+}
+
 export async function POST() {
   if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json({ error: '尚未設定 GEMINI_API_KEY' }, { status: 503 })
@@ -49,53 +100,25 @@ export async function POST() {
         // 自動判斷：有附檔→辨識檔案/圖片；有連結→抓網頁；都沒有→讀頁面內文
         const text = (await withTimeout((async (): Promise<string> => {
           if (item.files.length > 0) {
-            const f = item.files[0]
-            if (!f?.url) throw new Error('沒有附加檔案（請在「檔案」欄位上傳）')
-            const ext = extOf(f.name || f.url)
-            const imageMimes: Record<string, string> = {
-              jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-              webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', heif: 'image/heif',
-            }
-            // Gemini 可直接理解的影片格式
-            const videoMimes: Record<string, string> = {
-              mp4: 'video/mp4', mov: 'video/mov', webm: 'video/webm', avi: 'video/avi',
-              mpeg: 'video/mpeg', mpg: 'video/mpeg', wmv: 'video/wmv', flv: 'video/x-flv', '3gp': 'video/3gpp',
-            }
-            // 舊版 Office（.doc/.xls/.ppt）是二進位格式，無法解析
-            if (['doc', 'xls', 'ppt'].includes(ext)) {
-              throw new Error(`舊版 Office 檔（.${ext}）無法讀取。請用 Word/Excel 開啟後另存為 .${ext}x（例如 .docx）或 PDF 再上傳`)
-            }
-            const { data, mime } = await fetchAsBase64(f.url)
-            // Word / Excel / PowerPoint：直接解壓讀出文字，不必先轉 PDF、也不必經過 AI
-            if (OFFICE_EXTS.includes(ext)) {
-              return extractOfficeText(Buffer.from(data, 'base64'), ext)
-            }
-            // 純文字類：直接讀，不必經過 AI
-            if (['txt', 'csv', 'md', 'markdown', 'json', 'log', 'tsv'].includes(ext)) {
-              return Buffer.from(data, 'base64').toString('utf8')
-            }
-            // Gemini 內嵌檔案上限約 20MB（base64 長度 × 0.75 ≈ 原始位元組）
-            const sizeMB = (data.length * 0.75) / (1024 * 1024)
-            // 影片：直接讓 AI 看影片內容整理成文字（不必先上傳 YouTube）
-            if (videoMimes[ext]) {
-              if (sizeMB > 18) {
-                throw new Error(`影片過大（約 ${sizeMB.toFixed(1)}MB，直接上傳上限約 18MB）。請壓縮或剪短後再上傳；長片建議上傳到 YouTube（可設非公開）後，把網址貼在「連結」欄`)
+            // 一筆可能附多個檔案（例如影片切成多段、多份 PDF）→ 依序全部讀取後合併，
+            // 不再只讀第一個。時間快用完就先停，剩下的下次同步再補。
+            const MAX_FILES = 6
+            const fileDeadline = Date.now() + 38000
+            const parts: string[] = []
+            const errs: string[] = []
+            const picked = item.files.slice(0, MAX_FILES)
+            for (const file of picked) {
+              if (Date.now() > fileDeadline) { errs.push('（時間不足，其餘檔案下次同步再處理）'); break }
+              try {
+                const one = (await readOneFile(file)).trim()
+                if (one) parts.push(picked.length > 1 ? `【${file.name || '附件'}】\n${one}` : one)
+              } catch (e: any) {
+                errs.push(`${file.name || '附件'}：${e?.message ?? '讀取失敗'}`)
               }
-              return await extractTextFromVideo(data, videoMimes[ext])
             }
-            if (['mkv', 'm4v'].includes(ext)) {
-              throw new Error(`此影片格式（.${ext}）不支援。請轉存為 MP4 再上傳，或上傳到 YouTube 後把網址貼在「連結」欄`)
-            }
-            if (sizeMB > 18) {
-              throw new Error(`檔案過大（約 ${sizeMB.toFixed(1)}MB，上限約 20MB）。請壓縮、降低解析度或拆分後再上傳`)
-            }
-            // 依副檔名精準判斷類型；副檔名不明時才退回下載到的 content-type
-            let finalMime = ''
-            if (ext === 'pdf') finalMime = 'application/pdf'
-            else if (imageMimes[ext]) finalMime = imageMimes[ext]
-            else if (mime.startsWith('image/') || mime === 'application/pdf') finalMime = mime
-            else throw new Error(`不支援的檔案格式（${ext || mime}）。可用：Word、Excel、PPT、PDF、圖片、影片`)
-            return await extractTextFromMedia(data, finalMime)
+            if (item.files.length > MAX_FILES) errs.push(`（僅處理前 ${MAX_FILES} 個檔案）`)
+            if (parts.length === 0) throw new Error(errs.join('；') || '未取得內容')
+            return parts.join('\n\n---\n\n')
           } else if (item.url) {
             if (/youtube\.com|youtu\.be/i.test(item.url)) {
               return await extractTextFromYouTube(item.url)
