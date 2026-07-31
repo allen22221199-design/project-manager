@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 export type TourStep = { view?: string; target?: string; title: string; body: string; demo?: { type: 'type' | 'click' | 'drag'; text?: string } }
 
@@ -17,6 +17,8 @@ export default function Tour({
   const [typed, setTyped] = useState('')
   const [cursor, setCursor] = useState<{ x: number; y: number; down: boolean } | null>(null)
   const [paint, setPaint] = useState(0)   // 拖曳塗色示範：目前塗了幾格
+  const cardRef = useRef<HTMLDivElement>(null)
+  const [cardH, setCardH] = useState(250)  // 說明卡實際高度；用來定位，避免「下一步」被推出畫面而按不到
   const cur = steps[step]
 
   // 打字示範：一個字一個字打出，打完停一下再重來
@@ -110,27 +112,32 @@ export default function Tour({
     }
   }, [step, cur])
 
+  // 量測說明卡實際高度（各步驟文字長短不一），定位時才能確保整張卡含「下一步」都留在畫面內
+  useLayoutEffect(() => {
+    if (cardRef.current) setCardH(cardRef.current.offsetHeight)
+  }, [step, box])
+
   if (!cur) return null
   const isFirst = step === 0
   const isLast = step === steps.length - 1
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1440
   const vh = typeof window !== 'undefined' ? window.innerHeight : 900
   const TW = 340
-  const TH = 210
+  const th = Math.min(cardH, vh - 32)  // 用實測卡高，且不超過畫面；確保定位後整張卡（含按鈕）在畫面內
 
   // 決定說明框位置：右→下→上→左，選第一個放得下的；沒有 target 就置中
-  let tip = { left: (vw - TW) / 2, top: (vh - TH) / 2 }
+  let tip = { left: (vw - TW) / 2, top: (vh - th) / 2 }
   if (box) {
     const bigTarget = box.width > vw * 0.62 && box.height > vh * 0.5
     if (bigTarget) {
       // 目標很大（例如排程表）→ 放右下角，不擋住示範操作
-      tip = { left: vw - TW - 24, top: vh - TH - 24 }
+      tip = { left: vw - TW - 24, top: vh - th - 24 }
     } else if (box.left + box.width + 16 + TW <= vw) tip = { left: box.left + box.width + 16, top: box.top }
-    else if (box.top + box.height + 16 + TH <= vh) tip = { left: box.left, top: box.top + box.height + 16 }
-    else if (box.top - 16 - TH >= 0) tip = { left: box.left, top: box.top - 16 - TH }
+    else if (box.top + box.height + 16 + th <= vh) tip = { left: box.left, top: box.top + box.height + 16 }
+    else if (box.top - 16 - th >= 0) tip = { left: box.left, top: box.top - 16 - th }
     else tip = { left: box.left - 16 - TW, top: box.top }
     tip.left = Math.max(16, Math.min(tip.left, vw - TW - 16))
-    tip.top = Math.max(16, Math.min(tip.top, vh - TH - 16))
+    tip.top = Math.max(16, Math.min(tip.top, vh - th - 16))
   }
 
   return (
@@ -191,8 +198,8 @@ export default function Tour({
       )}
 
       {/* 說明卡片 */}
-      <div onClick={e => e.stopPropagation()}
-        style={{ position: 'absolute', left: tip.left, top: tip.top, width: TW, transition: 'left .25s ease, top .25s ease' }}
+      <div ref={cardRef} onClick={e => e.stopPropagation()}
+        style={{ position: 'absolute', left: tip.left, top: tip.top, width: TW, maxHeight: vh - 24, overflowY: 'auto', zIndex: 5, transition: 'left .25s ease, top .25s ease' }}
         className="rounded-2xl p-5 shadow-2xl"
       >
         <div style={{ background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(16px)', borderRadius: 16 }} className="p-5 border border-white/90">
