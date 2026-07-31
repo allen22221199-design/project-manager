@@ -129,7 +129,8 @@ export async function POST() {
             // 一筆可能附多個檔案（例如影片切成多段、多份 PDF）→ 依序全部讀取後合併，
             // 不再只讀第一個。時間快用完就先停，剩下的下次同步再補。
             const MAX_FILES = 6
-            const fileDeadline = Date.now() + 105000
+            // 留足餘裕給「最後一個開始的檔案」跑完，否則外層 120 秒逾時會把已讀到的內容一起丟掉
+            const fileDeadline = Date.now() + 70000
             const parts: string[] = []
             const errs: string[] = []
             const picked = item.files.slice(0, MAX_FILES)
