@@ -2427,6 +2427,11 @@ export default function Page() {
                         setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
                         fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, status: next }) })
                       }
+                      // 改負責人：這一頁一次只看一個人的任務，沒有「別人」可以拖過去，改用選單指派
+                      const handoverTask = (t: DailyTask, person: string) => {
+                        setInProgressTasks(prev => prev.map(x => x.id === t.id ? { ...x, person } : x))
+                        fetch('/api/daily-tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, person }) })
+                      }
                       const renderTaskRow = (t: DailyTask) => (
                         <div key={t.id} className={`border-b border-blue-100 last:border-0 ${effectiveFlagged(t) && t.status !== '完成' ? 'bg-red-50 -mx-2 px-2 rounded' : ''}`}>
                           <div className="flex items-center gap-3 text-base py-2.5 group">
@@ -2449,6 +2454,13 @@ export default function Page() {
                               <span className={`flex-1 cursor-text ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-700'}`}
                                 onClick={() => { setEditingId(t.id); setEditText(t.task) }}>{t.task}</span>
                             )}
+                            {/* 改負責人（手機也能用，不需拖曳）*/}
+                            <select value="" title="把這項任務交給別人"
+                              onChange={e => { if (e.target.value) handoverTask(t, e.target.value) }}
+                              className="text-xs border border-gray-200 rounded-md px-1.5 py-1 bg-white text-gray-500 shrink-0 cursor-pointer hover:border-indigo-400 hover:text-indigo-600 focus:outline-none focus:border-indigo-400">
+                              <option value="">👤 轉給</option>
+                              {DAILY_PEOPLE.filter(p => p !== t.person).map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
                             <button onClick={() => toggleDetail(t)} title="詳情 / AI 規劃"
                               className={`text-base shrink-0 px-1 rounded hover:text-blue-600 ${(t.content || t.direction || t.aiPlan) ? 'text-blue-500' : 'text-gray-300'}`}>📝</button>
                             <button onClick={() => { if (window.confirm(`確定要刪除任務「${t.task}」嗎？`)) deleteTask(t.id) }} title="刪除任務"
@@ -2964,6 +2976,13 @@ export default function Page() {
                                 ) : (
                                   <span className="text-gray-700 flex-1 cursor-text" onClick={() => { setEditingId(t.id); setEditText(t.task) }}>{t.task}</span>
                                 )}
+                                {/* 改負責人：電腦可以直接拖曳，但手機不支援拖曳，用這個選單一樣能轉派 */}
+                                <select value="" title="把這項任務交給別人"
+                                  onChange={e => { if (e.target.value) reassignTask(t.id, e.target.value) }}
+                                  className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-400 shrink-0 mt-0.5 cursor-pointer hover:border-indigo-400 hover:text-indigo-600 focus:outline-none focus:border-indigo-400">
+                                  <option value="">👤</option>
+                                  {DAILY_PEOPLE.filter(p => p !== t.person).map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
                                 <button onClick={() => toggleDetail(t)} title="詳情 / 內容與進度方向"
                                   className={`text-xs shrink-0 leading-none mt-0.5 px-1 rounded hover:text-blue-600 ${(t.content || t.direction) ? 'text-blue-500' : 'text-gray-300 opacity-0 group-hover:opacity-100'}`}>📝</button>
                                 {editingDueDateId === t.id ? (
