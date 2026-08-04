@@ -553,6 +553,16 @@ export default function Page() {
         try {
           const fd = new FormData()
           fd.append('audio', blob, 'speech' + (blob.type.includes('mp4') ? '.mp4' : '.webm'))
+          // 一起送出公司實際用語，讓辨識把同音字對回正確寫法（頤昌 ≠ 宜昌、峰碩 ≠ 豐碩）
+          const vocab = [
+            ...projects.filter(p => !INACTIVE_STATUSES.includes(p.status)).map(p => p.name),
+            ...PROCESS_STEPS, ...OLD_PROCESS_STEPS, ...DAILY_PEOPLE,
+            'UV噴印機', '滾塗機', '噴塗機', '堆高機', '藝格板', '藝格板結構',
+            '單開門', '雙開門', '門片', '門框', '箱蓋', '箱體', '檢修門', '面盤', '鋁板', '矽利康',
+            '打樣', '對色', '分色接圖', '開孔', '折版', '退縫', '假縫', '落水頭', '防焰', '耐燃',
+            '樘', '片', '組', '支', '式',
+          ]
+          fd.append('terms', JSON.stringify(Array.from(new Set(vocab.map(s => String(s).trim()).filter(Boolean)))))
           const r = await fetch('/api/transcribe', { method: 'POST', body: fd })
           const data = await readJson(r)
           if (!r.ok) setRecError(data.error ?? '轉文字失敗')

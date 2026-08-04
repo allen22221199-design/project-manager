@@ -23,19 +23,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '沒有錄到聲音，請再按一次並靠近手機講話' }, { status: 400 })
     }
 
+    // 前端會把「目前進行中的案場名稱＋工序＋人名」一起送來，用來修正同音錯字
+    let terms: string[] = []
+    try {
+      const raw = form.get('terms')
+      if (typeof raw === 'string' && raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) terms = parsed.map(String).filter(Boolean)
+      }
+    } catch { /* 沒帶或格式錯就當沒有，仍可轉文字 */ }
+
     const base64 = buf.toString('base64')
     // 手機錄下來的格式各家不同：Android/Chrome 多為 webm(opus)、iPhone 多為 mp4(aac)。
     // Gemini 對 webm 走影片管道比較穩，所以先用原始格式，失敗再退回 video/webm 重試一次。
     const raw = (file.type || '').split(';')[0].toLowerCase()
     const primary = raw || 'audio/webm'
     try {
-      return NextResponse.json({ text: await transcribeSpeech(base64, primary) })
+      return NextResponse.json({ text: await transcribeSpeech(base64, primary, terms) })
     } catch (e: any) {
       const fallback = primary.includes('webm') ? 'video/webm'
         : primary.includes('mp4') || primary.includes('m4a') ? 'video/mp4'
         : 'audio/mp3'
       if (fallback === primary) throw e
-      return NextResponse.json({ text: await transcribeSpeech(base64, fallback) })
+      return NextResponse.json({ text: await transcribeSpeech(base64, fallback, terms) })
     }
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? '轉文字失敗' }, { status: 500 })
