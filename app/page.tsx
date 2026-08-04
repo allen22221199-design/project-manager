@@ -515,6 +515,8 @@ export default function Page() {
 
   // AI 助理對話
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([])
+  // 進度分類時，某一筆的候選清單是否展開成「全部案場」（key: 訊息index-筆index）
+  const [pickerExpanded, setPickerExpanded] = useState<Record<string, boolean>>({})
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const chatInitialized = useRef(false)
@@ -1269,9 +1271,35 @@ export default function Page() {
   }
 
   // AI 助理：送出訊息
+  // 師傅常常只回一個數字（「3」）來選案場。若目前正有進度等著指定專案，就把數字當成選項，
+  // 不要送去問 AI。回傳 true 代表已處理。
+  function tryPickByNumber(text: string): boolean {
+    const t = text.trim().replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    const m = t.match(/^第?\s*(\d{1,2})\s*(?:個|號|\.|、)?$/)
+    if (!m) return false
+    const num = parseInt(m[1], 10)
+    const activeProjs = projects.filter(p => !INACTIVE_STATUSES.includes(p.status)).map(p => ({ id: p.id, name: p.name }))
+    for (let mi = chatMessages.length - 1; mi >= 0; mi--) {
+      const drafts = chatMessages[mi].drafts
+      if (!drafts) continue
+      const di = drafts.findIndex(x => !x.chosenId && x.state !== 'done')
+      if (di < 0) continue
+      const d = drafts[di]
+      // 與畫面上顯示的清單保持一致，數字才會對到正確的案場
+      const shortList = d.candidates.length > 0 ? d.candidates : activeProjs.slice(0, 8)
+      const list = pickerExpanded[`${mi}-${di}`] ? activeProjs : shortList
+      const pick = list[num - 1]
+      if (!pick) return false
+      pickDraftProject(mi, di, pick.id, pick.name)
+      return true
+    }
+    return false
+  }
+
   async function sendChat(override?: string) {
     const text = (override ?? chatInput).trim()
     if (!text || chatLoading) return
+    if (!override && tryPickByNumber(text)) { setChatInput(''); return }
     // 點了某則答案的追問按鈕 → 清掉那些按鈕，避免重複點
     const base = override ? chatMessages.map(m => m.suggestions ? { ...m, suggestions: undefined } : m) : chatMessages
     const next: ChatMsg[] = [...base, { role: 'user', content: text, _ts: Date.now() } as any]
@@ -3185,7 +3213,12 @@ export default function Page() {
                             <p className="text-xs font-semibold text-gray-500">共 {drafts.length} 筆進度</p>
                           )}
                           {drafts.map((d, di) => {
-                            const pickList = d.candidates.length > 0 ? d.candidates : activeProjs.map(p => ({ id: p.id, name: p.name }))
+                            const key = `${i}-${di}`
+                            const expanded = !!pickerExpanded[key]
+                            const shortList = d.candidates.length > 0 ? d.candidates : activeProjs.map(p => ({ id: p.id, name: p.name })).slice(0, 8)
+                            const pickList = expanded ? activeProjs.map(p => ({ id: p.id, name: p.name })) : shortList
+                            // 第一筆還沒選專案的 → 使用者直接在對話框打數字就是選這一筆
+                            const isFirstUnresolved = drafts.findIndex(x => !x.chosenId && x.state !== 'done') === di
                             return (
                               <div key={di} className={`rounded-lg border p-2.5 ${d.state === 'done' ? 'border-emerald-200 bg-emerald-50' : d.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
                                 <div className="text-sm text-gray-700 space-y-0.5">
@@ -3205,14 +3238,26 @@ export default function Page() {
                                       className="text-xs text-gray-400 hover:text-indigo-600 underline">改成別的專案</button>
                                   </div>
                                 ) : (
-                                  <div className="mt-1.5">
-                                    <p className="text-xs text-amber-700 mb-1">這筆要記到哪個專案？</p>
-                                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-                                      {pickList.map(p => (
+                                  <div className="mt-2">
+                                    <p className="text-sm text-amber-700 font-medium mb-1.5">
+                                      這筆是哪個案場？
+                                      {isFirstUnresolved && <span className="font-normal text-gray-500">（點下面，或直接打數字）</span>}
+                                    </p>
+                                    <div className="flex flex-col gap-1.5">
+                                      {pickList.map((p, pi) => (
                                         <button key={p.id} onClick={() => pickDraftProject(i, di, p.id, p.name)}
-                                          className="bg-white border border-emerald-300 text-emerald-700 rounded-full px-3 py-1 text-xs font-medium hover:bg-emerald-50">{p.name}</button>
+                                          className="w-full flex items-center gap-2.5 bg-white border border-emerald-300 text-emerald-800 rounded-xl px-3 py-2.5 text-base font-medium text-left hover:bg-emerald-50 active:bg-emerald-100">
+                                          <span className="shrink-0 w-7 h-7 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center">{pi + 1}</span>
+                                          <span className="flex-1 leading-tight">{p.name}</span>
+                                        </button>
                                       ))}
                                     </div>
+                                    {!expanded && activeProjs.length > pickList.length && (
+                                      <button onClick={() => setPickerExpanded(s => ({ ...s, [key]: true }))}
+                                        className="mt-1.5 text-sm text-indigo-600 hover:underline px-1">
+                                        都不是 → 顯示全部 {activeProjs.length} 個案場
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </div>

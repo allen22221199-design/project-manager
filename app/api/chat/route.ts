@@ -67,7 +67,15 @@ export async function POST(req: NextRequest) {
       const intent = await routeChatIntent(lastUser, projList.map(p => p.name), taipeiToday())
       if (intent.intent === 'progress' && intent.items.length > 0) {
         // 把 AI 對應到的專案名稱，比對回實際專案（完全相符 → 包含關係 → 都沒有就列候選）
-        const norm = (s: string) => s.replace(/\s/g, '').toLowerCase()
+        const norm = (s: string) => s.replace(/[\s\-－_（）()]/g, '').toLowerCase()
+        // 師傅講的名稱通常很簡略（「冠德」「桃大」），用「最長共同片段」幫忙猜，
+        // 猜不準也要把最可能的排在前面，讓他從短清單挑，而不是從 20 個裡面找。
+        const longestCommon = (a: string, b: string) => {
+          for (let len = Math.min(a.length, b.length); len >= 2; len--) {
+            for (let i = 0; i + len <= a.length; i++) if (b.includes(a.slice(i, i + len))) return len
+          }
+          return 0
+        }
         const drafts: ProgressDraft[] = intent.items.map(item => {
           const hint = item.project ? norm(item.project) : ''
           let matched = hint ? projList.find(p => norm(p.name) === hint) : undefined
@@ -75,6 +83,15 @@ export async function POST(req: NextRequest) {
           if (!matched && hint) {
             candidates = projList.filter(p => norm(p.name).includes(hint) || hint.includes(norm(p.name)))
             if (candidates.length === 1) { matched = candidates[0]; candidates = [] }
+          }
+          if (!matched && candidates.length === 0) {
+            // 完全沒對應：拿「AI 猜的名稱 + 進度描述」去比對，取分數最高的前 8 個當候選
+            const hints = [hint, norm(item.description)].filter(Boolean)
+            const scored = projList
+              .map(p => ({ p, s: Math.max(...hints.map(h => longestCommon(h, norm(p.name)))) }))
+              .sort((a, b) => b.s - a.s)
+            candidates = (scored[0]?.s >= 2 ? scored.filter(x => x.s >= 2) : scored)
+              .slice(0, 8).map(x => ({ id: x.p.id, name: x.p.name }))
           }
           return {
             date: item.date || taipeiToday(),
