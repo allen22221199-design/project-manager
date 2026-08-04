@@ -3393,9 +3393,23 @@ export default function Page() {
             <div className="flex gap-2 pt-2 border-t border-gray-200 items-end" data-tour="chat-input">
               <button onClick={() => (recording ? stopRecording() : startRecording())} disabled={transcribing}
                 title={recording ? '停止錄音' : '按一下開始講話，講完再按一次'}
-                className={`shrink-0 rounded-xl px-4 py-3 text-base font-semibold border transition-colors disabled:opacity-40 ${
+                aria-label={recording ? '停止錄音' : '語音輸入'}
+                className={`shrink-0 rounded-xl px-4 py-3 text-base font-semibold border transition-colors disabled:opacity-40 flex items-center gap-1.5 ${
                   recording ? 'bg-red-600 text-white border-red-600 hover:bg-red-700' : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-600'}`}>
-                {recording ? '■ 停止' : '🎤'}
+                {recording ? (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <rect x="6" y="6" width="12" height="12" rx="2" />
+                    </svg>
+                    停止
+                  </>
+                ) : (
+                  // 鍵盤上常見的麥克風圖示（實心，小尺寸也清楚）
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 14.5a3.5 3.5 0 0 0 3.5-3.5V5a3.5 3.5 0 0 0-7 0v6a3.5 3.5 0 0 0 3.5 3.5z" />
+                    <path d="M18 10a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V20h2.5a1 1 0 1 1 0 2h-7a1 1 0 1 1 0-2H11v-2.06A8 8 0 0 1 4 10a1 1 0 1 1 2 0 6 6 0 0 0 12 0z" />
+                  </svg>
+                )}
               </button>
               <textarea ref={chatInputRef} value={chatInput} onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
