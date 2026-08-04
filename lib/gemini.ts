@@ -167,11 +167,14 @@ ${knowledge || '（無相關內部資料）'}
 // 聊天室意圖判斷：分辨這句是「要查詢/問問題」還是「要新增專案進度回報」，
 // 若是進度回報，順便把對應的專案、日期、進度內容抽出來。
 // 保守原則：不確定時一律當成 question（因為寫入進度前還會再讓使用者確認）。
-export type ChatIntent = {
-  intent: 'progress' | 'question'
+export type ProgressItem = {
   project: string | null   // 對應到的專案名稱（盡量對應 projectNames 其中一個；無法確定填 null）
   date: string | null      // YYYY/MM/DD；沒提到就 null（之後預設今天）
   description: string       // 乾淨的一句話進度描述
+}
+export type ChatIntent = {
+  intent: 'progress' | 'question'
+  items: ProgressItem[]    // 一次可能講很多筆進度（不同專案），逐筆拆開分類
 }
 
 export async function routeChatIntent(message: string, projectNames: string[], todayISO: string): Promise<ChatIntent> {
@@ -184,13 +187,19 @@ ${projectNames.length ? projectNames.map(n => '・' + n).join('\n') : '（目前
 
 規則：
 1. 只有當這句話明顯是在「陳述某專案的進度/完成/狀態」時才判定 progress；只要有疑問語氣、在問怎麼做、或看起來像查資料，一律判 question。
-2. 若判 progress，project 盡量對應到上面清單中「最相符的一個」專案完整名稱；真的對應不到就填 null。
-3. date：句子有明確講日期才填（格式 YYYY/MM/DD），沒有就填 null。
-4. description：把進度整理成乾淨、具體的一句話（去掉「幫我記一下」這類指令詞）。
-5. 只輸出 JSON，不要多餘文字。
+2. 【重要】使用者常常一次講很多筆進度（一行一筆、用逗號／頓號／分號隔開、或用 1. 2. 3. 條列）。
+   請把每一筆「各自獨立」拆成一個 item，不要合併成一句，也不要只取第一筆。
+   不同專案要分到不同 item；同一個專案有多件事，若是同一天同一件事的延伸就合併成一筆，否則也拆開。
+3. 每個 item 的 project 盡量對應到上面清單中「最相符的一個」專案完整名稱；真的對應不到就填 null。
+   注意口語簡稱：例如「冠德」對應到名稱含「冠德」的專案、「桃大」對應「桃大真27期」。
+4. date：該筆有明確講日期才填（格式 YYYY/MM/DD），沒有就填 null。若整句開頭講了日期（例如「今天」「8/3」）而後面各筆沒再提，則各筆共用那個日期。
+5. description：把該筆進度整理成乾淨、具體的一句話（去掉「幫我記一下」這類指令詞），保留數量、規格、工序等細節。
+6. 只輸出 JSON，不要多餘文字。
 
 回傳格式：
-{ "intent": "progress" | "question", "project": "專案名稱或 null", "date": "YYYY/MM/DD 或 null", "description": "進度描述（question 時可空字串）" }`
+{ "intent": "progress" | "question",
+  "items": [ { "project": "專案名稱或 null", "date": "YYYY/MM/DD 或 null", "description": "進度描述" } ] }
+（intent 為 question 時，items 回傳空陣列 []）`
 
   try {
     const model = genAI.getGenerativeModel({
@@ -200,15 +209,24 @@ ${projectNames.length ? projectNames.map(n => '・' + n).join('\n') : '（目前
     })
     const res = await model.generateContent(`今天是 ${todayISO}。\n使用者說：「${message}」`)
     const parsed = JSON.parse(res.response.text().replace(/```json|```/g, '').trim())
+    // 舊格式（單筆 project/description）也接受，避免模型偶爾回舊結構
+    const raw: any[] = Array.isArray(parsed.items) && parsed.items.length
+      ? parsed.items
+      : (parsed.description ? [{ project: parsed.project, date: parsed.date, description: parsed.description }] : [])
+    const items: ProgressItem[] = raw
+      .map(it => ({
+        project: it?.project || null,
+        date: it?.date || null,
+        description: String(it?.description ?? '').trim(),
+      }))
+      .filter(it => it.description)
     return {
-      intent: parsed.intent === 'progress' ? 'progress' : 'question',
-      project: parsed.project || null,
-      date: parsed.date || null,
-      description: String(parsed.description || ''),
+      intent: parsed.intent === 'progress' && items.length > 0 ? 'progress' : 'question',
+      items: parsed.intent === 'progress' ? items : [],
     }
   } catch {
     // 分類失敗就當一般問題處理，維持原本聊天流程
-    return { intent: 'question', project: null, date: null, description: '' }
+    return { intent: 'question', items: [] }
   }
 }
 

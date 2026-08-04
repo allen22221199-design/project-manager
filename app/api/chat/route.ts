@@ -65,29 +65,34 @@ export async function POST(req: NextRequest) {
       : []
     if (projList.length > 0 && lastUser.trim()) {
       const intent = await routeChatIntent(lastUser, projList.map(p => p.name), taipeiToday())
-      if (intent.intent === 'progress' && intent.description.trim()) {
+      if (intent.intent === 'progress' && intent.items.length > 0) {
         // 把 AI 對應到的專案名稱，比對回實際專案（完全相符 → 包含關係 → 都沒有就列候選）
         const norm = (s: string) => s.replace(/\s/g, '').toLowerCase()
-        const hint = intent.project ? norm(intent.project) : ''
-        let matched = hint ? projList.find(p => norm(p.name) === hint) : undefined
-        let candidates: { id: string; name: string }[] = []
-        if (!matched && hint) {
-          candidates = projList.filter(p => norm(p.name).includes(hint) || hint.includes(norm(p.name)))
-          if (candidates.length === 1) { matched = candidates[0]; candidates = [] }
-        }
-        const draft: ProgressDraft = {
-          date: intent.date || taipeiToday(),
-          description: intent.description.trim(),
-          matchedId: matched?.id ?? null,
-          matchedName: matched?.name ?? null,
-          candidates,
-        }
-        const reply = matched
-          ? `我看起來你是要記一筆進度到【${matched.name}】。確認一下內容，沒問題就按「確認新增」👇`
-          : candidates.length > 0
-            ? '這筆進度要記到哪個專案？請點選一個👇'
-            : '這筆進度要記到哪個專案？我沒對應到，請從清單選一個👇'
-        return NextResponse.json({ reply, progressDraft: draft })
+        const drafts: ProgressDraft[] = intent.items.map(item => {
+          const hint = item.project ? norm(item.project) : ''
+          let matched = hint ? projList.find(p => norm(p.name) === hint) : undefined
+          let candidates: { id: string; name: string }[] = []
+          if (!matched && hint) {
+            candidates = projList.filter(p => norm(p.name).includes(hint) || hint.includes(norm(p.name)))
+            if (candidates.length === 1) { matched = candidates[0]; candidates = [] }
+          }
+          return {
+            date: item.date || taipeiToday(),
+            description: item.description.trim(),
+            matchedId: matched?.id ?? null,
+            matchedName: matched?.name ?? null,
+            candidates,
+          }
+        })
+        const auto = drafts.filter(d => d.matchedId).length
+        const need = drafts.length - auto
+        const reply = drafts.length === 1
+          ? (drafts[0].matchedId
+              ? `我看起來你是要記一筆進度到【${drafts[0].matchedName}】。確認一下內容，沒問題就按「確認新增」👇`
+              : '這筆進度要記到哪個專案？請點選一個👇')
+          : `我從你這段話裡整理出 ${drafts.length} 筆進度，已經幫你分好各自的專案${need > 0 ? `（其中 ${need} 筆我不確定，請你點選）` : ''}。確認後按「全部確認新增」👇`
+        // progressDraft（單數）保留給舊版前端，避免使用者還沒重新整理就壞掉
+        return NextResponse.json({ reply, progressDrafts: drafts, progressDraft: drafts.length === 1 ? drafts[0] : undefined })
       }
     }
 

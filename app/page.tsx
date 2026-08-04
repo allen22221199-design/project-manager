@@ -105,7 +105,14 @@ type PrivateEvent = { id: string; title: string; date: string; note?: string; ti
 type FileResult = { title: string; name: string; url: string }
 type ImageResult = { source: string; url: string; caption: string; kind?: 'image' | 'video' | 'embed' }
 type ProgressDraft = { date: string; description: string; matchedId: string | null; matchedName: string | null; candidates: { id: string; name: string }[] }
-type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; images?: ImageResult[]; draft?: ProgressDraft; draftDone?: boolean; suggestions?: string[] }
+// 一次講很多筆進度時，每筆各自記住「使用者選了哪個專案」與「寫入狀態」
+type ChatDraft = ProgressDraft & {
+  chosenId?: string | null
+  chosenName?: string | null
+  state?: 'pending' | 'saving' | 'done' | 'error' | 'skipped'
+  note?: string
+}
+type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; images?: ImageResult[]; drafts?: ChatDraft[]; draftDone?: boolean; suggestions?: string[] }
 type TaskAttachment = { name: string; url: string }
 type TaskStep = { step: string; done: boolean }
 type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[]; flag?: string; steps?: TaskStep[] }
@@ -1283,38 +1290,64 @@ export default function Page() {
       const reply = r.ok ? (data.reply || '（沒有回覆）') : ('錯誤：' + (data.error ?? '回覆失敗'))
       const files: FileResult[] = r.ok ? (data.files ?? []) : []
       const images: ImageResult[] = r.ok ? (data.images ?? []) : []
-      const draft: ProgressDraft | undefined = r.ok ? data.progressDraft : undefined
-      const suggestions: string[] = r.ok && !draft ? (data.suggestions ?? []) : []
-      setChatMessages([...next, { role: 'assistant', content: reply, files, images, draft, suggestions }])
+      const rawDrafts: ProgressDraft[] = r.ok
+        ? (data.progressDrafts ?? (data.progressDraft ? [data.progressDraft] : []))
+        : []
+      const drafts: ChatDraft[] | undefined = rawDrafts.length
+        ? rawDrafts.map(d => ({ ...d, chosenId: d.matchedId, chosenName: d.matchedName, state: 'pending' as const }))
+        : undefined
+      const suggestions: string[] = r.ok && !drafts ? (data.suggestions ?? []) : []
+      setChatMessages([...next, { role: 'assistant', content: reply, files, images, drafts, suggestions }])
     } catch (e: any) {
       setChatMessages([...next, { role: 'assistant', content: '錯誤：' + e.message }])
     } finally { setChatLoading(false) }
   }
 
   // 聊天室裡確認新增進度：把草稿寫入指定專案的 Notion 進度紀錄
-  async function confirmChatProgress(msgIndex: number, draft: ProgressDraft, pageId: string, projName: string) {
-    // 日期轉成 YYYY-MM-DD（progress API 用的格式）
-    const dateISO = draft.date.replace(/\//g, '-')
-    setChatMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, draftDone: true, content: `⏳ 正在把進度寫入【${projName}】…` } : m))
-    try {
-      const r = await fetch('/api/progress', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pageId, date: dateISO, description: draft.description }),
-      })
-      const data = await readJson(r)
-      const ok = r.ok
-      setChatMessages(prev => prev.map((m, i) => i === msgIndex
-        ? { ...m, draftDone: true, draft: undefined, content: ok
-            ? `✅ 已把進度記到【${projName}】\n・日期：${draft.date}\n・內容：${draft.description}`
-            : `❌ 寫入失敗：${data.error ?? '未知錯誤'}` }
-        : m))
-      if (ok) { fetchProjects(); if (selected?.id === pageId) refreshProjectDetail() }
-    } catch (e: any) {
-      setChatMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, draftDone: true, content: `❌ 寫入失敗：${e.message}` } : m))
+  // 更新某則訊息裡第 di 筆進度草稿
+  function patchDraft(msgIndex: number, di: number, patch: Partial<ChatDraft>) {
+    setChatMessages(prev => prev.map((m, i) => i !== msgIndex ? m : {
+      ...m,
+      drafts: (m.drafts ?? []).map((d, j) => j === di ? { ...d, ...patch } : d),
+    }))
+  }
+  // 幫某一筆指定專案（使用者從候選清單點選）
+  function pickDraftProject(msgIndex: number, di: number, id: string, name: string) {
+    patchDraft(msgIndex, di, { chosenId: id, chosenName: name })
+  }
+  // 把這則訊息裡「已對應到專案」的進度全部寫入；逐筆更新狀態，失敗的不影響其他筆
+  async function confirmAllDrafts(msgIndex: number) {
+    const list = chatMessages[msgIndex]?.drafts ?? []
+    const targets = list.map((d, di) => ({ d, di })).filter(x => x.d.chosenId && x.d.state !== 'done')
+    if (targets.length === 0) return
+    const touched: string[] = []
+    for (const { d, di } of targets) {
+      patchDraft(msgIndex, di, { state: 'saving' })
+      try {
+        const r = await fetch('/api/progress', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pageId: d.chosenId, date: d.date.replace(/\//g, '-'), description: d.description }),
+        })
+        const data = await readJson(r)
+        if (r.ok) {
+          patchDraft(msgIndex, di, { state: 'done' })
+          touched.push(d.chosenId!)
+        } else {
+          patchDraft(msgIndex, di, { state: 'error', note: data.error ?? '未知錯誤' })
+        }
+      } catch (e: any) {
+        patchDraft(msgIndex, di, { state: 'error', note: e.message })
+      }
+    }
+    setChatMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, draftDone: true } : m))
+    if (touched.length) {
+      fetchProjects()
+      if (selected?.id && touched.includes(selected.id)) refreshProjectDetail()
     }
   }
   function cancelChatProgress(msgIndex: number) {
-    setChatMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, draft: undefined, draftDone: true, content: '好的，這筆進度沒有記錄。有需要再跟我說 🙂' } : m))
+    setChatMessages(prev => prev.map((m, i) => i === msgIndex
+      ? { ...m, drafts: undefined, draftDone: true, content: '好的，這些進度沒有記錄。有需要再跟我說 🙂' } : m))
   }
 
   // 同步知識庫（處理 Notion 知識庫中「待處理」的項目）
@@ -3141,33 +3174,58 @@ export default function Page() {
                       </div>
                       )
                     })()}
-                    {m.draft && !m.draftDone && (() => {
-                      const d = m.draft!
+                    {m.drafts && m.drafts.length > 0 && (() => {
                       const activeProjs = projects.filter(p => !INACTIVE_STATUSES.includes(p.status))
-                      const pickList = d.candidates.length > 0 ? d.candidates : activeProjs.map(p => ({ id: p.id, name: p.name }))
+                      const drafts = m.drafts!
+                      const ready = drafts.filter(d => d.chosenId && d.state !== 'done').length
+                      const allDone = drafts.every(d => d.state === 'done' || d.state === 'error')
                       return (
                         <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                          <div className="text-xs text-gray-500 space-y-0.5">
-                            <p>📅 日期：<span className="font-medium text-gray-700">{d.date}</span></p>
-                            <p>📝 內容：<span className="font-medium text-gray-700">{d.description}</span></p>
-                          </div>
-                          {d.matchedId ? (
-                            <div className="flex gap-2">
-                              <button onClick={() => confirmChatProgress(i, d, d.matchedId!, d.matchedName!)}
-                                className="bg-emerald-600 text-white rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-emerald-700">✓ 確認新增到【{d.matchedName}】</button>
-                              <button onClick={() => cancelChatProgress(i)}
-                                className="text-gray-400 hover:text-gray-600 text-xs px-2">取消</button>
-                            </div>
-                          ) : (
-                            <div className="space-y-1.5">
-                              <div className="flex flex-wrap gap-1.5">
-                                {pickList.map(p => (
-                                  <button key={p.id} onClick={() => confirmChatProgress(i, d, p.id, p.name)}
-                                    className="bg-white border border-emerald-300 text-emerald-700 rounded-full px-3 py-1 text-xs font-medium hover:bg-emerald-50">{p.name}</button>
-                                ))}
+                          {drafts.length > 1 && (
+                            <p className="text-xs font-semibold text-gray-500">共 {drafts.length} 筆進度</p>
+                          )}
+                          {drafts.map((d, di) => {
+                            const pickList = d.candidates.length > 0 ? d.candidates : activeProjs.map(p => ({ id: p.id, name: p.name }))
+                            return (
+                              <div key={di} className={`rounded-lg border p-2.5 ${d.state === 'done' ? 'border-emerald-200 bg-emerald-50' : d.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
+                                <div className="text-sm text-gray-700 space-y-0.5">
+                                  <p className="font-medium">{d.description}</p>
+                                  <p className="text-xs text-gray-500">📅 {d.date}</p>
+                                </div>
+                                {d.state === 'done' ? (
+                                  <p className="text-xs text-emerald-700 font-medium mt-1.5">✅ 已記到【{d.chosenName}】</p>
+                                ) : d.state === 'error' ? (
+                                  <p className="text-xs text-red-600 mt-1.5">❌ 寫入失敗：{d.note}</p>
+                                ) : d.state === 'saving' ? (
+                                  <p className="text-xs text-gray-500 mt-1.5">⏳ 寫入中…</p>
+                                ) : d.chosenId ? (
+                                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                    <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">📁 {d.chosenName}</span>
+                                    <button onClick={() => patchDraft(i, di, { chosenId: null, chosenName: null })}
+                                      className="text-xs text-gray-400 hover:text-indigo-600 underline">改成別的專案</button>
+                                  </div>
+                                ) : (
+                                  <div className="mt-1.5">
+                                    <p className="text-xs text-amber-700 mb-1">這筆要記到哪個專案？</p>
+                                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                                      {pickList.map(p => (
+                                        <button key={p.id} onClick={() => pickDraftProject(i, di, p.id, p.name)}
+                                          className="bg-white border border-emerald-300 text-emerald-700 rounded-full px-3 py-1 text-xs font-medium hover:bg-emerald-50">{p.name}</button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
+                            )
+                          })}
+                          {!allDone && (
+                            <div className="flex gap-2 items-center flex-wrap">
+                              <button onClick={() => confirmAllDrafts(i)} disabled={ready === 0}
+                                className="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
+                                ✓ {drafts.length > 1 ? `全部確認新增（${ready} 筆）` : '確認新增'}
+                              </button>
                               <button onClick={() => cancelChatProgress(i)}
-                                className="text-gray-400 hover:text-gray-600 text-xs px-2">取消</button>
+                                className="text-gray-400 hover:text-gray-600 text-sm px-2">取消</button>
                             </div>
                           )}
                         </div>
