@@ -6,13 +6,19 @@ export const DATABASE_ID = process.env.NOTION_PROJECTS_DATABASE_ID || '25d2cda48
 
 // 取出頁面上「人員(person)型別」欄位裡指派的人名。
 // 業務專案資料庫那個人員欄位的名稱是空字串，用名字找不到，所以掃過所有欄位用型別判斷。
+// Notion 帳號的顯示名稱中間有空格（「王 治先」），但任務資料庫與 App 都用不含空格的
+// 「王治先」。統一成不含空格的寫法，同一個人才不會被當成兩個人。
+export function normalizePersonName(name: string): string {
+  return (name ?? '').replace(/[\s　]+/g, '').trim()
+}
+
 function peopleNames(page: any): string[] {
   const out: string[] = []
   for (const key of Object.keys(page.properties ?? {})) {
     const prop = page.properties[key]
     if (prop?.type !== 'people') continue
     for (const u of (prop.people ?? [])) {
-      const n = (u?.name ?? '').trim()
+      const n = normalizePersonName(u?.name ?? '')
       if (n) out.push(n)
     }
   }

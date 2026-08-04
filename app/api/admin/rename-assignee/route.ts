@@ -3,7 +3,7 @@ import { verifySession, SESSION_COOKIE } from '@/lib/auth'
 import { getActiveProjects, updateProjectAssignee } from '@/lib/notion'
 
 // 批次改名：把所有案件裡「負責人」等於 from 的一律改成 to（僅管理者可用）
-// 用途：統一別名/暱稱，例如把「王大哥」統一改成正式姓名「王志先」
+// 用途：統一別名/暱稱，例如把「王大哥」統一改成正式姓名「王治先」
 async function rename(from?: string, to?: string) {
   if (!from?.trim() || !to?.trim()) return { error: '缺少 from 或 to' }
   const projects = await getActiveProjects()
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 }
 
 // 方便直接在瀏覽器貼網址觸發（登入管理者後開啟即可）：
-// /api/admin/rename-assignee?from=王大哥&to=王志先
+// /api/admin/rename-assignee?from=王大哥&to=王治先
 export async function GET(req: NextRequest) {
   if (!verifySession(req.cookies.get(SESSION_COOKIE)?.value)) {
     return NextResponse.json({ error: '未授權（請先在網站登入管理者）' }, { status: 401 })
