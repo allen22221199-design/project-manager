@@ -108,23 +108,55 @@ export async function extractTextFromVideo(base64: string, mimeType: string) {
 // （「頤昌」聽成「宜昌」、「峰碩」聽成「豐碩」），把真實詞彙給它才能把音對回正確寫法。
 export async function transcribeSpeech(base64: string, mimeType: string, terms: string[] = []) {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-  const vocab = terms.filter(Boolean).slice(0, 200)
-  const vocabBlock = vocab.length
-    ? `\n\n【公司實際用語對照表】以下是本公司真正在用的名稱。只要聽到的發音與其中某個詞相同或接近，
-一律使用下面的正確寫法，不要用同音的其他字（這是最重要的規則）：\n${vocab.map(t => '・' + t).join('\n')}`
-    : ''
+  // 第一段：純逐字聽寫。刻意「不」給詞彙表——實測給了之後模型會把清單裡的案名硬塞進去（幻覺），
+  // 內容整個跑掉。修正同音字留到第二段用純文字處理，那樣不可能無中生有。
   const result = await withRetry(() => model.generateContent([
     { inlineData: { data: base64, mimeType: mimeType as any } },
     `請把這段錄音「逐字」轉成文字。這是台灣工廠／工地的師傅在回報工作進度或提問。
 規則：
 1. 忠實照講的內容轉寫，不要摘要、不要改寫、不要加任何解釋或標題。
 2. 講話者可能是台灣人（國語常夾雜台語）或印尼籍移工（印尼語），用他講的語言轉寫。
-3. 台灣口音容易產生同音字錯誤，遇到人名、案場名、工序名時，優先比對下方對照表再決定用字。
-4. 數字用阿拉伯數字（例如「四組」寫成 4 組）。
-5. 適度加標點讓句子好讀，但不要改變字句。
-6. 只輸出轉寫的文字本身，不要有開場白、引號或任何多餘內容。聽不清楚的地方就略過，不要自己編。${vocabBlock}`,
+3. 數字用阿拉伯數字（例如「四組」寫成 4 組）。
+4. 適度加標點讓句子好讀，但不要改變字句。
+5. 只輸出轉寫的文字本身，不要有開場白、引號或任何多餘內容。
+6. 聽不清楚的地方就照聽到的音寫，或直接略過，絕對不要自己補內容。`,
   ]))
-  return result.response.text().trim()
+  const raw = result.response.text().trim()
+  if (!raw) return raw
+  return await fixHomophones(raw, terms)
+}
+
+// 第二段：只改「用字」不改內容的同音字校正（純文字進、純文字出，不碰音檔所以不會生出新內容）
+export async function fixHomophones(text: string, terms: string[]): Promise<string> {
+  const vocab = Array.from(new Set(terms.filter(Boolean).map(t => t.trim()))).slice(0, 250)
+  if (vocab.length === 0 || text.length < 2) return text
+  try {
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      systemInstruction: `你是中文語音辨識的「錯字校正器」。輸入是一段語音轉出的逐字稿，可能有同音字錯誤
+（例如「頤昌」被寫成「宜昌」、「峰碩」被寫成「豐碩」、「丈量」被寫成「丈量」以外的同音詞）。
+
+【公司實際用語】
+${vocab.map(t => '・' + t).join('\n')}
+
+嚴格規則：
+1. 只有當逐字稿裡某個詞「發音與上表某個詞相同或極接近」時，才把它改成上表的寫法。
+2. 絕對不可以新增、刪除或改寫任何內容。不可以把口語改成正式說法。
+3. 上表的案場名稱常有「-」與公司前綴（例如「全坤-御大安」），但師傅口語只會講「御大安」；
+   這種情況「保持他原本講的簡稱」，只修正用字是否正確，不要補成完整名稱。
+4. 如果沒有任何字需要改，就原封不動輸出。
+5. 只輸出校正後的文字本身，不要任何說明。`,
+    })
+    const res = await model.generateContent(text)
+    const fixed = res.response.text().trim()
+    // 安全閥：長度變化太大代表模型亂改（增刪內容），寧可用原本的逐字稿
+    if (!fixed) return text
+    const ratio = fixed.length / text.length
+    if (ratio < 0.6 || ratio > 1.6) return text
+    return fixed
+  } catch {
+    return text   // 校正失敗就用原文，不影響使用
+  }
 }
 
 // 直接聽「上傳的錄音檔」，整理成文字（會議錄音、口述 SOP 用）
