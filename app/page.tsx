@@ -519,6 +519,71 @@ export default function Page() {
   const [pickerExpanded, setPickerExpanded] = useState<Record<string, boolean>>({})
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
+  // 語音輸入：師傅打字慢，改成按著講話 → AI 轉文字填進輸入框（送出前還能自己改）
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const [recSecs, setRecSecs] = useState(0)
+  const [recError, setRecError] = useState('')
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<BlobPart[]>([])
+  const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  async function startRecording() {
+    setRecError('')
+    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setRecError('這個瀏覽器不支援錄音，請改用 Chrome 或 Safari')
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // 各家手機支援的格式不同，挑第一個能用的
+      const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+      const mimeType = candidates.find(t => MediaRecorder.isTypeSupported?.(t))
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      chunksRef.current = []
+      rec.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      rec.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        if (recTimerRef.current) { clearInterval(recTimerRef.current); recTimerRef.current = null }
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || 'audio/webm' })
+        setRecording(false)
+        setRecSecs(0)
+        if (blob.size < 1200) { setRecError('沒有錄到聲音，請再試一次'); return }
+        setTranscribing(true)
+        try {
+          const fd = new FormData()
+          fd.append('audio', blob, 'speech' + (blob.type.includes('mp4') ? '.mp4' : '.webm'))
+          const r = await fetch('/api/transcribe', { method: 'POST', body: fd })
+          const data = await readJson(r)
+          if (!r.ok) setRecError(data.error ?? '轉文字失敗')
+          else if (!String(data.text ?? '').trim()) setRecError('聽不清楚，請再講一次')
+          // 接在原本已打的字後面，不要蓋掉
+          else setChatInput(prev => (prev.trim() ? prev.trim() + ' ' : '') + String(data.text).trim())
+        } catch (e: any) {
+          setRecError(e?.message ?? '轉文字失敗')
+        } finally {
+          setTranscribing(false)
+        }
+      }
+      rec.start()
+      recorderRef.current = rec
+      setRecording(true)
+      setRecSecs(0)
+      recTimerRef.current = setInterval(() => {
+        setRecSecs(s => {
+          if (s >= 119) { try { rec.state !== 'inactive' && rec.stop() } catch {} return s }  // 最長 2 分鐘
+          return s + 1
+        })
+      }, 1000)
+    } catch {
+      setRecError('無法使用麥克風，請在瀏覽器允許麥克風權限')
+    }
+  }
+  function stopRecording() {
+    const rec = recorderRef.current
+    try { if (rec && rec.state !== 'inactive') rec.stop() } catch {}
+  }
+
   // 聊天輸入框：跟著內容自動長高，長訊息才不會被截掉看不到（手機、電腦都適用）
   // 注意：這個 effect 依賴 chatInput，必須放在它宣告「之後」，否則會踩到暫時性死區讓整頁崩潰
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
@@ -3311,8 +3376,27 @@ export default function Page() {
                 </div>
               )}
             </div>
+            {(recording || transcribing || recError) && (
+              <div className="pt-2 flex items-center gap-2 text-sm">
+                {recording && (
+                  <>
+                    <span className="inline-block w-3 h-3 rounded-full bg-red-500 animate-pulse shrink-0" />
+                    <span className="text-red-600 font-medium">錄音中 {Math.floor(recSecs / 60)}:{String(recSecs % 60).padStart(2, '0')}</span>
+                    <span className="text-gray-400">講完按「停止」</span>
+                  </>
+                )}
+                {transcribing && <span className="text-indigo-600 font-medium">🎧 正在轉成文字…</span>}
+                {!!recError && !recording && !transcribing && <span className="text-red-600">{recError}</span>}
+              </div>
+            )}
             {/* min-w-0 一定要有：textarea 預設有最小寬度，不加就會把「送出」按鈕擠出畫面（手機上等於不能用）*/}
             <div className="flex gap-2 pt-2 border-t border-gray-200 items-end" data-tour="chat-input">
+              <button onClick={() => (recording ? stopRecording() : startRecording())} disabled={transcribing}
+                title={recording ? '停止錄音' : '按一下開始講話，講完再按一次'}
+                className={`shrink-0 rounded-xl px-4 py-3 text-base font-semibold border transition-colors disabled:opacity-40 ${
+                  recording ? 'bg-red-600 text-white border-red-600 hover:bg-red-700' : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-600'}`}>
+                {recording ? '■ 停止' : '🎤'}
+              </button>
               <textarea ref={chatInputRef} value={chatInput} onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
                 rows={1} placeholder="輸入問題…"

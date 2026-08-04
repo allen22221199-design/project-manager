@@ -103,6 +103,24 @@ export async function extractTextFromVideo(base64: string, mimeType: string) {
   return result.response.text().trim()
 }
 
+// 聊天室語音輸入：把師傅講的話「逐字」轉成文字（不摘要、不改寫，讓他自己確認後送出）
+export async function transcribeSpeech(base64: string, mimeType: string) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const result = await withRetry(() => model.generateContent([
+    { inlineData: { data: base64, mimeType: mimeType as any } },
+    `請把這段錄音「逐字」轉成文字。這是台灣工廠／工地的師傅在回報工作進度或提問。
+規則：
+1. 忠實照講的內容轉寫，不要摘要、不要改寫、不要加任何解釋或標題。
+2. 講話者可能是台灣人（國語常夾雜台語）或印尼籍移工（印尼語），用他講的語言轉寫。
+3. 專有名詞盡量寫正確：案場名稱（例如 桃大、全坤、惠宇、頤昌）、工序（打樣、丈量、噴印、前處理、環氧白）、
+   單位（片、組、樘、支）、機台（UV噴印機、滾塗機、噴塗機）。
+4. 數字用阿拉伯數字（例如「四組」寫成 4 組）。
+5. 適度加標點讓句子好讀，但不要改變字句。
+6. 只輸出轉寫的文字本身，不要有開場白、引號或任何多餘內容。聽不清楚的地方就略過，不要自己編。`,
+  ]))
+  return result.response.text().trim()
+}
+
 // 直接聽「上傳的錄音檔」，整理成文字（會議錄音、口述 SOP 用）
 export async function extractTextFromAudio(base64: string, mimeType: string) {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
