@@ -76,6 +76,17 @@ export async function POST(req: NextRequest) {
           }
           return 0
         }
+        // 回傳兩字串最長的共同片段本身（用來判斷師傅講的字是不是只對應到一個案場）
+        const commonFragment = (a: string, b: string) => {
+          for (let len = Math.min(a.length, b.length); len >= 2; len--) {
+            for (let i = 0; i + len <= a.length; i++) {
+              const frag = a.slice(i, i + len)
+              if (b.includes(frag)) return frag
+            }
+          }
+          return ''
+        }
+        const userNorm = norm(lastUser)
         const drafts: ProgressDraft[] = intent.items.map(item => {
           const hint = item.project ? norm(item.project) : ''
           let matched = hint ? projList.find(p => norm(p.name) === hint) : undefined
@@ -83,6 +94,17 @@ export async function POST(req: NextRequest) {
           if (!matched && hint) {
             candidates = projList.filter(p => norm(p.name).includes(hint) || hint.includes(norm(p.name)))
             if (candidates.length === 1) { matched = candidates[0]; candidates = [] }
+          }
+          // 安全防護：模型可能自作主張補成完整案名（師傅只講「惠宇」，它卻挑了「惠宇-大然」）。
+          // 檢查師傅原話與該案名的共同片段，若那片段同時符合多個案場，就不自動對應，改讓他選。
+          // 記錯案場比多問一次嚴重得多。
+          if (matched) {
+            const frag = commonFragment(userNorm, norm(matched.name))
+            const sharing = frag ? projList.filter(p => norm(p.name).includes(frag)) : []
+            if (!frag || sharing.length > 1) {
+              candidates = (sharing.length > 1 ? sharing : projList).slice(0, 8).map(p => ({ id: p.id, name: p.name }))
+              matched = undefined
+            }
           }
           if (!matched && candidates.length === 0) {
             // 完全沒對應：拿「AI 猜的名稱 + 進度描述」去比對，取分數最高的前 8 個當候選
