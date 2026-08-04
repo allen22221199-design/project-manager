@@ -3195,17 +3195,16 @@ export default function Page() {
                 </div>
               )}
             </div>
-            <div className="flex gap-2 pt-2 border-t border-gray-200" data-tour="chat-input">
+            {/* min-w-0 一定要有：textarea 預設有最小寬度，不加就會把「送出」按鈕擠出畫面（手機上等於不能用）*/}
+            <div className="flex gap-2 pt-2 border-t border-gray-200 items-end" data-tour="chat-input">
               <textarea value={chatInput} onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
-                rows={1} placeholder="輸入問題…（Enter 送出、Shift+Enter 換行）"
-                className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white resize-none" />
+                rows={1} placeholder="輸入問題…"
+                className="flex-1 min-w-0 border border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white resize-none" />
               <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()}
-                className="aurora-grad text-white shadow-sm rounded-xl px-5 text-sm font-medium hover:brightness-105 disabled:opacity-40">送出</button>
-              {chatMessages.length > 0 && (
-                <button onClick={() => setChatMessages([])} title="清空對話"
-                  className="text-gray-400 hover:text-gray-700 text-sm px-2">清空</button>
-              )}
+                className="aurora-grad text-white shadow-sm rounded-xl px-5 py-3 text-base font-semibold shrink-0 hover:brightness-105 disabled:opacity-40">
+                {chatLoading ? '…' : '送出'}
+              </button>
             </div>
           </div>
         )}
