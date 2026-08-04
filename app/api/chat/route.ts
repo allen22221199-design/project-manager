@@ -222,8 +222,9 @@ export async function POST(req: NextRequest) {
       }
       // 附上「相關圖片／影片」：來自 AI 主要引用的來源頁，兩種來源都抓——
       //   (1) 頁面內文的圖片/影片/YouTube 區塊；(2) 檔案庫該筆「檔案」欄位上傳的圖片或影片檔
+      // 只取「最相關的那一份」：取前三份會把不相干的影片也附上來（使用者回報「給的影片有錯誤」）。
       try {
-        const picks = topSources.slice(0, 3)
+        const picks = topSources.slice(0, 1)
         const imgLists = await Promise.all(picks.map(s => getPageMedia(s.id, 4).catch(() => [])))
         picks.forEach((s, i) => {
           for (const im of imgLists[i]) imageResults.push({ source: s.title, url: im.url, caption: im.caption, kind: im.kind })
@@ -255,6 +256,12 @@ export async function POST(req: NextRequest) {
     } catch { /* 圖庫知識注入失敗不影響對話 */ }
 
     const reply = await chatWithAssistant(messages, knowledge)
+
+    // 回答本身就說「知識庫查不到」時，就不要再附自動抓來的圖片／影片——
+    // 那些是從被引用頁面掃出來的，跟問題無關，只會讓人以為那支影片有答案。
+    if (/查不到|找不到|無法確定|沒有找到|不在.{0,6}知識庫/.test(reply)) {
+      imageResults.length = 0
+    }
 
     // 圖庫：使用者自建的圖片來源。把「問題 + 回答」拿去比對關鍵字，命中就把圖片排在最前面顯示。
     try {

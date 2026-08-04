@@ -385,12 +385,42 @@ ${knowledge || '（這次沒有找到相關的公司內部資料）'}`
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: sys, tools: [{ googleSearch: {} }] as any })
     const res = await model.generateContent({ contents })
-    return res.response.text().trim()
+    return cleanAnswer(answerParts(res))
   } catch {
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: sys })
     const res = await model.generateContent({ contents })
-    return res.response.text().trim()
+    return cleanAnswer(answerParts(res))
   }
+}
+
+// 只取「真正要給使用者看的文字」。開了 Google 搜尋工具時，回應裡可能夾雜
+// 模型的思考片段(thought)與工具呼叫程式碼，直接用 response.text() 會把它們一起印出來。
+function answerParts(res: any): string {
+  const parts = res?.response?.candidates?.[0]?.content?.parts
+  if (!Array.isArray(parts)) {
+    try { return res.response.text() } catch { return '' }
+  }
+  return parts
+    .filter((p: any) => typeof p?.text === 'string' && p.thought !== true && !p.executableCode && !p.codeExecutionResult)
+    .map((p: any) => p.text)
+    .join('')
+}
+
+// 第二層防護：萬一模型仍把 tool_code / thought 當成純文字寫出來，把那些段落清掉，
+// 不要讓現場師傅看到「print(google_search.search(...))」這種東西。
+export function cleanAnswer(raw: string): string {
+  let s = raw ?? ''
+  s = s.replace(/```(?:tool_code|python|thought)[\s\S]*?```/gi, '')          // 圍欄式程式區塊
+  s = s.replace(/^\s*(?:tool_code|thought|tool_outputs?)\s*:?\s*$/gim, '')    // 單獨一行的標記
+  s = s.replace(/^\s*print\(\s*(?:default_api\.)?[a-z_]*search[\s\S]*?\)\s*$/gim, '')  // 工具呼叫
+  s = s.replace(/^\s*(?:default_api|google_search)\.[a-z_]+\([\s\S]*?\)\s*$/gim, '')
+  // 開頭若殘留一整段英文推理（The user is asking… / I need to…），在第一個中文段落前的英文段落刪掉
+  const zh = s.search(/[一-鿿]/)
+  if (zh > 0) {
+    const head = s.slice(0, zh)
+    if (/\b(the user|I need to|Therefore,|I should|the phrase)\b/i.test(head)) s = s.slice(zh)
+  }
+  return s.replace(/\n{3,}/g, '\n\n').trim()
 }
 
 // ════════════════════════════════════════════════════════════════
