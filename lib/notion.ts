@@ -128,17 +128,17 @@ export async function addProgressRecord(pageId: string, date: string, descriptio
   const tableInfo = await findSectionTable(pageId, '進度紀錄')
 
   if (tableInfo) {
+    // 各案件的「進度紀錄」表欄數不一定是 2（有人多加了欄位）。
+    // Notion 規定寫入的儲存格數必須等於表格寬度，不符就整筆拒絕，
+    // 所以要依實際欄數補空白；只有 1 欄時把日期和內容合併，避免資訊遺失。
+    const width = Math.max(1, tableInfo.width || 2)
+    const cell = (s: string) => [{ type: 'text', text: { content: s } }]
+    const cells = width === 1
+      ? [cell(`${date} ${description}`)]
+      : [cell(date), cell(description), ...Array.from({ length: Math.max(0, width - 2) }, () => [] as any[])]
     await notion.blocks.children.append({
       block_id: tableInfo.id,
-      children: [{
-        type: 'table_row',
-        table_row: {
-          cells: [
-            [{ type: 'text', text: { content: date } }],
-            [{ type: 'text', text: { content: description } }],
-          ],
-        },
-      }] as any,
+      children: [{ type: 'table_row', table_row: { cells } }] as any,
     })
   } else {
     // Auto-create 進度紀錄 section
