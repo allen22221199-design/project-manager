@@ -517,6 +517,14 @@ export default function Page() {
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([])
   // 進度分類時，某一筆的候選清單是否展開成「全部案場」（key: 訊息index-筆index）
   const [pickerExpanded, setPickerExpanded] = useState<Record<string, boolean>>({})
+  // 聊天輸入框：跟著內容自動長高，長訊息才不會被截掉看不到（手機、電腦都適用）
+  const chatInputRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    const el = chatInputRef.current
+    if (!el) return
+    el.style.height = 'auto'                                   // 先歸零才能正確量到內容高度
+    el.style.height = Math.min(el.scrollHeight, 200) + 'px'     // 最高 200px，超過就在框內捲動
+  }, [chatInput, view])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const chatInitialized = useRef(false)
@@ -1297,7 +1305,9 @@ export default function Page() {
   }
 
   async function sendChat(override?: string) {
-    const text = (override ?? chatInput).trim()
+    // 防呆：若被當成事件處理器直接綁定（onClick={sendChat}），這裡會收到事件物件而不是字串
+    const src = typeof override === 'string' ? override : chatInput
+    const text = src.trim()
     if (!text || chatLoading) return
     if (!override && tryPickByNumber(text)) { setChatInput(''); return }
     // 點了某則答案的追問按鈕 → 清掉那些按鈕，避免重複點
@@ -3300,11 +3310,11 @@ export default function Page() {
             </div>
             {/* min-w-0 一定要有：textarea 預設有最小寬度，不加就會把「送出」按鈕擠出畫面（手機上等於不能用）*/}
             <div className="flex gap-2 pt-2 border-t border-gray-200 items-end" data-tour="chat-input">
-              <textarea value={chatInput} onChange={e => setChatInput(e.target.value)}
+              <textarea ref={chatInputRef} value={chatInput} onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
                 rows={1} placeholder="輸入問題…"
-                className="flex-1 min-w-0 border border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white resize-none" />
-              <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()}
+                className="flex-1 min-w-0 border border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white resize-none overflow-y-auto" />
+              <button onClick={() => sendChat()} disabled={chatLoading || !chatInput.trim()}
                 className="aurora-grad text-white shadow-sm rounded-xl px-5 py-3 text-base font-semibold shrink-0 hover:brightness-105 disabled:opacity-40">
                 {chatLoading ? '…' : '送出'}
               </button>
