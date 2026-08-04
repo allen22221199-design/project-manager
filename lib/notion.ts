@@ -4,6 +4,21 @@ import { chunkText } from './kbsearch'
 export const notion = new Client({ auth: process.env.NOTION_TOKEN })
 export const DATABASE_ID = process.env.NOTION_PROJECTS_DATABASE_ID || '25d2cda48d7781a6bec3f101d8c9a872'
 
+// 取出頁面上「人員(person)型別」欄位裡指派的人名。
+// 業務專案資料庫那個人員欄位的名稱是空字串，用名字找不到，所以掃過所有欄位用型別判斷。
+function peopleNames(page: any): string[] {
+  const out: string[] = []
+  for (const key of Object.keys(page.properties ?? {})) {
+    const prop = page.properties[key]
+    if (prop?.type !== 'people') continue
+    for (const u of (prop.people ?? [])) {
+      const n = (u?.name ?? '').trim()
+      if (n) out.push(n)
+    }
+  }
+  return out
+}
+
 export async function getActiveProjects() {
   // 回傳全部案件（含「請款中含保留款」「完成」），由前端分頁篩選
   const results: any[] = []
@@ -27,7 +42,9 @@ export async function getActiveProjects() {
     status: page.properties['狀態']?.status?.name ?? '',
     contact: page.properties['聯絡人']?.rich_text?.[0]?.plain_text ?? '',
     address: page.properties['地址']?.rich_text?.[0]?.plain_text ?? '',
-    assignee: page.properties['負責人']?.rich_text?.[0]?.plain_text ?? '',
+    // 負責人：優先用 App 自己的「負責人」欄位；沒填時，自動採用 Notion 裡原本就指派好的人員
+    // （資料庫有一個 person 型別的欄位，名稱是空的，所以不能用名字找，改用型別找）
+    assignee: page.properties['負責人']?.rich_text?.[0]?.plain_text || peopleNames(page)[0] || '',
     color: page.properties['顏色']?.rich_text?.[0]?.plain_text ?? '',
     ganttStart: page.properties['甘特開始']?.date?.start ?? '',
     ganttEnd: page.properties['甘特結束']?.date?.start ?? '',

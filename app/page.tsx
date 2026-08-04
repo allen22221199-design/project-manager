@@ -1344,6 +1344,14 @@ export default function Page() {
     })
   }
 
+  // 負責人下拉選項：Notion 原本指派的人可能不在預設名單裡，
+  // 若不補進選項，select 會找不到對應值而顯示成空白（看起來像沒有負責人）
+  function assigneeOptions(current?: string) {
+    const base = PROJECT_ASSIGNEES.filter(a => a)
+    const cur = (current ?? '').trim()
+    return cur && !base.includes(cur) ? [cur, ...base] : base
+  }
+
   // 更新案件負責人。一定要檢查回應：寫入失敗卻只做樂觀更新的話，
   // 畫面看起來成功、重新整理後又變回去（使用者看到的就是「跳掉」）。
   async function changeProjectAssignee(assignee: string) {
@@ -2323,7 +2331,7 @@ export default function Page() {
                         }}
                         className={`shrink-0 text-xs border rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400 cursor-pointer ${p.assignee ? 'border-indigo-200 text-indigo-700 font-medium' : 'border-gray-200 text-gray-400'}`}>
                         <option value="">負責人</option>
-                        {PROJECT_ASSIGNEES.filter(a => a).map(a => <option key={a} value={a}>{a}</option>)}
+                        {assigneeOptions(p.assignee).map(a => <option key={a} value={a}>{a}</option>)}
                       </select>
                       <span onClick={() => selectProject(p)} className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 cursor-pointer ${STATUS_COLORS[p.status] ?? 'bg-gray-100 text-gray-600'}`}>
                         {p.status}
@@ -2362,7 +2370,8 @@ export default function Page() {
                 <span className="text-xs text-gray-400 ml-2">負責人：</span>
                 <select value={selected.assignee ?? ''} onChange={e => changeProjectAssignee(e.target.value)}
                   className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400">
-                  {PROJECT_ASSIGNEES.map(a => <option key={a} value={a}>{a || '（未設定）'}</option>)}
+                  <option value="">（未設定）</option>
+                  {assigneeOptions(selected.assignee).map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
               </div>
             </div>
