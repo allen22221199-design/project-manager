@@ -1344,16 +1344,25 @@ export default function Page() {
     })
   }
 
-  // 更新案件負責人
+  // 更新案件負責人。一定要檢查回應：寫入失敗卻只做樂觀更新的話，
+  // 畫面看起來成功、重新整理後又變回去（使用者看到的就是「跳掉」）。
   async function changeProjectAssignee(assignee: string) {
     if (!selected) return
+    const prevAssignee = selected.assignee ?? ''
     setSelected({ ...selected, assignee })
     setProjects(prev => prev.map(p => p.id === selected.id ? { ...p, assignee } : p))
-    fetch('/api/projects', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: selected.id, assignee }),
-    })
+    try {
+      const r = await fetch('/api/projects', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selected.id, assignee }),
+      })
+      if (!r.ok) throw new Error((await readJson(r))?.error ?? '寫入失敗')
+    } catch (e: any) {
+      setSelected(s => s && s.id === selected.id ? { ...s, assignee: prevAssignee } : s)
+      setProjects(prev => prev.map(p => p.id === selected.id ? { ...p, assignee: prevAssignee } : p))
+      alert(`負責人沒有存成功：${e?.message ?? '寫入失敗'}`)
+    }
   }
 
   // AI 助理：送出訊息
@@ -2294,15 +2303,23 @@ export default function Page() {
                       <select
                         value={p.assignee ?? ''}
                         onClick={e => e.stopPropagation()}
-                        onChange={e => {
+                        onChange={async e => {
                           e.stopPropagation()
                           const assignee = e.target.value
+                          const prevAssignee = p.assignee ?? ''
                           setProjects(prev => prev.map(x => x.id === p.id ? { ...x, assignee } : x))
-                          fetch('/api/projects', {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id: p.id, assignee }),
-                          })
+                          try {
+                            const r = await fetch('/api/projects', {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ id: p.id, assignee }),
+                            })
+                            if (!r.ok) throw new Error((await readJson(r))?.error ?? '寫入失敗')
+                          } catch (err: any) {
+                            // 寫入失敗就把畫面改回原值，不要讓使用者以為存好了
+                            setProjects(prev => prev.map(x => x.id === p.id ? { ...x, assignee: prevAssignee } : x))
+                            alert(`負責人沒有存成功：${err?.message ?? '寫入失敗'}`)
+                          }
                         }}
                         className={`shrink-0 text-xs border rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400 cursor-pointer ${p.assignee ? 'border-indigo-200 text-indigo-700 font-medium' : 'border-gray-200 text-gray-400'}`}>
                         <option value="">負責人</option>

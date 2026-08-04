@@ -280,14 +280,15 @@ export async function updateProjectStatus(pageId: string, status: string) {
 }
 
 export async function updateProjectAssignee(pageId: string, assignee: string) {
-  await notion.pages.update({
-    page_id: pageId,
-    properties: { 負責人: { rich_text: [{ text: { content: assignee } }] } },
-  })
+  // 用 updateProjectProps 而不是直接 pages.update：資料庫原本沒有「負責人」這個欄位，
+  // 直接寫會被 Notion 拒絕（前端樂觀更新後又讀不到，值就「跳掉」）。
+  // updateProjectProps 會在欄位不存在時自動建立再重試。
+  await updateProjectProps(pageId, { 負責人: { rich_text: toRichText(assignee) } })
 }
 
 // 案件資料庫可能缺少的自訂欄位，其對應的建立定義（供自動補建）
 const PROJECT_PROP_SCHEMA: Record<string, any> = {
+  負責人: { rich_text: {} },
   顏色: { rich_text: {} },
   排程: { rich_text: {} },
   甘特開始: { date: {} },
