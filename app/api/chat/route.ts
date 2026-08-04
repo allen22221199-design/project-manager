@@ -107,8 +107,9 @@ export async function POST(req: NextRequest) {
             }
           }
           if (!matched && candidates.length === 0) {
-            // 完全沒對應：拿「AI 猜的名稱 + 進度描述」去比對，取分數最高的前 8 個當候選
-            const hints = [hint, norm(item.description)].filter(Boolean)
+            // 完全沒對應：拿「AI 猜的名稱 + 師傅原話 + 進度描述」去比對，取分數最高的前 8 個當候選。
+            // 一定要含師傅原話——他打「惠宇的門片打樣好了」，清單就該把所有惠宇的案子排最前面。
+            const hints = [hint, userNorm, norm(item.description)].filter(Boolean)
             const scored = projList
               .map(p => ({ p, s: Math.max(...hints.map(h => longestCommon(h, norm(p.name)))) }))
               .sort((a, b) => b.s - a.s)
