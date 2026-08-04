@@ -526,7 +526,9 @@ export default function Page() {
     const el = chatInputRef.current
     if (!el) return
     el.style.height = 'auto'                                   // 先歸零才能正確量到內容高度
-    el.style.height = Math.min(el.scrollHeight, 200) + 'px'     // 最高 200px，超過就在框內捲動
+    // box-sizing 是 border-box，height 含邊框；scrollHeight 不含，要補回去才不會少 2px 切到最後一行
+    const border = el.offsetHeight - el.clientHeight
+    el.style.height = Math.min(el.scrollHeight + border, 200) + 'px'  // 最高 200px，超過就在框內捲動
   }, [chatInput, view])
   const chatInitialized = useRef(false)
 
