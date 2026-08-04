@@ -5,11 +5,13 @@ import { addDailyTask, updateDailyTask, deleteDailyTasksByDate, writeHistorySect
 import { pushToLine } from './line'
 
 // 系統唯一認可的人員名單（跟 app/page.tsx 的 DAILY_PEOPLE 一致）
-const DAILY_PEOPLE = ['徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡', '庫瑪']
+// 註：「庫瑪」是阿蔡的另一個稱呼，同一個人，一律歸成「阿蔡」
+const DAILY_PEOPLE = ['徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
 // 短名／常見別名 → 系統內全名
 const NAME_MAP: Record<string, string> = {
   文彬: '黃文彬', 治先: '王治先', 湘婷: '黃湘婷', 淑慧: '廖淑慧',
-  哲緯: '吳哲緯', 碧惠: '徐碧惠', 阿蔡: '阿蔡', 艾里: '艾里', 庫瑪: '庫瑪',
+  哲緯: '吳哲緯', 碧惠: '徐碧惠', 阿蔡: '阿蔡', 艾里: '艾里',
+  庫瑪: '阿蔡', 阿菜: '阿蔡',   // 庫瑪＝阿蔡同一人；「阿菜」是常見錯字
 }
 // 語音辨識常見諧音/錯字誤判 → 正式姓名（發現新的誤判案例時往這裡加）
 const MISHEARD_ALIASES: Record<string, string> = {
