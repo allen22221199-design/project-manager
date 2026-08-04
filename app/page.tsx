@@ -517,7 +517,10 @@ export default function Page() {
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([])
   // 進度分類時，某一筆的候選清單是否展開成「全部案場」（key: 訊息index-筆index）
   const [pickerExpanded, setPickerExpanded] = useState<Record<string, boolean>>({})
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
   // 聊天輸入框：跟著內容自動長高，長訊息才不會被截掉看不到（手機、電腦都適用）
+  // 注意：這個 effect 依賴 chatInput，必須放在它宣告「之後」，否則會踩到暫時性死區讓整頁崩潰
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
     const el = chatInputRef.current
@@ -525,8 +528,6 @@ export default function Page() {
     el.style.height = 'auto'                                   // 先歸零才能正確量到內容高度
     el.style.height = Math.min(el.scrollHeight, 200) + 'px'     // 最高 200px，超過就在框內捲動
   }, [chatInput, view])
-  const [chatInput, setChatInput] = useState('')
-  const [chatLoading, setChatLoading] = useState(false)
   const chatInitialized = useRef(false)
 
   // 手動新增任務
