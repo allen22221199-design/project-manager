@@ -326,7 +326,10 @@ export async function POST(req: NextRequest) {
         for (const { row } of scored.filter(x => x.score >= cut)) {
           for (const im of row.images) libImages.push({ source: row.name, url: im.url, caption: im.caption || row.name, kind: im.kind })
         }
-        const merged = [...libImages, ...imageResults]   // 圖庫（使用者指定）優先
+        // 圖庫有命中就「只用」圖庫：那是你親手指定的素材，一定對得上。
+        // 另一批是從被引用的知識庫頁面自動掃出來的，常常掃到不相干的影片
+        // （問鎖孔卻附上拍攝技巧的片段），有精準來源時就不該再混進來。
+        const merged = libImages.length > 0 ? libImages : imageResults
         const seen = new Set<string>()
         const dedup = merged.filter(im => { const k = im.url.split('?')[0]; if (seen.has(k)) return false; seen.add(k); return true })
         imageResults.length = 0
