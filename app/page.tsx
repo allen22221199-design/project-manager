@@ -45,7 +45,18 @@ const STATUS_OPTIONS = ['報價中', '等待中', '打樣中', '對色中', '生
 const FILTER_TABS = ['全部', '報價中', '打樣中', '對色中', '生產中', '施工中', '等待中', '請款中含保留款', '完成']
 const INACTIVE_STATUSES = ['完成', '請款中含保留款']
 // 「庫瑪」是阿蔡的另一個稱呼，同一個人，統一用「阿蔡」
-const DAILY_PEOPLE = ['徐碧惠', '黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
+const DAILY_PEOPLE = ['黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
+// 各成員專長：會議模式的欄位副標，之後也給 AI 依專長建議負責人用
+const PERSON_SKILLS: Record<string, string> = {
+  王治先: '對色·對紋·UV噴塗·工廠生產·圖面製作',
+  黃文彬: '外勤·工地負責·工廠負責',
+  廖淑慧: '內勤行政·客戶聯繫',
+  吳哲緯: '短影音剪輯·美編·行銷·軟體開發·AI',
+  黃湘婷: '剪輯·排程發片·印刷·雜誌編排',
+  阿蔡: '現場作業（印尼籍）',
+  艾里: '現場作業（印尼籍）',
+}
+const UNASSIGNED_PERSON = '待確認'   // 隨手記、還沒決定誰做的收件匣
 // 人名以「任務事項-每日」資料庫實際使用的寫法為準（不含空格）。
 // 「王治先」曾被誤寫成「王志先」；Notion 帳號顯示名稱是「王 治先」，讀取時會自動去掉空格統一。
 const PROJECT_ASSIGNEES = ['', '黃文彬', '王治先', '廖淑慧', '呂理論', '呂敏紅', 'Lulu']
@@ -104,7 +115,7 @@ const PROJECT_COLORS_LIST = [
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string; ganttStart?: string; ganttEnd?: string; schedule?: string; latestProgress?: string; latestProgressDate?: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
-type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private' | 'training'
+type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private' | 'training' | 'meeting'
 type PrivateEvent = { id: string; title: string; date: string; note?: string; time?: string; endTime?: string; allDay?: boolean }
 type FileResult = { title: string; name: string; url: string }
 type ImageResult = { source: string; url: string; caption: string; kind?: 'image' | 'video' | 'embed' }
@@ -1802,7 +1813,10 @@ export default function Page() {
     { v: 'search', icon: '🔍', label: '任務查詢', short: '查詢', onClick: () => { setView('search'); fetchInProgress() } },
     { v: 'chat', icon: '💬', label: 'AI 助理', short: 'AI', onClick: () => setView('chat') },
     { v: 'training', icon: '📚', label: '教育訓練', short: '培訓', onClick: () => { setView('training'); fetchTrainingCourses() } },
-    ...(isAdmin ? [{ v: 'private' as View, icon: '🔐', label: '私人行事曆', short: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } }] : []),
+    ...(isAdmin ? [
+      { v: 'meeting' as View, icon: '📋', label: '會議模式', short: '會議', onClick: () => { setView('meeting'); fetchInProgress(); fetchPrivatePersonTasks() } },
+      { v: 'private' as View, icon: '🔐', label: '私人行事曆', short: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } },
+    ] : []),
   ]
 
   // 側欄底部小卡：本週完成率（用真實任務資料計算，非假數字）
@@ -1992,7 +2006,7 @@ export default function Page() {
       )}
 
       <div className="md:pl-[246px]">
-      <main className={`relative z-10 mx-auto p-4 pb-24 md:px-[34px] md:pt-[26px] md:pb-10 animate-fade-in ${view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' || view === 'training' ? 'max-w-3xl' : 'max-w-2xl'}`}>
+      <main className={`relative z-10 mx-auto p-4 pb-24 md:px-[34px] md:pt-[26px] md:pb-10 animate-fade-in ${view === 'meeting' ? 'max-w-none' : view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' || view === 'training' ? 'max-w-3xl' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
@@ -3427,6 +3441,81 @@ export default function Page() {
         )}
 
         {/* PRIVATE CALENDAR（僅管理者） */}
+        {/* 會議模式（僅管理者）：全員任務一次攤開，開會照著逐項說明 */}
+        {view === 'meeting' && isAdmin && (() => {
+          const today = todayISO()
+          // 本週結束日（週日）：範圍＝本週內 + 之前未完成 + 沒有日期的
+          const n = new Date(Date.now() + 8 * 3600 * 1000)
+          const dow = n.getUTCDay()
+          const sun = new Date(n); sun.setUTCDate(n.getUTCDate() + ((7 - dow) % 7))
+          const weekEnd = sun.toISOString().slice(0, 10)
+          const openTask = (t: DailyTask) =>
+            t.status !== '完成' && t.status !== '已封存' && (!t.date || t.date <= weekEnd)
+
+          const mine = privatePersonTasks.filter(openTask)
+          const others = inProgressTasks.filter(t => t.person !== PRIVATE_PERSON && openTask(t))
+          const columns: { key: string; label: string; skill: string; items: DailyTask[]; mine?: boolean }[] = [
+            { key: UNASSIGNED_PERSON, label: '待分配', skill: '還沒決定誰做', items: others.filter(t => t.person === UNASSIGNED_PERSON) },
+            ...DAILY_PEOPLE.map(p => ({ key: p, label: p, skill: PERSON_SKILLS[p] ?? '', items: others.filter(t => t.person === p) })),
+            { key: PRIVATE_PERSON, label: PRIVATE_PERSON_LABEL, skill: '🔒 只有你看得到', items: mine, mine: true },
+          ].filter(c => c.items.length > 0 || c.key !== UNASSIGNED_PERSON)
+          const total = columns.reduce((a, c) => a + c.items.length, 0)
+
+          return (
+            <div>
+              <div className="flex items-baseline gap-3 mb-1 flex-wrap">
+                <h2 className="text-xl font-bold text-gray-900">📋 會議模式</h2>
+                <span className="text-sm text-gray-500">本週（至 {weekEnd}）＋ 之前未完成，共 {total} 項</span>
+                <button onClick={() => { fetchInProgress(); fetchPrivatePersonTasks() }}
+                  className="ml-auto text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 hover:border-indigo-400 hover:text-indigo-600">
+                  ↻ 重新整理
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mb-4">只有管理者登入後看得到；員工的裝置上不會出現這一頁，也看不到 {PRIVATE_PERSON_LABEL} 這一欄。</p>
+
+              <div className="flex gap-3 overflow-x-auto pb-4 items-start">
+                {columns.map(col => (
+                  <div key={col.key}
+                    className={`shrink-0 w-[280px] rounded-2xl border ${col.mine ? 'border-indigo-300 bg-indigo-50/40' : col.key === UNASSIGNED_PERSON ? 'border-amber-300 bg-amber-50/40' : 'border-gray-200 bg-white'}`}>
+                    <div className="px-3 py-2.5 border-b border-gray-200/70">
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-gray-900">{col.label}</p>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${col.items.length === 0 ? 'bg-gray-100 text-gray-400' : 'bg-indigo-100 text-indigo-700'}`}>
+                          {col.items.length}
+                        </span>
+                      </div>
+                      {col.skill && <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{col.skill}</p>}
+                    </div>
+                    <div className="p-2 space-y-1.5 max-h-[65vh] overflow-y-auto">
+                      {col.items.length === 0 ? (
+                        <p className="text-xs text-gray-300 text-center py-4">沒有待辦</p>
+                      ) : col.items.map(t => {
+                        const overdue = !!t.date && t.date < today
+                        return (
+                          <div key={t.id}
+                            className={`rounded-lg border px-2.5 py-2 text-sm ${overdue ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'}`}>
+                            <p className="text-gray-800 leading-snug">{t.task}</p>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              {t.date
+                                ? <span className={`text-[11px] ${overdue ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+                                    {overdue ? `🔴 逾期 ${Math.round((new Date(today).getTime() - new Date(t.date).getTime()) / 86400000)} 天` : t.date}
+                                  </span>
+                                : <span className="text-[11px] text-gray-400">未設日期</span>}
+                              {t.freq && t.freq !== '當日' && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">{t.freq}</span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
+
         {view === 'private' && isAdmin && (() => {
           const [py, pm] = privateMonth.split('-').map(Number)
           const daysInMonth = new Date(py, pm, 0).getDate()
