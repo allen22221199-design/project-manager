@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import Tour, { type TourStep } from './tour'
+import RichText from './richtext'
 
 // 新手教學引導步驟（後台登入不列入）— 除了每個頁面，也帶到具體操作
 const TOUR_STEPS: TourStep[] = [
@@ -3239,8 +3240,9 @@ export default function Page() {
               )}
               {chatMessages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${m.images?.some(x => x.kind === 'video' || x.kind === 'embed') ? 'w-full max-w-[96%]' : 'max-w-[85%]'} ${m.role === 'user' ? 'aurora-grad text-white' : 'bg-white border border-gray-200/70 shadow-sm text-gray-800'}`}>
-                    {m.content}
+                  <div className={`rounded-2xl px-4 py-3 ${m.role === 'user' ? 'text-sm whitespace-pre-wrap' : 'text-base'} ${m.images?.some(x => x.kind === 'video' || x.kind === 'embed') ? 'w-full max-w-[96%]' : 'max-w-[85%]'} ${m.role === 'user' ? 'aurora-grad text-white' : 'bg-white border border-gray-200/70 shadow-sm text-gray-800'}`}>
+                    {/* AI 的回答用輕量排版器處理（粗體、條列），使用者自己打的字保持原樣 */}
+                    {m.role === 'assistant' ? <RichText text={m.content} /> : m.content}
                     {m.files && m.files.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
                         <p className="text-xs text-gray-400 font-medium">📎 相關檔案</p>
