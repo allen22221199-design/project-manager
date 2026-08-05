@@ -306,12 +306,25 @@ export async function POST(req: NextRequest) {
     // 效果接近以前用回答比對，但可以提前拿到清單。
     try {
       if (imageLib.length > 0) {
-        const haystack = (retrievalQuery + '\n' + knowledge).toLowerCase()
+        // 比對要分兩種份量：命中「使用者問題本身」的最準，命中「檢索到的內容」只能當輔助。
+        // 早期兩者混在一起比對，結果問「防火標章」也附上鎖孔的圖——因為知識庫內容裡
+        // 到處都有「位置」「方向」這種通用關鍵字。改成計分後只取前段。
+        const q = retrievalQuery.toLowerCase()
+        const kbText = knowledge.toLowerCase()
+        const scored = imageLib
+          .map(row => ({
+            row,
+            score: row.keywords.filter(k => q.includes(k)).length * 5
+                 + row.keywords.filter(k => kbText.includes(k)).length,
+          }))
+          .filter(x => x.score > 0)
+          .sort((a, b) => b.score - a.score)
+        // 只留跟第一名同一個量級的（四成以上）。問單一名詞時就只會有那一張；
+        // 問整份 SOP 時，該 SOP 的圖分數都相近，會一起留下來插在各步驟旁邊。
+        const cut = scored.length ? scored[0].score * 0.4 : 0
         const libImages: ImageResult[] = []
-        for (const row of imageLib) {
-          if (row.keywords.some(k => haystack.includes(k))) {
-            for (const im of row.images) libImages.push({ source: row.name, url: im.url, caption: im.caption || row.name, kind: im.kind })
-          }
+        for (const { row } of scored.filter(x => x.score >= cut)) {
+          for (const im of row.images) libImages.push({ source: row.name, url: im.url, caption: im.caption || row.name, kind: im.kind })
         }
         const merged = [...libImages, ...imageResults]   // 圖庫（使用者指定）優先
         const seen = new Set<string>()
