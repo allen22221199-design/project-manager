@@ -312,11 +312,14 @@ export async function POST(req: NextRequest) {
         const q = retrievalQuery.toLowerCase()
         const kbText = knowledge.toLowerCase()
         const scored = imageLib
-          .map(row => ({
-            row,
-            score: row.keywords.filter(k => q.includes(k)).length * 5
-                 + row.keywords.filter(k => kbText.includes(k)).length,
-          }))
+          .map(row => {
+            const qHits = row.keywords.filter(k => q.includes(k)).length
+            const kHits = row.keywords.filter(k => kbText.includes(k)).length
+            // 檢索到的內容很長，單獨命中一個通用字幾乎一定是巧合
+            // （防火標章那列只因為丈量 SOP 提到「防火門」就跟著跑出來）。
+            // 要兩個以上不同關鍵字都出現，才算這一列真的跟內容有關。
+            return { row, score: qHits * 5 + (kHits >= 2 ? kHits : 0) }
+          })
           .filter(x => x.score > 0)
           .sort((a, b) => b.score - a.score)
         // 只留跟第一名同一個量級的（四成以上）。問單一名詞時就只會有那一張；
