@@ -186,6 +186,9 @@ export async function POST(req: NextRequest) {
     const fileResults: FileResult[] = []
     const imageResults: ImageResult[] = []
     let topSources: { id: string; title: string }[] = []  // AI 主要引用的來源頁（用來抓相關圖片）
+    // 只有「最相關的前一兩份」文件的內文——圖庫比對要用這個，不能用整包 knowledge。
+    // 整包是 14 份候選拼起來的，問防火標章也會夾帶丈量 SOP 的段落，害不相干的圖跟著跑出來。
+    let primaryText = ''
     // 圖庫先載（與知識庫平行），它同時是「圖片來源」也是「知識來源」：
     // 例如「防火標章」這一列的說明，要讓 AI 能拿來回答，而不只是當圖片標題
     const imageLibPromise = getImageLibrary().catch(() => [])
@@ -236,10 +239,12 @@ export async function POST(req: NextRequest) {
         }).join('\n\n---\n\n')
         // 依相關度排序的來源頁（byDoc 的插入順序 = 段落分數順序），供抓圖用
         topSources = Array.from(byDoc.entries()).map(([id, list]) => ({ id, title: list[0].title }))
+        primaryText = Array.from(byDoc.values()).slice(0, 2).flat().map(c => c.text).join('\n')
       } else {
         // 後備：沿用舊的「摘要」組裝（切塊沒抓到內容時）
         const boosted = boostByFilename(retrievalQuery, candDocs)
         topSources = boosted.map(it => ({ id: it.id, title: it.title }))
+        primaryText = boosted.slice(0, 2).map(it => it.text || it.summary).join('\n')
         knowledge = boosted
           .map((it, idx) => {
             const limit = TEXT_LIMITS[idx] ?? 800
@@ -310,7 +315,7 @@ export async function POST(req: NextRequest) {
         // 早期兩者混在一起比對，結果問「防火標章」也附上鎖孔的圖——因為知識庫內容裡
         // 到處都有「位置」「方向」這種通用關鍵字。改成計分後只取前段。
         const q = retrievalQuery.toLowerCase()
-        const kbText = knowledge.toLowerCase()
+        const kbText = (primaryText || knowledge).toLowerCase()
         const scored = imageLib
           .map(row => {
             const qHits = row.keywords.filter(k => q.includes(k)).length
