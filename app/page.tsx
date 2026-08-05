@@ -773,14 +773,16 @@ export default function Page() {
   async function doLogin() {
     if (loginLoading) return
     setLoginLoading(true); setLoginErr('')
+    // 手機的自動完成常會在帳號前後多帶一個空白，先去掉再送（密碼不動，空白可能是密碼的一部分）
+    const user = loginUser.trim()
     try {
       const r = await fetch('/api/auth/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: loginUser, password: loginPass }),
+        body: JSON.stringify({ username: user, password: loginPass }),
       })
       const d = await r.json()
       if (!r.ok) { setLoginErr(d.error ?? '登入失敗'); return }
-      try { localStorage.setItem('adminUser', loginUser) } catch {}
+      try { localStorage.setItem('adminUser', user) } catch {}
       setIsAdmin(true); setShowLogin(false); setLoginPass('')  // 保留帳號，只清密碼
       checkGcalStatus(); fetchPrivatePersonTasks()
     } catch (e: any) { setLoginErr(e.message ?? '網路錯誤') }
@@ -1905,12 +1907,16 @@ export default function Page() {
             onSubmit={e => { e.preventDefault(); doLogin() }}>
             <p className="text-base font-semibold text-gray-900 mb-1">管理者登入</p>
             <p className="text-xs text-gray-400 mb-4">登入後可管理只有你看得到的私人行事曆</p>
+            {/* 手機鍵盤預設會把首字自動變大寫、還會自動修正拼字，會把 admin 打成 Admin 導致登入失敗，
+                所以帳密欄位一律關掉 autoCapitalize / autoCorrect / spellCheck */}
             <input value={loginUser} onChange={e => setLoginUser(e.target.value)} placeholder="帳號" autoFocus={!loginUser}
               name="username" autoComplete="username"
-              className="w-full mb-2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+              autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="text"
+              className="w-full mb-2 border border-gray-200 rounded-lg px-3 py-3 text-base focus:outline-none focus:border-indigo-400" />
             <input value={loginPass} onChange={e => setLoginPass(e.target.value)} placeholder="密碼" type="password"
               name="password" autoComplete="current-password" autoFocus={!!loginUser}
-              className="w-full mb-2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+              autoCapitalize="none" autoCorrect="off" spellCheck={false}
+              className="w-full mb-2 border border-gray-200 rounded-lg px-3 py-3 text-base focus:outline-none focus:border-indigo-400" />
             {loginErr && <p className="text-xs text-red-500 mb-2">{loginErr}</p>}
             <div className="flex gap-2 mt-2">
               <button type="submit" disabled={loginLoading}
