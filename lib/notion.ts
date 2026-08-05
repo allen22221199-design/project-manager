@@ -935,7 +935,7 @@ export async function getKnowledgeBase() {
 
 // 圖庫：使用者自建的圖片來源（名稱｜關鍵字｜圖片｜說明）。AI 回答命中關鍵字時就顯示對應圖片。
 export const IMAGE_LIBRARY_DB_ID = '8b0e6cb10f684d0ba4969de9a284016a'
-export type LibImageRow = { name: string; keywords: string[]; caption: string; images: PageMedia[] }
+export type LibImageRow = { id: string; name: string; keywords: string[]; caption: string; images: PageMedia[] }
 export async function getImageLibrary(): Promise<LibImageRow[]> {
   try {
     const res: any = await notion.databases.query({ database_id: IMAGE_LIBRARY_DB_ID, page_size: 100 })
@@ -961,7 +961,7 @@ export async function getImageLibrary(): Promise<LibImageRow[]> {
       }
       // 名稱本身也算關鍵字；關鍵字用空白/逗號/頓號/分號分隔，全部轉小寫方便比對
       const keywords = [name, ...kwRaw.split(/[\s,，、;；]+/)].map(s => s.trim().toLowerCase()).filter(s => s.length >= 2)
-      return { name, keywords, caption, images }
+      return { id: p.id, name, keywords, caption, images }
     // 有圖片可顯示，或有說明可當知識，兩者其一就保留（讓圖庫也能當名詞解釋用）
     }).filter(r => (r.images.length > 0 || !!r.caption) && r.keywords.length > 0)
   } catch { return [] }  // 圖庫讀不到（未連整合/尚無資料）不影響對話

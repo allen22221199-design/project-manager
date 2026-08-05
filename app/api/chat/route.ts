@@ -322,10 +322,19 @@ export async function POST(req: NextRequest) {
         // 只留跟第一名同一個量級的（四成以上）。問單一名詞時就只會有那一張；
         // 問整份 SOP 時，該 SOP 的圖分數都相近，會一起留下來插在各步驟旁邊。
         const cut = scored.length ? scored[0].score * 0.4 : 0
+        const keep = scored.filter(x => x.score >= cut).slice(0, 8)
+        // 有些列的影片是放在「頁面內文」而不是「圖片／檔案」欄位——資料庫的檔案欄位無法用
+        // API 寫入，內文可以。只對「有命中、而且欄位是空的」那幾列即時去讀內文，
+        // 才不會每次對話都把整個圖庫的頁面掃一遍。
+        const bodyMedia = await Promise.all(
+          keep.map(x => x.row.images.length > 0 ? Promise.resolve([]) : getPageMedia(x.row.id, 4).catch(() => []))
+        )
         const libImages: ImageResult[] = []
-        for (const { row } of scored.filter(x => x.score >= cut)) {
-          for (const im of row.images) libImages.push({ source: row.name, url: im.url, caption: im.caption || row.name, kind: im.kind })
-        }
+        keep.forEach(({ row }, ri) => {
+          for (const im of (row.images.length > 0 ? row.images : bodyMedia[ri])) {
+            libImages.push({ source: row.name, url: im.url, caption: im.caption || row.caption || row.name, kind: im.kind })
+          }
+        })
         // 圖庫有命中就「只用」圖庫：那是你親手指定的素材，一定對得上。
         // 另一批是從被引用的知識庫頁面自動掃出來的，常常掃到不相干的影片
         // （問鎖孔卻附上拍攝技巧的片段），有精準來源時就不該再混進來。
