@@ -944,7 +944,9 @@ export async function getImageLibrary(): Promise<LibImageRow[]> {
       const kwRaw = (p.properties['關鍵字']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
       const caption = (p.properties['說明']?.rich_text ?? []).map((r: any) => r.plain_text).join('').trim()
       // 上傳的圖片／影片檔（網址有時效約1小時，每次即時取得）
-      const images: PageMedia[] = (p.properties['圖片']?.files ?? [])
+      // 「圖片」與「檔案」兩欄都收：實際使用時很容易把圖丟到「檔案」欄，
+      // 兩欄都掃就不會因為放錯欄位而整列失效（非圖片/影片的附件會被 classifyMedia 濾掉）
+      const images: PageMedia[] = [...(p.properties['圖片']?.files ?? []), ...(p.properties['檔案']?.files ?? [])]
         .map((f: any) => {
           const url = f.file?.url ?? f.external?.url ?? ''
           const kind = classifyMedia(f.name || url) ?? classifyMedia(url)
