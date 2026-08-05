@@ -3389,7 +3389,6 @@ export default function Page() {
                           {tasks.length > 1 && <p className="text-xs font-semibold text-gray-500">共 {tasks.length} 件待辦</p>}
                           {tasks.map((t, ti) => {
                             // 清單有顯示出來的那一筆，使用者才能直接打數字選人
-                            const showList = !t.chosenPerson && (!t.suggested || t.picking)
                             const isFirstListed = tasks.findIndex(x => !x.chosenPerson && x.state !== 'done' && (!x.suggested || x.picking)) === ti
                             return (
                               <div key={ti} className={`rounded-lg border p-2.5 ${t.state === 'done' ? 'border-emerald-200 bg-emerald-50' : t.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>

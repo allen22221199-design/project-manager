@@ -250,8 +250,7 @@ export async function routeChatIntent(
   people: { name: string; skill: string }[] = [],
 ): Promise<ChatIntent> {
   const roster = people.length
-    ? people.map(p => `・${p.name}：${p.skill || '（未註記專長）'}`).join('
-')
+    ? people.map(p => `・${p.name}：${p.skill || '（未註記專長）'}`).join('\n')
     : '（沒有可指派的人員名單）'
   const sys = `你是一個工地/工廠專案系統的聊天室助理的「意圖分類器」。判斷使用者這句話是：
 - "progress"：使用者在「回報／記錄某個專案的工作進度或狀態」（例如「冠德的箱蓋今天噴好了」「國壽三樓施工完成」「桃大的料到了」）。通常是在陳述一件已經發生或完成的現場事實。
