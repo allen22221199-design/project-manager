@@ -82,7 +82,9 @@ export async function POST(req: NextRequest) {
       const intent = await routeChatIntent(lastUser, projList.map(p => p.name), taipeiToday(), roster)
 
       // ── 隨手記任務 ──────────────────────────────────────────
-      if (intent.intent === 'task' && intent.tasks.length > 0) {
+      // 沒有人員名單就不做任務草稿：名單是前端帶上來的，收不到代表對方是還沒更新的舊頁面，
+      // 它也畫不出確認卡片。這時回一句「請按下面的按鈕」卻沒有按鈕，比直接當一般問答還糟。
+      if (intent.intent === 'task' && intent.tasks.length > 0 && roster.length > 0) {
         const todayDash = taipeiToday().replace(/\//g, '-')
         const drafts: TaskDraft[] = intent.tasks.map(t => {
           // 「我自己」只有在管理者登入時才對得到人；一般員工講「我」我們無從得知是誰
