@@ -228,15 +228,43 @@ export type ProgressItem = {
   date: string | null      // YYYY/MM/DD；沒提到就 null（之後預設今天）
   description: string       // 乾淨的一句話進度描述
 }
+// 隨手記的「待辦任務」：老闆隨口交辦，可能沒講是誰做、也可能一次只講一件
+export type TaskItem = {
+  task: string             // 乾淨、可執行的一句話
+  owner: string | null     // 話裡「明確講到」的人名（名單內），沒講就 null——不可用猜的
+  self: boolean            // 使用者說「我自己」「我來」，代表這是他本人的待辦
+  due: string | null       // YYYY/MM/DD；沒講期限就 null
+  suggested: string | null // 沒指定人時，依專長建議的人選（沒把握就 null）
+  why: string              // 建議理由，一句話
+}
 export type ChatIntent = {
-  intent: 'progress' | 'question'
+  intent: 'progress' | 'task' | 'question'
   items: ProgressItem[]    // 一次可能講很多筆進度（不同專案），逐筆拆開分類
+  tasks: TaskItem[]        // 一次可能交辦很多件事，逐件拆開
 }
 
-export async function routeChatIntent(message: string, projectNames: string[], todayISO: string): Promise<ChatIntent> {
+export async function routeChatIntent(
+  message: string,
+  projectNames: string[],
+  todayISO: string,
+  people: { name: string; skill: string }[] = [],
+): Promise<ChatIntent> {
+  const roster = people.length
+    ? people.map(p => `・${p.name}：${p.skill || '（未註記專長）'}`).join('
+')
+    : '（沒有可指派的人員名單）'
   const sys = `你是一個工地/工廠專案系統的聊天室助理的「意圖分類器」。判斷使用者這句話是：
 - "progress"：使用者在「回報／記錄某個專案的工作進度或狀態」（例如「冠德的箱蓋今天噴好了」「國壽三樓施工完成」「桃大的料到了」）。通常是在陳述一件已經發生或完成的現場事實。
-- "question"：使用者在「問問題、找SOP、問怎麼做、排除困難、閒聊」或任何不是要記錄進度的情況。
+- "task"：使用者在「交辦、或隨手記下一件還沒做的事」（例如「叫治先把冠德的圖面畫完」「記一下要跟廠商確認報價」「湘婷這週把影片排一排」「我自己要去看陶大現場」）。重點是這件事「還沒發生、之後要做」。
+- "question"：使用者在「問問題、找SOP、問怎麼做、排除困難、閒聊」或任何不屬於上面兩類的情況。
+
+【progress 與 task 最關鍵的差別】
+・已經做完／已經發生 → progress（「噴好了」「到料了」「施工完成」）
+・還沒做、要人去做、提醒自己 → task（「要去…」「記得…」「叫某某…」「下週前要…」）
+　同一句話同時有兩者時，以「使用者的主要目的」判斷；真的分不出來就選 question。
+
+【可指派的人員與專長】
+${roster}
 
 【目前進行中的專案清單】
 ${projectNames.length ? projectNames.map(n => '・' + n).join('\n') : '（目前沒有專案）'}
@@ -257,10 +285,23 @@ ${projectNames.length ? projectNames.map(n => '・' + n).join('\n') : '（目前
 5. description：把該筆進度整理成乾淨、具體的一句話（去掉「幫我記一下」這類指令詞），保留數量、規格、工序等細節。
 6. 只輸出 JSON，不要多餘文字。
 
+【intent = task 時，tasks 的填寫規則】
+7. 使用者常常一次交辦很多件事，也常常「一次只講一件、分好幾則訊息」。有幾件就拆成幾筆，不要合併。
+8. owner：只有話裡「明確講到某個人」時才填，而且必須是上面名單裡的人（短名也算，例如「治先」→「王治先」、「湘婷」→「黃湘婷」）。
+   ・沒講到人 → 一律填 null。【絕對不可以用猜的填進 owner】，派錯人比多問一次嚴重得多。
+9. self：使用者用第一人稱說這件事是自己要做的（「我自己」「我來」「我要去」「提醒我」）→ true，否則 false。
+   self 為 true 時 owner 一律填 null。
+10. suggested：只有在「owner 是 null 且 self 是 false」時才填。依照上面的專長清單，挑出最適合做這件事的「一位」，並在 why 用一句話說明為什麼（點出對應到的專長）。
+   ・判斷不出來、或這件事不明顯屬於任何人的專長 → suggested 填 null、why 填空字串。這種情況很正常，不要硬挑。
+   ・這只是「建議」，系統會再讓使用者確認才真的派下去。
+11. due：話裡有明確講期限才填（YYYY/MM/DD）。「今天」「明天」「這週五」要換算成實際日期；沒講就填 null。
+12. task：整理成乾淨、具體、可執行的一句話。去掉「幫我記一下」「叫」「你去」這類指令詞與人名，但要保留案場、數量、規格等細節。
+
 回傳格式：
-{ "intent": "progress" | "question",
-  "items": [ { "project": "專案名稱或 null", "date": "YYYY/MM/DD 或 null", "description": "進度描述" } ] }
-（intent 為 question 時，items 回傳空陣列 []）`
+{ "intent": "progress" | "task" | "question",
+  "items": [ { "project": "專案名稱或 null", "date": "YYYY/MM/DD 或 null", "description": "進度描述" } ],
+  "tasks": [ { "task": "任務內容", "owner": "人名或 null", "self": true/false, "due": "YYYY/MM/DD 或 null", "suggested": "人名或 null", "why": "建議理由" } ] }
+（用不到的陣列一律回傳空陣列 []）`
 
   try {
     const model = genAI.getGenerativeModel({
@@ -281,13 +322,38 @@ ${projectNames.length ? projectNames.map(n => '・' + n).join('\n') : '（目前
         description: String(it?.description ?? '').trim(),
       }))
       .filter(it => it.description)
+    const names = people.map(p => p.name)
+    // 模型偶爾會回名單外的人（自創、或把客戶名當成員工）；對不上就丟掉，寧可留白讓使用者選
+    const pickName = (v: any): string | null => {
+      const n = String(v ?? '').trim()
+      if (!n) return null
+      if (names.includes(n)) return n
+      if (n.length < 2) return null   // 單字比對太容易誤中（「里」會對到「艾里」），寧可留白讓使用者選
+      const hit = names.find(x => x.includes(n) || n.includes(x))
+      return hit ?? null
+    }
+    const tasks: TaskItem[] = (Array.isArray(parsed.tasks) ? parsed.tasks : [])
+      .map((t: any) => {
+        const self = t?.self === true
+        return {
+          task: String(t?.task ?? '').trim(),
+          owner: self ? null : pickName(t?.owner),
+          self,
+          due: t?.due || null,
+          suggested: pickName(t?.suggested),
+          why: String(t?.why ?? '').trim(),
+        }
+      })
+      .filter((t: TaskItem) => t.task)
+    if (parsed.intent === 'task' && tasks.length > 0) return { intent: 'task', items: [], tasks }
     return {
       intent: parsed.intent === 'progress' && items.length > 0 ? 'progress' : 'question',
       items: parsed.intent === 'progress' ? items : [],
+      tasks: [],
     }
   } catch {
     // 分類失敗就當一般問題處理，維持原本聊天流程
-    return { intent: 'question', items: [] }
+    return { intent: 'question', items: [], tasks: [] }
   }
 }
 

@@ -12,6 +12,16 @@ export type ProgressDraft = {
   candidates: { id: string; name: string }[]
 }
 
+// 隨手記任務草稿：偵測到「要交辦一件事」時回傳給前端，一律要按確認才寫入
+export type TaskDraft = {
+  task: string
+  date: string             // YYYY-MM-DD（截止日，沒講就今天）
+  owner: string | null     // 已經確定的人（話裡明講、或「我自己」）
+  ownerReason: string      // 為什麼是他：'明確指定' / '你自己' / '依專長建議'
+  suggested: string | null // 依專長建議、還需要確認的人選
+  why: string
+}
+
 // 台北時區今天 YYYY/MM/DD
 function taipeiToday(): string {
   const d = new Date(Date.now() + 8 * 3600 * 1000)
@@ -50,7 +60,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '尚未設定 GEMINI_API_KEY' }, { status: 503 })
   }
   try {
-    const { messages, projects } = await req.json()
+    const { messages, projects, people, isAdmin, selfName } = await req.json()
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: '沒有訊息' }, { status: 400 })
     }
@@ -63,9 +73,45 @@ export async function POST(req: NextRequest) {
     const projList: { id: string; name: string }[] = Array.isArray(projects)
       ? projects.filter((p: any) => p?.id && p?.name).map((p: any) => ({ id: String(p.id), name: String(p.name) }))
       : []
-    if (projList.length > 0 && lastUser.trim()) {
-      const intent = await routeChatIntent(lastUser, projList.map(p => p.name), taipeiToday())
-      if (intent.intent === 'progress' && intent.items.length > 0) {
+    // 可指派的人員名單由前端帶上來（單一來源：app/page.tsx 的名單），
+    // 私人身分（總經理自己）只有管理者登入時才會出現在名單裡
+    const roster: { name: string; skill: string }[] = Array.isArray(people)
+      ? people.filter((p: any) => p?.name).map((p: any) => ({ name: String(p.name), skill: String(p.skill ?? '') }))
+      : []
+    if (lastUser.trim() && (projList.length > 0 || roster.length > 0)) {
+      const intent = await routeChatIntent(lastUser, projList.map(p => p.name), taipeiToday(), roster)
+
+      // ── 隨手記任務 ──────────────────────────────────────────
+      if (intent.intent === 'task' && intent.tasks.length > 0) {
+        const todayDash = taipeiToday().replace(/\//g, '-')
+        const drafts: TaskDraft[] = intent.tasks.map(t => {
+          // 「我自己」只有在管理者登入時才對得到人；一般員工講「我」我們無從得知是誰
+          const selfOwner = t.self && isAdmin && selfName ? String(selfName) : null
+          const owner = t.owner ?? selfOwner
+          return {
+            task: t.task,
+            date: (t.due || taipeiToday()).replace(/\//g, '-') || todayDash,
+            owner,
+            ownerReason: t.owner ? '明確指定' : selfOwner ? '你自己' : '',
+            // 已經有確定的人就不需要建議；建議人選也不能等於已確定的人
+            suggested: owner ? null : (t.suggested && t.suggested !== owner ? t.suggested : null),
+            why: owner ? '' : t.why,
+          }
+        })
+        const named = drafts.filter(d => d.owner).length
+        const guessed = drafts.filter(d => !d.owner && d.suggested).length
+        const blank = drafts.length - named - guessed
+        const parts: string[] = []
+        if (named) parts.push(`${named} 筆已經有指定的人`)
+        if (guessed) parts.push(`${guessed} 筆我依專長幫你建議了人選，要你確認`)
+        if (blank) parts.push(`${blank} 筆我判斷不出來該給誰，請你點選`)
+        const reply = drafts.length === 1 && named === 1
+          ? `好，這件事我記下來了，確認一下要不要派給【${drafts[0].owner}】👇`
+          : `我從你這段話整理出 ${drafts.length} 件待辦（${parts.join('、')}）。確認後按下面的按鈕才會真的派下去👇`
+        return NextResponse.json({ reply, taskDrafts: drafts })
+      }
+
+      if (intent.intent === 'progress' && intent.items.length > 0 && projList.length > 0) {
         // 把 AI 對應到的專案名稱，比對回實際專案（完全相符 → 包含關係 → 都沒有就列候選）
         const norm = (s: string) => s.replace(/[\s\-－_（）()]/g, '').toLowerCase()
         // 師傅講的名稱通常很簡略（「冠德」「桃大」），用「最長共同片段」幫忙猜，

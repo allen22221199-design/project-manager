@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import Tour, { type TourStep } from './tour'
 import RichText, { MediaCard } from './richtext'
 
@@ -127,7 +127,15 @@ type ChatDraft = ProgressDraft & {
   state?: 'pending' | 'saving' | 'done' | 'error' | 'skipped'
   note?: string
 }
-type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; images?: ImageResult[]; drafts?: ChatDraft[]; draftDone?: boolean; suggestions?: string[] }
+// 隨手記任務草稿：AI 判斷這句是在交辦事情，整理成待辦，一律要按確認才會派下去
+type TaskDraft = { task: string; date: string; owner: string | null; ownerReason: string; suggested: string | null; why: string }
+type ChatTaskDraft = TaskDraft & {
+  chosenPerson?: string | null   // 使用者最後決定派給誰
+  picking?: boolean              // 正在展開人員清單改派
+  state?: 'pending' | 'saving' | 'done' | 'error'
+  note?: string
+}
+type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; images?: ImageResult[]; drafts?: ChatDraft[]; tasks?: ChatTaskDraft[]; draftDone?: boolean; suggestions?: string[] }
 type TaskAttachment = { name: string; url: string }
 type TaskStep = { step: string; done: boolean }
 type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[]; flag?: string; steps?: TaskStep[] }
@@ -1390,6 +1398,19 @@ export default function Page() {
     }
   }
 
+  // 可指派的人員（含專長，給 AI 判斷用）。私人身分只有管理者登入後才出現。
+  const assignablePeople = useMemo(() => {
+    const list = DAILY_PEOPLE.map(n => ({ name: n, skill: PERSON_SKILLS[n] ?? '' }))
+    if (isAdmin) list.push({ name: PRIVATE_PERSON, skill: '總經理本人（只有你看得到）' })
+    return list
+  }, [isAdmin])
+  // 任務卡片上「改派」時可以點的完整清單，最後一項是先收著不指定
+  const taskPickList = useMemo(
+    () => [...assignablePeople.map(p => p.name), UNASSIGNED_PERSON],
+    [assignablePeople],
+  )
+  const personLabel = (n: string) => (n === PRIVATE_PERSON ? PRIVATE_PERSON_LABEL : n)
+
   // AI 助理：送出訊息
   // 師傅常常只回一個數字（「3」）來選案場。若目前正有進度等著指定專案，就把數字當成選項，
   // 不要送去問 AI。回傳 true 代表已處理。
@@ -1398,6 +1419,18 @@ export default function Page() {
     const m = t.match(/^第?\s*(\d{1,2})\s*(?:個|號|\.|、)?$/)
     if (!m) return false
     const num = parseInt(m[1], 10)
+    // 先看有沒有任務在等著指定人員（比較新的通常在後面，從最後一則往前找）
+    for (let mi = chatMessages.length - 1; mi >= 0; mi--) {
+      const tasks = chatMessages[mi].tasks
+      if (!tasks) continue
+      // 只有「清單真的顯示在畫面上」的那一筆才能用數字選，數字才會對到看到的按鈕
+      const ti = tasks.findIndex(x => !x.chosenPerson && x.state !== 'done' && (!x.suggested || x.picking))
+      if (ti < 0) continue
+      const pick = taskPickList[num - 1]
+      if (!pick) return false
+      patchTask(mi, ti, { chosenPerson: pick, picking: false })
+      return true
+    }
     const activeProjs = projects.filter(p => !INACTIVE_STATUSES.includes(p.status)).map(p => ({ id: p.id, name: p.name }))
     for (let mi = chatMessages.length - 1; mi >= 0; mi--) {
       const drafts = chatMessages[mi].drafts
@@ -1434,7 +1467,12 @@ export default function Page() {
       const r = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next, projects: activeProjects }),
+        // 人員名單以這裡為單一來源送給後端；私人身分只有管理者登入時才送出去
+        body: JSON.stringify({
+          messages: next, projects: activeProjects,
+          people: assignablePeople.map(p => ({ name: p.name, skill: p.skill })),
+          isAdmin, selfName: PRIVATE_PERSON,
+        }),
       })
       const data = await readJson(r)
       const reply = r.ok ? (data.reply || '（沒有回覆）') : ('錯誤：' + (data.error ?? '回覆失敗'))
@@ -1446,8 +1484,12 @@ export default function Page() {
       const drafts: ChatDraft[] | undefined = rawDrafts.length
         ? rawDrafts.map(d => ({ ...d, chosenId: d.matchedId, chosenName: d.matchedName, state: 'pending' as const }))
         : undefined
-      const suggestions: string[] = r.ok && !drafts ? (data.suggestions ?? []) : []
-      setChatMessages([...next, { role: 'assistant', content: reply, files, images, drafts, suggestions }])
+      const rawTasks: TaskDraft[] = r.ok ? (data.taskDrafts ?? []) : []
+      const tasks: ChatTaskDraft[] | undefined = rawTasks.length
+        ? rawTasks.map(t => ({ ...t, chosenPerson: t.owner, state: 'pending' as const }))
+        : undefined
+      const suggestions: string[] = r.ok && !drafts && !tasks ? (data.suggestions ?? []) : []
+      setChatMessages([...next, { role: 'assistant', content: reply, files, images, drafts, tasks, suggestions }])
     } catch (e: any) {
       setChatMessages([...next, { role: 'assistant', content: '錯誤：' + e.message }])
     } finally { setChatLoading(false) }
@@ -1495,6 +1537,47 @@ export default function Page() {
       if (selected?.id && touched.includes(selected.id)) refreshProjectDetail()
     }
   }
+  // ── 隨手記任務：確認後才寫進「任務事項-每日」 ──
+  function patchTask(msgIndex: number, ti: number, patch: Partial<ChatTaskDraft>) {
+    setChatMessages(prev => prev.map((m, i) => i !== msgIndex ? m : {
+      ...m,
+      tasks: (m.tasks ?? []).map((t, j) => j === ti ? { ...t, ...patch } : t),
+    }))
+  }
+  // 把這則訊息裡「已經決定好人員」的任務全部派下去；逐筆更新狀態，失敗的不影響其他筆
+  async function confirmAllTasks(msgIndex: number) {
+    const list = chatMessages[msgIndex]?.tasks ?? []
+    const targets = list.map((t, ti) => ({ t, ti })).filter(x => x.t.chosenPerson && x.t.state !== 'done')
+    if (targets.length === 0) return
+    let wrotePrivate = false
+    for (const { t, ti } of targets) {
+      patchTask(msgIndex, ti, { state: 'saving' })
+      try {
+        const r = await fetch('/api/daily-tasks', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ person: t.chosenPerson, task: t.task, date: t.date }),
+        })
+        const data = await readJson(r)
+        if (r.ok) {
+          patchTask(msgIndex, ti, { state: 'done' })
+          if (t.chosenPerson === PRIVATE_PERSON) wrotePrivate = true
+        } else {
+          patchTask(msgIndex, ti, { state: 'error', note: data.error ?? '未知錯誤' })
+        }
+      } catch (e: any) {
+        patchTask(msgIndex, ti, { state: 'error', note: e.message })
+      }
+    }
+    setChatMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, draftDone: true } : m))
+    // 派完之後把看板資料抓新的，會議模式／今日工作馬上就看得到
+    fetchInProgress()
+    if (wrotePrivate) fetchPrivatePersonTasks()
+  }
+  function cancelChatTasks(msgIndex: number) {
+    setChatMessages(prev => prev.map((m, i) => i === msgIndex
+      ? { ...m, tasks: undefined, draftDone: true, content: '好的，這些沒有派下去。有需要再跟我說 🙂' } : m))
+  }
+
   function cancelChatProgress(msgIndex: number) {
     setChatMessages(prev => prev.map((m, i) => i === msgIndex
       ? { ...m, drafts: undefined, draftDone: true, content: '好的，這些進度沒有記錄。有需要再跟我說 🙂' } : m))
@@ -3295,6 +3378,90 @@ export default function Page() {
                           {rest.map((img, ii) => <MediaCard key={ii} item={img} />)}
                         </div>
                       </div>
+                      )
+                    })()}
+                    {m.tasks && m.tasks.length > 0 && (() => {
+                      const tasks = m.tasks!
+                      const ready = tasks.filter(t => t.chosenPerson && t.state !== 'done').length
+                      const allDone = tasks.every(t => t.state === 'done' || t.state === 'error')
+                      return (
+                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                          {tasks.length > 1 && <p className="text-xs font-semibold text-gray-500">共 {tasks.length} 件待辦</p>}
+                          {tasks.map((t, ti) => {
+                            // 清單有顯示出來的那一筆，使用者才能直接打數字選人
+                            const showList = !t.chosenPerson && (!t.suggested || t.picking)
+                            const isFirstListed = tasks.findIndex(x => !x.chosenPerson && x.state !== 'done' && (!x.suggested || x.picking)) === ti
+                            return (
+                              <div key={ti} className={`rounded-lg border p-2.5 ${t.state === 'done' ? 'border-emerald-200 bg-emerald-50' : t.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
+                                <div className="text-sm text-gray-700 space-y-0.5">
+                                  <p className="font-medium">📌 {t.task}</p>
+                                  <p className="text-xs text-gray-500">📅 {t.date}</p>
+                                </div>
+                                {t.state === 'done' ? (
+                                  <p className="text-xs text-emerald-700 font-medium mt-1.5">✅ 已派給【{personLabel(t.chosenPerson!)}】</p>
+                                ) : t.state === 'error' ? (
+                                  <p className="text-xs text-red-600 mt-1.5">❌ 寫入失敗：{t.note}</p>
+                                ) : t.state === 'saving' ? (
+                                  <p className="text-xs text-gray-500 mt-1.5">⏳ 派送中…</p>
+                                ) : t.chosenPerson ? (
+                                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                    <span className="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-800 font-medium">
+                                      👤 {personLabel(t.chosenPerson)}
+                                    </span>
+                                    {t.ownerReason && <span className="text-[11px] text-gray-400">{t.ownerReason}</span>}
+                                    <button onClick={() => patchTask(i, ti, { chosenPerson: null, picking: true })}
+                                      className="text-xs text-gray-400 hover:text-indigo-600 underline">改派別人</button>
+                                  </div>
+                                ) : t.suggested && !t.picking ? (
+                                  // 依專長建議的人選：一定要他點過「就派給他」才算數，不會自己送出去
+                                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
+                                    <p className="text-sm text-amber-900">
+                                      我建議派給 <span className="font-bold">{personLabel(t.suggested)}</span>
+                                      {t.why && <span className="font-normal text-amber-800">　（{t.why}）</span>}
+                                    </p>
+                                    <div className="flex gap-2 mt-2 flex-wrap">
+                                      <button onClick={() => patchTask(i, ti, { chosenPerson: t.suggested })}
+                                        className="bg-amber-500 text-white rounded-lg px-3 py-1.5 text-sm font-medium hover:bg-amber-600">
+                                        ✓ 就派給 {personLabel(t.suggested)}
+                                      </button>
+                                      <button onClick={() => patchTask(i, ti, { picking: true })}
+                                        className="text-sm text-gray-500 hover:text-indigo-600 underline px-1">改派別人</button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="mt-2">
+                                    <p className="text-sm text-amber-700 font-medium mb-1.5">
+                                      這件事要派給誰？
+                                      {isFirstListed && <span className="font-normal text-gray-500">（點下面，或直接打數字）</span>}
+                                    </p>
+                                    <div className="flex flex-col gap-1.5">
+                                      {taskPickList.map((n, pi) => (
+                                        <button key={n} onClick={() => patchTask(i, ti, { chosenPerson: n, picking: false })}
+                                          className="w-full flex items-center gap-2.5 bg-white border border-indigo-300 text-indigo-800 rounded-xl px-3 py-2.5 text-base font-medium text-left hover:bg-indigo-50 active:bg-indigo-100">
+                                          <span className="shrink-0 w-7 h-7 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center">{pi + 1}</span>
+                                          <span className="flex-1 leading-tight">
+                                            {n === UNASSIGNED_PERSON ? '先不指定（放待確認）' : personLabel(n)}
+                                            {PERSON_SKILLS[n] && <span className="block text-[11px] text-gray-400 font-normal">{PERSON_SKILLS[n]}</span>}
+                                          </span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                          {!allDone && (
+                            <div className="flex gap-2 items-center flex-wrap">
+                              <button onClick={() => confirmAllTasks(i)} disabled={ready === 0}
+                                className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                                ✓ {tasks.length > 1 ? `全部派下去（${ready} 件）` : '確認派下去'}
+                              </button>
+                              <button onClick={() => cancelChatTasks(i)}
+                                className="text-gray-400 hover:text-gray-600 text-sm px-2">取消</button>
+                            </div>
+                          )}
+                        </div>
                       )
                     })()}
                     {m.drafts && m.drafts.length > 0 && (() => {
