@@ -6,7 +6,7 @@ import { pushToLine } from './line'
 
 // 系統唯一認可的人員名單（跟 app/page.tsx 的 DAILY_PEOPLE 一致）
 // 註：「庫瑪」是阿蔡的另一個稱呼，同一個人，一律歸成「阿蔡」
-const DAILY_PEOPLE = ['黃湘婷', '廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡']
+const DAILY_PEOPLE = ['廖淑慧', '吳哲緯', '王治先', '黃文彬', '艾里', '阿蔡', '黃湘婷']
 // 短名／常見別名 → 系統內全名
 const NAME_MAP: Record<string, string> = {
   文彬: '黃文彬', 治先: '王治先', 湘婷: '黃湘婷', 淑慧: '廖淑慧',
