@@ -352,7 +352,27 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
 }
 
 // AI 助理即時對話：優先用公司知識庫；查不到內部事實就說不知道；網路資料要標註
-export async function chatWithAssistant(messages: { role: string; content: string }[], knowledge: string) {
+export type ChatMedia = { source: string; caption: string; kind: 'image' | 'video' | 'embed' }
+
+export async function chatWithAssistant(
+  messages: { role: string; content: string }[],
+  knowledge: string,
+  media: ChatMedia[] = [],
+) {
+  // 有素材時，讓 AI 自己決定每張圖／每支影片要插在哪一個步驟旁邊，
+  // 而不是全部堆在最後——師傅看步驟時圖就在旁邊，才有輔助效果。
+  const mediaBlock = media.length === 0 ? '' : `
+
+【可插入的圖片／影片】
+${media.map((m, i) => `${i + 1}. [${m.kind === 'image' ? '圖片' : '影片'}] ${m.caption || m.source}（出自：${m.source}）`).join('\n')}
+
+插入規則（很重要）：
+・在「這張圖／這支影片能幫助理解」的那一個步驟或段落的**下一行**，單獨寫一行標記：[[MEDIA:編號]]
+・一個編號最多用一次，不要重複插入；不相關的就不要插。
+・標記要自己獨佔一行，前後不要加其他文字、不要放在句子中間、不要放在條列符號後面。
+・不確定該放哪裡的，就不要插，系統會自動附在最後面。
+・不要在回答裡描述「如附圖」「見下圖」這類文字，插入標記即可。`
+
   const sys = `你是煌盛興業的內部 AI 助理，協助同仁處理：客戶通話的話術建議、公司機具的參數／保養查詢、製作 SOP 等工作。
 
 務必遵守以下規則：
@@ -375,7 +395,7 @@ export async function chatWithAssistant(messages: { role: string; content: strin
 7. 一律用繁體中文，條列清楚、口語好讀。
 
 【公司內部資料（知識庫，可能相關；下方可能是多份不同 SOP，請通盤整合）】
-${knowledge || '（這次沒有找到相關的公司內部資料）'}`
+${knowledge || '（這次沒有找到相關的公司內部資料）'}${mediaBlock}`
 
   const contents = messages.slice(-12).map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',

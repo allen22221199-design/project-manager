@@ -1,6 +1,56 @@
 'use client'
 import React from 'react'
 
+export type Media = { source: string; url: string; caption: string; kind?: 'image' | 'video' | 'embed' }
+
+// 圖片／影片卡片：內文中插入與最後附上都用同一個元件，樣式才一致
+export function MediaCard({ item, inline = false }: { item: Media; inline?: boolean }) {
+  const title = item.caption || item.source
+  const bar = (
+    <div className="flex items-center justify-between gap-2 px-3 py-2 bg-white">
+      <p className="text-xs font-semibold text-gray-700 truncate" title={`${item.source}${item.caption ? '｜' + item.caption : ''}`}>
+        {item.kind === 'image' ? '🖼️' : '🎬'} {title}
+      </p>
+      <a href={item.url} target="_blank" rel="noopener noreferrer"
+        className="text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline shrink-0 no-underline">
+        放大觀看 ↗
+      </a>
+    </div>
+  )
+  const wrap = `rounded-xl overflow-hidden border shadow-sm ${inline ? 'my-3 border-indigo-200' : 'border-gray-200'}`
+  if (item.kind === 'embed') {
+    return (
+      <div className={`${wrap} bg-black`}>
+        <div className="relative w-full" style={{ paddingTop: '56.25%' }}>
+          <iframe src={item.url} title={title} loading="lazy" allowFullScreen
+            allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            className="absolute inset-0 w-full h-full border-0" />
+        </div>
+        {bar}
+      </div>
+    )
+  }
+  if (item.kind === 'video') {
+    return (
+      <div className={`${wrap} bg-black`}>
+        <video src={item.url} controls playsInline preload="metadata"
+          className="w-full bg-black block" style={{ maxHeight: '70vh' }} />
+        {bar}
+      </div>
+    )
+  }
+  return (
+    <div className={`${wrap} bg-gray-50`}>
+      <a href={item.url} target="_blank" rel="noopener noreferrer" className="block no-underline">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={item.url} alt={title} loading="lazy"
+          className="w-full object-contain bg-white" style={{ maxHeight: inline ? '60vh' : '28vh' }} />
+      </a>
+      {bar}
+    </div>
+  )
+}
+
 // AI 回答的輕量排版器（不裝任何套件，避免建置風險）。
 // 只處理三種最常見的格式：**粗體**、條列（* - ・）、編號清單（1. 2.），
 // 其餘一律照原樣輸出。目的是讓現場師傅在手機上看得清楚，不要看到一堆星號。
@@ -23,8 +73,12 @@ function inline(text: string, kp: string): React.ReactNode[] {
 
 type Item = { ordered: boolean; text: string }
 
-export default function RichText({ text }: { text: string }) {
-  const lines = (text ?? '').split('\n')
+export default function RichText({ text, media = [] }: { text: string; media?: Media[] }) {
+  // AI 偶爾會把 [[MEDIA:n]] 寫在句尾而不是獨立一行 → 先斷行，讓下面只需處理「整行就是標記」的情況，
+  // 免得使用者看到 "[[MEDIA:2]]" 這串字
+  const lines = (text ?? '')
+    .replace(/[ \t]*\[\[MEDIA:(\d{1,2})\]\]/gi, '\n[[MEDIA:$1]]\n')
+    .split('\n')
   const blocks: React.ReactNode[] = []
   let buf: Item[] = []
   let k = 0
@@ -52,6 +106,15 @@ export default function RichText({ text }: { text: string }) {
   for (const raw of lines) {
     const line = raw.replace(/\s+$/, '')
     const t = line.trim()
+
+    // [[MEDIA:n]] → 把那張圖／那支影片直接插在這個位置（AI 判斷它屬於前一個步驟）
+    const mk = t.match(/^\[\[MEDIA:(\d{1,2})\]\]$/i)
+    if (mk) {
+      flush()
+      const item = media[Number(mk[1]) - 1]
+      if (item) blocks.push(<MediaCard key={`m${k++}`} item={item} inline />)
+      continue
+    }
 
     // 資料來源頁尾：用分隔線和淡色小字，跟內文分開
     if (/^(?:──+|-{3,}|—{2,})$/.test(t)) { flush(); continue }

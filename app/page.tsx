@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import Tour, { type TourStep } from './tour'
-import RichText from './richtext'
+import RichText, { MediaCard } from './richtext'
 
 // 新手教學引導步驟（後台登入不列入）— 除了每個頁面，也帶到具體操作
 const TOUR_STEPS: TourStep[] = [
@@ -3241,8 +3241,8 @@ export default function Page() {
               {chatMessages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`rounded-2xl px-4 py-3 ${m.role === 'user' ? 'text-sm whitespace-pre-wrap' : 'text-base'} ${m.images?.some(x => x.kind === 'video' || x.kind === 'embed') ? 'w-full max-w-[96%]' : 'max-w-[85%]'} ${m.role === 'user' ? 'aurora-grad text-white' : 'bg-white border border-gray-200/70 shadow-sm text-gray-800'}`}>
-                    {/* AI 的回答用輕量排版器處理（粗體、條列），使用者自己打的字保持原樣 */}
-                    {m.role === 'assistant' ? <RichText text={m.content} /> : m.content}
+                    {/* AI 的回答用輕量排版器處理（粗體、條列、內文插圖），使用者自己打的字保持原樣 */}
+                    {m.role === 'assistant' ? <RichText text={m.content} media={m.images} /> : m.content}
                     {m.files && m.files.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
                         <p className="text-xs text-gray-400 font-medium">📎 相關檔案</p>
@@ -3260,63 +3260,19 @@ export default function Page() {
                       </div>
                     )}
                     {m.images && m.images.length > 0 && (() => {
-                      const hasVideo = m.images!.some(x => x.kind === 'video' || x.kind === 'embed')
+                      // 已經被 AI 插進內文的（[[MEDIA:n]]）就不要在最後重複出現一次
+                      const used = new Set(
+                        Array.from(String(m.content).matchAll(/\[\[MEDIA:(\d{1,2})\]\]/gi))
+                          .map(x => Number(x[1]) - 1)
+                      )
+                      const rest = m.images!.filter((_, i) => !used.has(i))
+                      if (rest.length === 0) return null
+                      const hasVideo = rest.some(x => x.kind === 'video' || x.kind === 'embed')
                       return (
                       <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                        <p className="text-xs text-gray-400 font-medium">{hasVideo ? '🖼️ 相關圖片／影片' : '🖼️ 相關圖片'}</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {m.images!.map((img, ii) => {
-                            const label = (
-                              <p className="text-[10px] text-gray-500 px-1.5 py-1 truncate" title={`${img.source}${img.caption ? '｜' + img.caption : ''}`}>
-                                {img.caption || img.source}
-                              </p>
-                            )
-                            // 影片的標題列：片名 + 開新視窗看大螢幕
-                            const videoBar = (
-                              <div className="flex items-center justify-between gap-2 px-3 py-2 bg-white">
-                                <p className="text-xs font-semibold text-gray-700 truncate" title={`${img.source}${img.caption ? '｜' + img.caption : ''}`}>
-                                  🎬 {img.caption || img.source}
-                                </p>
-                                <a href={img.url} target="_blank" rel="noopener noreferrer"
-                                  className="text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline shrink-0 no-underline">
-                                  放大觀看 ↗
-                                </a>
-                              </div>
-                            )
-                            // YouTube／Vimeo → 內嵌播放器（整列寬、16:9）
-                            if (img.kind === 'embed') {
-                              return (
-                                <div key={ii} className="col-span-2 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-black">
-                                  <div className="relative w-full" style={{ paddingTop: '56.25%' }}>
-                                    <iframe src={img.url} title={img.caption || img.source} loading="lazy"
-                                      allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                      allowFullScreen
-                                      className="absolute inset-0 w-full h-full border-0" />
-                                  </div>
-                                  {videoBar}
-                                </div>
-                              )
-                            }
-                            // 上傳的影片檔 → 整支直接播放（大畫面、可全螢幕）
-                            if (img.kind === 'video') {
-                              return (
-                                <div key={ii} className="col-span-2 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-black">
-                                  <video src={img.url} controls playsInline preload="metadata"
-                                    className="w-full bg-black block" style={{ maxHeight: '70vh' }} />
-                                  {videoBar}
-                                </div>
-                              )
-                            }
-                            return (
-                              <a key={ii} href={img.url} target="_blank" rel="noopener noreferrer"
-                                className="block rounded-lg overflow-hidden border border-gray-200 bg-gray-50 hover:border-indigo-300 transition-colors no-underline">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={img.url} alt={img.caption || img.source} loading="lazy"
-                                  className="w-full h-28 object-cover" />
-                                {label}
-                              </a>
-                            )
-                          })}
+                        <p className="text-xs text-gray-400 font-medium">{hasVideo ? '🖼️ 其他相關圖片／影片' : '🖼️ 其他相關圖片'}</p>
+                        <div className="space-y-2">
+                          {rest.map((img, ii) => <MediaCard key={ii} item={img} />)}
                         </div>
                       </div>
                       )

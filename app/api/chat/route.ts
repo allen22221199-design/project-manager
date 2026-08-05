@@ -255,33 +255,33 @@ export async function POST(req: NextRequest) {
       }
     } catch { /* 圖庫知識注入失敗不影響對話 */ }
 
-    const reply = await chatWithAssistant(messages, knowledge)
-
-    // 回答本身就說「知識庫查不到」時，就不要再附自動抓來的圖片／影片——
-    // 那些是從被引用頁面掃出來的，跟問題無關，只會讓人以為那支影片有答案。
-    if (/查不到|找不到|無法確定|沒有找到|不在.{0,6}知識庫/.test(reply)) {
-      imageResults.length = 0
-    }
-
-    // 圖庫：使用者自建的圖片來源。把「問題 + 回答」拿去比對關鍵字，命中就把圖片排在最前面顯示。
+    // 圖庫比對要在「產生回答之前」做完，AI 才知道有哪些素材可用、能把圖插在對應的步驟旁邊。
+    // 比對範圍用「問題＋檢索到的知識庫內容」（內容就是答案會取材的地方），
+    // 效果接近以前用回答比對，但可以提前拿到清單。
     try {
-      const lib = imageLib
-      if (lib.length > 0) {
-        const haystack = (retrievalQuery + '\n' + reply).toLowerCase()
+      if (imageLib.length > 0) {
+        const haystack = (retrievalQuery + '\n' + knowledge).toLowerCase()
         const libImages: ImageResult[] = []
-        for (const row of lib) {
+        for (const row of imageLib) {
           if (row.keywords.some(k => haystack.includes(k))) {
             for (const im of row.images) libImages.push({ source: row.name, url: im.url, caption: im.caption || row.name, kind: im.kind })
           }
         }
-        // 圖庫（精準、使用者指定）優先於自動從來源頁抓的圖
-        const merged = [...libImages, ...imageResults]
+        const merged = [...libImages, ...imageResults]   // 圖庫（使用者指定）優先
         const seen = new Set<string>()
         const dedup = merged.filter(im => { const k = im.url.split('?')[0]; if (seen.has(k)) return false; seen.add(k); return true })
         imageResults.length = 0
         imageResults.push(...dedup.slice(0, 6))
       }
     } catch { /* 圖庫比對失敗不影響對話 */ }
+
+    const reply = await chatWithAssistant(messages, knowledge, imageResults)
+
+    // 回答本身就說「知識庫查不到」時，就不要再附自動抓來的圖片／影片——
+    // 那些是從被引用頁面掃出來的，跟問題無關，只會讓人以為那支影片有答案。
+    if (/查不到|找不到|無法確定|沒有找到|不在.{0,6}知識庫/.test(reply)) {
+      imageResults.length = 0
+    }
 
     // 產生「後續追問」建議按鈕（失敗不影響回覆）
     let suggestions: string[] = []
