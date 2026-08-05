@@ -760,7 +760,10 @@ export async function getPageMedia(pageId: string, maxItems = 6): Promise<PageMe
   const MAX_CALLS = 14  // 控制延遲：一頁最多 14 次 children.list
   const add = (url: string, caption: string, kind: MediaKind) => {
     const finalUrl = kind === 'embed' ? (toEmbedUrl(url) ?? url) : url
-    out.push({ url: finalUrl, caption, kind })
+    // 說明文字若本身就是一串網址（書籤區塊常見），當成沒有說明——
+    // 網址對使用者沒有意義，AI 也無法據此判斷這張圖該放在哪個步驟旁邊
+    const c = /^https?:\/\//i.test(caption.trim()) ? '' : caption
+    out.push({ url: finalUrl, caption: c, kind })
   }
   async function walk(blockId: string, depth: number) {
     if (depth > 3 || calls >= MAX_CALLS || out.length >= maxItems) return
