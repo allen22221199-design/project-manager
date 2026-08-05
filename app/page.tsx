@@ -3643,7 +3643,7 @@ export default function Page() {
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {columns.map(col => (
                   <span key={col.key}
-                    className={`text-xs px-2.5 py-1 rounded-full font-medium border ${
+                    className={`text-sm px-3 py-1.5 rounded-full font-medium border ${
                       col.mine ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
                       : col.key === UNASSIGNED_PERSON ? 'bg-amber-100 text-amber-800 border-amber-200'
                       : col.items.length === 0 ? 'bg-gray-50 text-gray-400 border-gray-200'
@@ -3654,31 +3654,31 @@ export default function Page() {
               </div>
 
               {/* 自動換行的格狀排列：不用左右捲，一次看到全部 */}
-              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
                 {columns.map(col => (
                   <div key={col.key}
                     className={`rounded-2xl border ${col.mine ? 'border-indigo-300 bg-indigo-50/40' : col.key === UNASSIGNED_PERSON ? 'border-amber-300 bg-amber-50/40' : 'border-gray-200 bg-white'}`}>
                     <div className="px-3 py-2 border-b border-gray-200/70">
                       <div className="flex items-center gap-2">
-                        <p className="font-bold text-gray-900 text-sm">{col.label}</p>
-                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${col.items.length === 0 ? 'bg-gray-100 text-gray-400' : 'bg-indigo-100 text-indigo-700'}`}>
+                        <p className="font-bold text-gray-900 text-lg">{col.label}</p>
+                        <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${col.items.length === 0 ? 'bg-gray-100 text-gray-400' : 'bg-indigo-100 text-indigo-700'}`}>
                           {col.items.length}
                         </span>
                       </div>
-                      {col.skill && <p className="text-[10px] text-gray-500 mt-0.5 leading-snug">{col.skill}</p>}
+                      {col.skill && <p className="text-xs text-gray-500 mt-1 leading-snug">{col.skill}</p>}
                     </div>
                     {/* 不設內部捲軸，全部列出來 */}
                     <div className="p-1.5 space-y-1">
                       {col.items.length === 0 ? (
-                        <p className="text-xs text-gray-300 text-center py-3">沒有待辦</p>
+                        <p className="text-sm text-gray-300 text-center py-4">沒有待辦</p>
                       ) : col.items.map(t => {
                         const overdue = !!t.date && t.date < today
                         const days = overdue ? Math.round((new Date(today).getTime() - new Date(t.date).getTime()) / 86400000) : 0
                         return (
                           <div key={t.id} title={t.task}
-                            className={`rounded-md px-2 py-1.5 text-xs leading-snug ${overdue ? 'bg-red-50 border border-red-100' : 'bg-gray-50 border border-gray-100'}`}>
+                            className={`rounded-md px-2.5 py-2 text-base leading-snug ${overdue ? 'bg-red-50 border border-red-100' : 'bg-gray-50 border border-gray-100'}`}>
                             <p className="text-gray-800">{t.task}</p>
-                            <span className={`text-[10px] ${overdue ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+                            <span className={`text-xs ${overdue ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
                               {t.date ? (overdue ? `🔴 逾期 ${days} 天` : t.date) : '未設日期'}
                             </span>
                           </div>
