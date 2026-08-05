@@ -323,14 +323,17 @@ export async function POST(req: NextRequest) {
             // 檢索到的內容很長，單獨命中一個通用字幾乎一定是巧合
             // （防火標章那列只因為丈量 SOP 提到「防火門」就跟著跑出來）。
             // 要兩個以上不同關鍵字都出現，才算這一列真的跟內容有關。
-            return { row, score: qHits * 5 + (kHits >= 2 ? kHits : 0) }
+            return { row, qHits, score: qHits * 5 + (kHits >= 2 ? kHits : 0) }
           })
           .filter(x => x.score > 0)
           .sort((a, b) => b.score - a.score)
-        // 只留跟第一名同一個量級的（四成以上）。問單一名詞時就只會有那一張；
-        // 問整份 SOP 時，該 SOP 的圖分數都相近，會一起留下來插在各步驟旁邊。
-        const cut = scored.length ? scored[0].score * 0.4 : 0
-        const keep = scored.filter(x => x.score >= cut).slice(0, 8)
+        // 問題本身有命中，就「只用」命中的那幾列。檢索排第一的文件未必真的切題
+        // （問防火標章時排第一的是丈量 SOP），拿它的內文去比對只會把不相干的圖拉進來。
+        // 想讓整份 SOP 的圖一起出現，作法是把該 SOP 的名字加進每一列的關鍵字。
+        const direct = scored.filter(x => x.qHits > 0)
+        const pool = direct.length > 0 ? direct : scored
+        const cut = pool[0] ? pool[0].score * 0.4 : 0
+        const keep = pool.filter(x => x.score >= cut).slice(0, 8)
         // 有些列的影片是放在「頁面內文」而不是「圖片／檔案」欄位——資料庫的檔案欄位無法用
         // API 寫入，內文可以。只對「有命中、而且欄位是空的」那幾列即時去讀內文，
         // 才不會每次對話都把整個圖庫的頁面掃一遍。
