@@ -51,6 +51,45 @@ export function MediaCard({ item, inline = false }: { item: Media; inline?: bool
   )
 }
 
+// 同一列（同一個來源）有多張圖時，排成一排一起顯示。
+// 一列放好幾張通常是「同一件事的不同角度」，分開一張一張直式堆疊會佔掉整個畫面、
+// 也看不出它們是一組的。圖多就自動縮小、換行排。
+export function MediaGroup({ items, inline = false }: { items: Media[]; inline?: boolean }) {
+  if (items.length === 0) return null
+  // 影片跟嵌入不縮小排版，維持原本一支一支顯示
+  const pics = items.filter(m => m.kind === 'image')
+  const rest = items.filter(m => m.kind !== 'image')
+  if (pics.length <= 1) {
+    return <>{items.map((m, i) => <MediaCard key={i} item={m} inline={inline} />)}</>
+  }
+  const g = items[0]
+  // 2 張各佔一半、3 張以上就三欄；縮圖高度隨張數遞減，整組不超過原本一張的高度
+  const cols = pics.length === 2 ? 2 : 3
+  const h = pics.length === 2 ? '22vh' : '16vh'
+  return (
+    <>
+      <div className={`rounded-xl overflow-hidden border shadow-sm bg-gray-50 ${inline ? 'my-3 border-indigo-200' : 'border-gray-200'}`}>
+        <div className="grid gap-0.5 bg-gray-200" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+          {pics.map((m, i) => (
+            <a key={i} href={m.url} target="_blank" rel="noopener noreferrer" className="block no-underline bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={m.url} alt={m.caption || m.source} loading="lazy"
+                className="w-full object-contain bg-white" style={{ maxHeight: h }} />
+            </a>
+          ))}
+        </div>
+        <div className="flex items-center justify-between gap-2 px-3 py-2 bg-white">
+          <p className="text-xs font-semibold text-gray-700 truncate" title={`${g.source}｜${g.caption ?? ''}`}>
+            🖼️ {g.caption || g.source}
+            <span className="ml-1 font-normal text-gray-400">（{pics.length} 張）</span>
+          </p>
+        </div>
+      </div>
+      {rest.map((m, i) => <MediaCard key={`r${i}`} item={m} inline={inline} />)}
+    </>
+  )
+}
+
 // AI 回答的輕量排版器（不裝任何套件，避免建置風險）。
 // 只處理三種最常見的格式：**粗體**、條列（* - ・）、編號清單（1. 2.），
 // 其餘一律照原樣輸出。目的是讓現場師傅在手機上看得清楚，不要看到一堆星號。

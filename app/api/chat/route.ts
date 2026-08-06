@@ -360,7 +360,7 @@ export async function POST(req: NextRequest) {
         const seen = new Set<string>()
         const dedup = merged.filter(im => { const k = im.url.split('?')[0]; if (seen.has(k)) return false; seen.add(k); return true })
         imageResults.length = 0
-        imageResults.push(...dedup.slice(0, 6))
+        imageResults.push(...dedup.slice(0, 9))   // 一列可能就放了 3 張，上限放寬才不會把別列擠掉
       }
     } catch { /* 圖庫比對失敗不影響對話 */ }
 

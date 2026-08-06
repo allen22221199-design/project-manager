@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Tour, { type TourStep } from './tour'
-import RichText, { MediaCard } from './richtext'
+import RichText, { MediaGroup } from './richtext'
 
 // 新手教學引導步驟（後台登入不列入）— 除了每個頁面，也帶到具體操作
 const TOUR_STEPS: TourStep[] = [
@@ -3375,7 +3375,16 @@ export default function Page() {
                       <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
                         <p className="text-xs text-gray-400 font-medium">{hasVideo ? '🖼️ 其他相關圖片／影片' : '🖼️ 其他相關圖片'}</p>
                         <div className="space-y-2">
-                          {rest.map((img, ii) => <MediaCard key={ii} item={img} />)}
+                          {/* 同一個來源（Notion 同一列）的圖排成一組一起顯示，不要一張一張堆 */}
+                          {(() => {
+                            const groups: ImageResult[][] = []
+                            for (const img of rest) {
+                              const last = groups[groups.length - 1]
+                              if (last && last[0].source === img.source) last.push(img)
+                              else groups.push([img])
+                            }
+                            return groups.map((g, gi) => <MediaGroup key={gi} items={g} />)
+                          })()}
                         </div>
                       </div>
                       )
