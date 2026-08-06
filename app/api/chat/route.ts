@@ -277,10 +277,12 @@ export async function POST(req: NextRequest) {
       //   (1) 頁面內文的圖片/影片/YouTube 區塊；(2) 檔案庫該筆「檔案」欄位上傳的圖片或影片檔
       // 只取「最相關的那一份」：取前三份會把不相干的影片也附上來（使用者回報「給的影片有錯誤」）。
       try {
+        // 只取「這一頁自己的檔案欄附件」。
+        // 以前還會掃頁面內文區塊裡的影片(getPageMedia)，但那些區塊常常不是這一題的東西——
+        // 問掃描機驅動卻附上一支別人的自拍、問鎖孔卻附上拍攝技巧的片段，都是這樣來的。
+        // 附件才是這份資料本體，內文區塊不是。
         const picks = topSources.slice(0, 1)
-        const imgLists = await Promise.all(picks.map(s => getPageMedia(s.id, 4).catch(() => [])))
-        picks.forEach((s, i) => {
-          for (const im of imgLists[i]) imageResults.push({ source: s.title, url: im.url, caption: im.caption, kind: im.kind })
+        picks.forEach((s) => {
           const kbItem = kb.find(k => k.id === s.id) as any
           for (const att of (kbItem?.attachments ?? [])) {
             const kind = att.url ? classifyMedia(att.name || att.url) : null
