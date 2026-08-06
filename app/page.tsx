@@ -3368,7 +3368,13 @@ export default function Page() {
                         Array.from(String(m.content).matchAll(/\[\[MEDIA:(\d{1,2})\]\]/gi))
                           .map(x => Number(x[1]) - 1)
                       )
-                      const rest = m.images!.filter((_, i) => !used.has(i))
+                      // 內文插了某一張，就代表「那一整組」都已經在內文出現過了（見 richtext 的 MediaGroup），
+                      // 頁尾要把整組排除，否則同一批圖會重複出現兩次。
+                      const usedSources = new Set(
+                        m.images!.filter((im, i) => used.has(i) && im.kind === 'image').map(im => im.source)
+                      )
+                      const rest = m.images!.filter((im, i) =>
+                        !used.has(i) && !(im.kind === 'image' && usedSources.has(im.source)))
                       if (rest.length === 0) return null
                       const hasVideo = rest.some(x => x.kind === 'video' || x.kind === 'embed')
                       return (

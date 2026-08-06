@@ -151,7 +151,15 @@ export default function RichText({ text, media = [] }: { text: string; media?: M
     if (mk) {
       flush()
       const item = media[Number(mk[1]) - 1]
-      if (item) blocks.push(<MediaCard key={`m${k++}`} item={item} inline />)
+      if (item) {
+        // AI 只會標一個編號，但同一個來源（Notion 同一列）常常放了好幾張。
+        // 標到其中一張就把「整組」一起插在這個步驟旁邊，不要把一組拆成
+        // 一張在內文、其餘掉到頁尾——那樣師傅根本看不出它們是同一件事。
+        const group = item.kind === 'image'
+          ? media.filter(m => m.kind === 'image' && m.source === item.source)
+          : [item]
+        blocks.push(<MediaGroup key={`m${k++}`} items={group} inline />)
+      }
       continue
     }
 
