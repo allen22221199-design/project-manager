@@ -334,8 +334,11 @@ export async function POST(req: NextRequest) {
         // 問題本身有命中，就「只用」命中的那幾列。檢索排第一的文件未必真的切題
         // （問防火標章時排第一的是丈量 SOP），拿它的內文去比對只會把不相干的圖拉進來。
         // 想讓整份 SOP 的圖一起出現，作法是把該 SOP 的名字加進每一列的關鍵字。
-        const direct = scored.filter(x => x.qHits > 0)
-        const pool = direct.length > 0 ? direct : scored
+        // 只用「問題本身命中關鍵字」的那幾列，沒命中就不附圖。
+        // 以前沒命中時會退回用檢索到的內文比對，但那等於在賭——問掃描機驅動安裝，
+        // 內文出現「位置」就把丈量的鎖孔照片附上來。寧可不附圖，也不要附錯的。
+        // 要讓整份 SOP 的圖一起出現，作法是把該 SOP 的名字加進每一列的關鍵字。
+        const pool = scored.filter(x => x.qHits > 0)
         const cut = pool[0] ? pool[0].score * 0.4 : 0
         const keep = pool.filter(x => x.score >= cut).slice(0, 8)
         // 有些列的影片是放在「頁面內文」而不是「圖片／檔案」欄位——資料庫的檔案欄位無法用
