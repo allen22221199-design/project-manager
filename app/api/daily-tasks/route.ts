@@ -27,10 +27,11 @@ export async function GET(req: NextRequest) {
 // 手動新增任務並指派人員
 export async function POST(req: NextRequest) {
   try {
-    const { person, task, date } = await req.json()
+    const { person, task, date, source } = await req.json()
     if (!task?.trim()) return NextResponse.json({ error: '缺少任務內容' }, { status: 400 })
     const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
-    await addDailyTask((person || '未分類').trim(), task.trim(), date || today, '手動新增')
+    // source 只是給人看的來源標記（Notion 那欄是純文字），有帶就照寫，沒帶維持原本的「手動新增」
+    await addDailyTask((person || '未分類').trim(), task.trim(), date || today, String(source || '手動新增'))
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })

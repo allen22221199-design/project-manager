@@ -966,59 +966,104 @@ export async function evaluateTrainingThought(params: { cardTitle: string; quest
   const res = await withRetry(() => model.generateContent(prompt))
   return res.response.text().trim()
 }
-// 總經理把 PDF 待辦清單丟進 AI 助理：只抽出「標了『自己』」的項目，其餘一律忽略。
-// 直接把 PDF 交給 Gemini 讀，不自己寫解析器——PDF 的排版（表格、多欄、掃描件）
-// 變化太大，自己拆很容易掉字或把兩欄的字黏在一起。
+// 總經理把待辦清單丟進 AI 助理：只抽出「掛在【自己】底下」的項目，其餘一律忽略。
+//
+// 收到的通常不是原始 PDF，而是前端把 PDF 放大重畫後的一疊圖片切片（見 lib/pdf-tiles.ts）：
+// 原檔是 XMind 匯出的心智圖，整張壓在一頁 A4 裡、字只有約 1pt，原尺寸送進來讀不到字。
+// 每一張切片各發一次 Gemini，一來避開 Vercel 的函式時間上限，二來每次只讀一小塊比較準；
+// 切片之間有重疊，重複的項目由呼叫端去掉。
 export type OwnTaskItem = {
   task: string          // 乾淨、可執行的一句話
   due: string | null    // YYYY-MM-DD；判斷不出來就 null
-  dueFrom: string       // 日期是哪裡來的：'項目' | '檔案' | '檔名' | ''
+  dueFrom: string       // 日期是哪裡來的：'項目' | '分支' | '檔名' | ''
 }
-export async function extractOwnTasksFromPdf(
-  base64: string,
+export type TaskSourceMedia = { data: string; mimeType: string }
+
+function ownTaskPrompt(filename: string, todayISO: string, part: number, total: number): string {
+  const sliceNote = total > 1
+    ? `這是同一份清單由上而下切開的第 ${part}／${total} 張。相鄰兩張有一小段重疊，你只要讀「這一張看得到的」就好，看不到的部分不要臆測。`
+    : '這是一份完整的待辦清單。'
+  return `${sliceNote}
+
+請只做一件事：把「掛在【自己】這個節點底下的項目」抽出來。
+
+【這份圖長什麼樣】
+多半是心智圖（XMind 匯出），由中心往外長：
+　中心 →〔日期分支，例如 0629、0616，MMDD 四碼〕→〔分類，例如 公司工廠／自媒體／自己個人／工廠〕→〔【人名】〕→ 一條一條的待辦項目。
+左半邊的枝往左長（項目在【人名】的左邊），右半邊的枝往右長（項目在【人名】的右邊），兩邊都要看。
+
+【只抽哪些】
+・只抽「線連到【自己】」的那些項目。整張圖裡會有很多組【自己】，分屬不同日期與分類，全部都要。
+・【黃文彬】【王治先】【哲緯】【淑慧】【阿蔡】【艾里】【湘婷】…等其他人名底下的項目，一律不要。
+・**判斷依據是「這條線連到哪個【人名】」，不是句子裡有沒有出現「自己」兩個字。**
+　例如「向自己報告目前所有項目的進度」掛在【黃文彬】底下 → 那是黃文彬要做的事，不要抽。
+　例如「詢問序時代的所長是哪一位」掛在【自己】底下、句子裡沒有「自己」→ 這個要抽。
+・如果整張圖根本沒有【自己】節點，才退而求其次：把明確標示為「自己」的項目抽出來。
+・這張切片上沒有【自己】的項目就回傳空陣列，不要為了有東西交差而硬湊。
+
+【task 怎麼寫】
+・照抄節點上的文字，整理成乾淨、可執行的一句話；案場、人名、數量、規格等細節都要保留。
+・去掉編號與項目符號。不要自己加字，也不要把兩個項目合併成一句。
+
+【due 日期怎麼判斷】依這個優先順序，找到就停：
+1. 項目本身寫的日期（例如「8/15 前跟客戶確認報價」）→ dueFrom 填「項目」
+2. 這個項目往上游連到的日期分支（例如 0629）→ dueFrom 填「分支」
+3. 檔名裡的日期 → dueFrom 填「檔名」
+4. 以上都沒有、或日期分支被切到別張圖上看不到 → due 填 null、dueFrom 填空字串。
+　【不可以自己填今天，也不可以猜】
+・一律換算成 YYYY-MM-DD。只有月日（例如 0629）時，年份用今天的年份。
+
+這份檔案的檔名是：「${filename}」
+今天是 ${todayISO}。
+
+只輸出 JSON：{ "items": [ { "task": "...", "due": "YYYY-MM-DD 或 null", "dueFrom": "項目|分支|檔名|" } ] }`
+}
+
+async function extractOwnTasksFromOne(
+  media: TaskSourceMedia,
   filename: string,
   todayISO: string,
+  part: number,
+  total: number,
 ): Promise<OwnTaskItem[]> {
   const model = genAI.getGenerativeModel({
     model: 'gemini-2.5-flash',
-    generationConfig: { responseMimeType: 'application/json' },
+    // 一張切片可能有幾十筆項目，output 上限開大一點；2.5 的思考也吃這個額度，太小會被截斷成壞 JSON
+    generationConfig: { responseMimeType: 'application/json', temperature: 0, maxOutputTokens: 32768 },
   })
-  const sys = `這是一份待辦清單 PDF。請只做一件事：把「標記為『自己』的項目」抽出來。
+  const res = await withRetry(() => model.generateContent([
+    { inlineData: { data: media.data, mimeType: media.mimeType as any } },
+    ownTaskPrompt(filename, todayISO, part, total),
+  ]))
+  const raw = res.response.text().replace(/```json|```/g, '').trim()
+  let parsed: any
+  try { parsed = JSON.parse(raw) } catch { throw new Error('AI 回傳的格式看不懂，請再試一次') }
+  return (Array.isArray(parsed?.items) ? parsed.items : [])
+    .map((it: any) => ({
+      task: String(it?.task ?? '').trim(),
+      due: /^\d{4}-\d{2}-\d{2}$/.test(String(it?.due ?? '')) ? String(it.due) : null,
+      dueFrom: String(it?.dueFrom ?? '').trim(),
+    }))
+    .filter((it: OwnTaskItem) => it.task)
+}
 
-【判斷哪些要抽】
-・項目所在的那一行／那一列／那一段，只要出現「自己」兩個字，就是要抽的。
-・其他人的項目（寫了別人名字、或沒有標「自己」的）一律不要抽，不要順便整理。
-・抽不到任何一項就回傳空陣列，不要為了有東西交差而硬湊。
-
-【task 怎麼寫】
-・整理成乾淨、具體、可執行的一句話。
-・去掉「自己」這兩個字本身、也去掉編號與項目符號，但要保留案場、數量、對象、規格等細節。
-
-【due 日期怎麼判斷】依這個優先順序，找到就停：
-1. 該項目自己帶的日期（例如「8/15 前跟客戶確認報價」）→ dueFrom 填「項目」
-2. 檔案內容裡涵蓋全部項目的日期（例如開頭寫「8月第二週待辦」）→ dueFrom 填「檔案」
-3. 檔名裡的日期 → dueFrom 填「檔名」
-4. 以上都沒有 → due 填 null、dueFrom 填空字串。【不可以自己填今天】
-・一律換算成 YYYY-MM-DD。只有月日沒有年份時，用今天的年份。
-
-這份 PDF 的檔名是：「${filename}」
-今天是 ${todayISO}。
-
-只輸出 JSON：{ "items": [ { "task": "...", "due": "YYYY-MM-DD 或 null", "dueFrom": "項目|檔案|檔名|" } ] }`
-  try {
-    const res = await withRetry(() => model.generateContent([
-      { inlineData: { data: base64, mimeType: 'application/pdf' as any } },
-      sys,
-    ]))
-    const parsed = JSON.parse(res.response.text().replace(/```json|```/g, '').trim())
-    return (Array.isArray(parsed.items) ? parsed.items : [])
-      .map((it: any) => ({
-        task: String(it?.task ?? '').trim(),
-        due: /^\d{4}-\d{2}-\d{2}$/.test(String(it?.due ?? '')) ? String(it.due) : null,
-        dueFrom: String(it?.dueFrom ?? '').trim(),
-      }))
-      .filter((it: OwnTaskItem) => it.task)
-  } catch {
-    return []
-  }
+export async function extractOwnTasksFromPdf(
+  media: TaskSourceMedia[],
+  filename: string,
+  todayISO: string,
+): Promise<{ items: OwnTaskItem[]; failed: number }> {
+  // 每張切片各跑各的：一張讀壞不會拖垮其他張，全部一起跑也比較快
+  const settled = await Promise.allSettled(
+    media.map((m, i) => extractOwnTasksFromOne(m, filename, todayISO, i + 1, media.length)),
+  )
+  const items: OwnTaskItem[] = []
+  let failed = 0
+  let firstErr: any = null
+  settled.forEach(r => {
+    if (r.status === 'fulfilled') r.value.forEach(x => items.push(x))
+    else { failed++; if (!firstErr) firstErr = r.reason }
+  })
+  // 全部都失敗才算真的失敗；只壞幾張就把讀到的先交出去，由呼叫端提醒使用者
+  if (failed === media.length) throw (firstErr ?? new Error('讀取失敗'))
+  return { items, failed }
 }

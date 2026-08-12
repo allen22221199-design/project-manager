@@ -135,7 +135,14 @@ type ChatTaskDraft = TaskDraft & {
   state?: 'pending' | 'saving' | 'done' | 'error'
   note?: string
 }
-type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; images?: ImageResult[]; drafts?: ChatDraft[]; tasks?: ChatTaskDraft[]; draftDone?: boolean; suggestions?: string[] }
+// 待辦清單 PDF 匯入：AI 讀出「掛在【自己】底下」的項目，一樣要勾選＋按確認才會寫進 Notion
+type PdfTaskDraft = { task: string; date: string | null; dueFrom: string; duplicate: boolean }
+type ChatPdfDraft = PdfTaskDraft & {
+  picked: boolean                // 使用者要不要這一筆（重複的預設不勾）
+  state?: 'pending' | 'saving' | 'done' | 'error'
+  note?: string
+}
+type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; images?: ImageResult[]; drafts?: ChatDraft[]; tasks?: ChatTaskDraft[]; pdfs?: ChatPdfDraft[]; pdfFallbackDate?: string; draftDone?: boolean; suggestions?: string[] }
 type TaskAttachment = { name: string; url: string }
 type TaskStep = { step: string; done: boolean }
 type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[]; flag?: string; steps?: TaskStep[] }
@@ -542,6 +549,9 @@ export default function Page() {
   const [pickerExpanded, setPickerExpanded] = useState<Record<string, boolean>>({})
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
+  // 匯入待辦清單 PDF 時的進度字樣（轉檔在瀏覽器裡跑，會跑一段時間，要讓人知道還活著）
+  const [pdfBusy, setPdfBusy] = useState('')
+  const pdfFileRef = useRef<HTMLInputElement>(null)
   // 語音輸入：師傅打字慢，改成按著講話 → AI 轉文字填進輸入框（送出前還能自己改）
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
@@ -1581,6 +1591,104 @@ export default function Page() {
   function cancelChatProgress(msgIndex: number) {
     setChatMessages(prev => prev.map((m, i) => i === msgIndex
       ? { ...m, drafts: undefined, draftDone: true, content: '好的，這些進度沒有記錄。有需要再跟我說 🙂' } : m))
+  }
+
+  // ── 待辦清單 PDF 匯入（僅管理者）──
+  // 原檔是 XMind 匯出的心智圖，一頁 9.4MB、字只有約 1pt。直接上傳有兩個關卡：
+  // Vercel 的請求上限約 4MB 過不了，而且原尺寸連 AI 也看不到字。
+  // 所以先在瀏覽器裡量出「真正有畫東西的那一塊」，放大重畫再切成幾張 JPEG（約 1.4MB）才送出。
+  async function handlePdfImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || chatLoading) return
+    if (!/\.pdf$/i.test(file.name)) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: '目前只支援 PDF 檔喔。' }])
+      return
+    }
+    const next: ChatMsg[] = [...chatMessages.map(m => m.suggestions ? { ...m, suggestions: undefined } : m),
+      { role: 'user', content: `📄 ${file.name}` }]
+    setChatMessages(next)
+    setChatLoading(true)
+    setPdfBusy('準備中…')
+    try {
+      // 動態載入：這包只有匯入 PDF 用得到，不要拖累其他人第一次開網頁的速度
+      const { pdfToTiles } = await import('@/lib/pdf-tiles')
+      const { tiles, skipped } = await pdfToTiles(file, msg => setPdfBusy(msg))
+      setPdfBusy(`AI 讀取中…（${tiles.length} 張，約 30 秒）`)
+      const fd = new FormData()
+      fd.append('name', file.name)
+      tiles.forEach((b, i) => fd.append('file', b, `slice${i + 1}.jpg`))
+      const r = await fetch('/api/import-pdf', { method: 'POST', body: fd })
+      if (r.status === 413) {
+        setChatMessages([...next, { role: 'assistant', content: '錯誤：這份 PDF 內容太多，送不上伺服器，請分成兩份再上傳。' }])
+        return
+      }
+      const data = await readJson(r)
+      if (!r.ok) {
+        setChatMessages([...next, { role: 'assistant', content: '錯誤：' + (data.error ?? '讀取失敗') }])
+        return
+      }
+      const raw: PdfTaskDraft[] = data.pdfDrafts ?? []
+      // 已經在待辦清單裡的預設不勾，其他預設勾起來；使用者還是可以自己改
+      const pdfs: ChatPdfDraft[] = raw.map(d => ({ ...d, picked: !d.duplicate, state: 'pending' as const }))
+      // 頁數超過上限而沒讀的一定要講，不然會被當成「整份都讀完了」
+      const skipNote = skipped > 0 ? `\n\n⚠️ 這份有超過 ${skipped} 頁沒有讀（一次最多 6 頁），剩下的請拆開再上傳一次。` : ''
+      setChatMessages([...next, {
+        role: 'assistant',
+        content: (data.reply || '（沒有回覆）') + skipNote,
+        pdfs: pdfs.length ? pdfs : undefined,
+        pdfFallbackDate: todayISO(),
+      }])
+    } catch (err: any) {
+      setChatMessages([...next, { role: 'assistant', content: '錯誤：' + (err?.message ?? '讀取失敗') }])
+    } finally {
+      setChatLoading(false)
+      setPdfBusy('')
+    }
+  }
+
+  function patchPdf(msgIndex: number, di: number, patch: Partial<ChatPdfDraft>) {
+    setChatMessages(prev => prev.map((m, i) => i !== msgIndex ? m : {
+      ...m,
+      pdfs: (m.pdfs ?? []).map((d, j) => j === di ? { ...d, ...patch } : d),
+    }))
+  }
+  // 一次勾／取消一整組（某個日期底下全部，或整張卡片）
+  function pickPdfMany(msgIndex: number, idxs: number[] | null, picked: boolean) {
+    setChatMessages(prev => prev.map((m, i) => i !== msgIndex ? m : {
+      ...m,
+      pdfs: (m.pdfs ?? []).map((d, j) =>
+        (idxs === null || idxs.indexOf(j) >= 0) && d.state !== 'done' ? { ...d, picked } : d),
+    }))
+  }
+  // 勾起來的逐筆寫進「任務事項-每日」。一筆一筆送（不併發）：
+  // Notion 每秒只吃得下約 3 個請求，一口氣灌會被擋，慢一點但每筆都寫得進去。
+  async function confirmPdfDrafts(msgIndex: number) {
+    const msg = chatMessages[msgIndex]
+    const list = msg?.pdfs ?? []
+    const fallback = msg?.pdfFallbackDate || todayISO()
+    const targets = list.map((d, di) => ({ d, di })).filter(x => x.d.picked && x.d.state !== 'done')
+    if (targets.length === 0) return
+    for (const { d, di } of targets) {
+      patchPdf(msgIndex, di, { state: 'saving' })
+      try {
+        const r = await fetch('/api/daily-tasks', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ person: PRIVATE_PERSON, task: d.task, date: d.date || fallback, source: '待辦清單PDF' }),
+        })
+        const data = await readJson(r)
+        if (r.ok) patchPdf(msgIndex, di, { state: 'done' })
+        else patchPdf(msgIndex, di, { state: 'error', note: data.error ?? '未知錯誤' })
+      } catch (e: any) {
+        patchPdf(msgIndex, di, { state: 'error', note: e.message })
+      }
+    }
+    fetchPrivatePersonTasks()
+    fetchInProgress()
+  }
+  function cancelChatPdfs(msgIndex: number) {
+    setChatMessages(prev => prev.map((m, i) => i === msgIndex
+      ? { ...m, pdfs: undefined, draftDone: true, content: '好的，這份沒有加進待辦。有需要再上傳一次 🙂' } : m))
   }
 
   // 同步知識庫（處理 Notion 知識庫中「待處理」的項目）
@@ -3338,6 +3446,12 @@ export default function Page() {
                   </ul>
                   <p className="text-gray-500 mt-3 mb-1">也可以<span className="font-medium text-emerald-700">直接記錄專案進度</span>，例如：</p>
                   <p className="text-gray-400 text-xs bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">「冠德的箱蓋今天噴好了」→ 我會幫你對應專案、確認後寫進進度紀錄</p>
+                  {isAdmin && (
+                    <>
+                      <p className="text-gray-500 mt-3 mb-1">也可以<span className="font-medium text-indigo-700">上傳待辦清單 PDF</span>（下面那顆 📄）：</p>
+                      <p className="text-gray-400 text-xs bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">心智圖匯出的 PDF 也讀得動。我只抽「掛在【自己】底下」的項目，勾選確認後才會加進你的待辦。</p>
+                    </>
+                  )}
                   <p className="text-xs text-gray-400 mt-3">※ 公司內部資料若查不到，我會直接說不知道、不亂編；若引用網路資料會標註清楚。</p>
                 </div>
               )}
@@ -3478,6 +3592,121 @@ export default function Page() {
                         </div>
                       )
                     })()}
+                    {m.pdfs && m.pdfs.length > 0 && (() => {
+                      const pdfs = m.pdfs!
+                      const picked = pdfs.filter(d => d.picked && d.state !== 'done').length
+                      const written = pdfs.filter(d => d.state === 'done').length
+                      const failedN = pdfs.filter(d => d.state === 'error').length
+                      const saving = pdfs.some(d => d.state === 'saving')
+                      const fallback = m.pdfFallbackDate || todayISO()
+                      // 日期是從哪裡判斷出來的，寫給人看（後端傳「項目／分支／檔名」這幾種）
+                      const dueLabel = (k: string) =>
+                        k === '項目' ? '項目上寫的'
+                        : k === '分支' ? '心智圖上的日期'
+                        : k === '檔案' ? '檔案裡寫的'
+                        : k === '檔名' ? '取自檔名' : k
+                      // 依日期分組（心智圖上一個日期就是一批），沒有日期的排最後
+                      const groups: { key: string; idxs: number[] }[] = []
+                      pdfs.forEach((d, di) => {
+                        const key = d.date || ''
+                        let g = groups.find(x => x.key === key)
+                        if (!g) { g = { key, idxs: [] }; groups.push(g) }
+                        g.idxs.push(di)
+                      })
+                      groups.sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1) || a.key.localeCompare(b.key))
+                      const noDateCount = pdfs.filter(d => !d.date).length
+                      return (
+                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <p className="text-xs font-semibold text-gray-500">
+                              共 {pdfs.length} 筆　已勾選 {picked} 筆
+                              {written > 0 && <span className="text-emerald-600">　已寫入 {written}</span>}
+                              {failedN > 0 && <span className="text-red-600">　失敗 {failedN}</span>}
+                            </p>
+                            {!saving && written + failedN < pdfs.length && (
+                              <div className="flex gap-2 text-xs">
+                                <button onClick={() => pickPdfMany(i, null, true)} className="text-indigo-600 hover:underline">全選</button>
+                                <span className="text-gray-300">|</span>
+                                <button onClick={() => pickPdfMany(i, null, false)} className="text-gray-400 hover:underline">全不選</button>
+                              </div>
+                            )}
+                          </div>
+                          {noDateCount > 0 && (
+                            <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-2">
+                              <span>有 {noDateCount} 筆讀不到日期，統一設為</span>
+                              <input type="date" value={fallback}
+                                onChange={ev => setChatMessages(prev => prev.map((mm, mi) =>
+                                  mi === i ? { ...mm, pdfFallbackDate: ev.target.value } : mm))}
+                                className="border border-amber-200 rounded px-1.5 py-0.5 text-xs bg-white" />
+                            </div>
+                          )}
+                          {groups.map(g => {
+                            const open = g.idxs.filter(di => pdfs[di].state !== 'done')
+                            const allPicked = open.length > 0 && open.every(di => pdfs[di].picked)
+                            return (
+                              <div key={g.key || 'nodate'} className="rounded-lg border border-gray-200 overflow-hidden">
+                                <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-gray-50 border-b border-gray-200">
+                                  <p className="text-xs font-semibold text-gray-600">
+                                    📅 {g.key || '未設日期'}　<span className="font-normal text-gray-400">{g.idxs.length} 筆</span>
+                                  </p>
+                                  {open.length > 0 && !saving && (
+                                    <button onClick={() => pickPdfMany(i, open, !allPicked)}
+                                      className="text-xs text-indigo-600 hover:underline shrink-0">
+                                      {allPicked ? '這批不要' : '這批全選'}
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="divide-y divide-gray-100">
+                                  {g.idxs.map(di => {
+                                    const d = pdfs[di]
+                                    const locked = d.state === 'done' || d.state === 'saving'
+                                    return (
+                                      <label key={di}
+                                        className={`flex items-start gap-2.5 px-2.5 py-2 ${locked ? '' : 'cursor-pointer hover:bg-indigo-50/40'} ${
+                                          d.state === 'done' ? 'bg-emerald-50' : d.state === 'error' ? 'bg-red-50' : ''}`}>
+                                        <input type="checkbox" checked={d.picked} disabled={locked}
+                                          onChange={() => patchPdf(i, di, { picked: !d.picked })}
+                                          className="mt-1 w-4 h-4 shrink-0 accent-indigo-600" />
+                                        <div className="min-w-0 flex-1">
+                                          <p className={`text-sm leading-snug ${d.picked ? 'text-gray-800' : 'text-gray-400'}`}>{d.task}</p>
+                                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                                            {d.duplicate && (
+                                              <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">已在清單裡</span>
+                                            )}
+                                            {!d.date && (
+                                              <span className="text-[11px] text-gray-400">未設日期 → {fallback}</span>
+                                            )}
+                                            {d.date && d.dueFrom && (
+                                              <span className="text-[11px] text-gray-400">{dueLabel(d.dueFrom)}</span>
+                                            )}
+                                            {d.state === 'done' && <span className="text-[11px] text-emerald-700 font-medium">✅ 已加入</span>}
+                                            {d.state === 'saving' && <span className="text-[11px] text-gray-500">⏳ 寫入中…</span>}
+                                            {d.state === 'error' && <span className="text-[11px] text-red-600">❌ {d.note}</span>}
+                                          </div>
+                                        </div>
+                                      </label>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })}
+                          {written + failedN < pdfs.length && (
+                            <div className="flex gap-2 items-center flex-wrap">
+                              <button onClick={() => confirmPdfDrafts(i)} disabled={picked === 0 || saving}
+                                className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                                {saving ? `寫入中… ${written}/${written + picked}` : `✓ 加進我的待辦（${picked} 筆）`}
+                              </button>
+                              {!saving && (
+                                <button onClick={() => cancelChatPdfs(i)}
+                                  className="text-gray-400 hover:text-gray-600 text-sm px-2">取消</button>
+                              )}
+                              {saving && <span className="text-xs text-gray-400">一筆一筆寫，請不要關掉這頁</span>}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
                     {m.drafts && m.drafts.length > 0 && (() => {
                       const activeProjs = projects.filter(p => !INACTIVE_STATUSES.includes(p.status))
                       const drafts = m.drafts!
@@ -3570,7 +3799,7 @@ export default function Page() {
               ))}
               {chatLoading && (
                 <div className="flex justify-start">
-                  <div className="bg-white border border-gray-200/70 shadow-sm rounded-2xl px-4 py-2.5 text-sm text-gray-400">思考中…（查詢公司資料）</div>
+                  <div className="bg-white border border-gray-200/70 shadow-sm rounded-2xl px-4 py-2.5 text-sm text-gray-400">{pdfBusy || '思考中…（查詢公司資料）'}</div>
                 </div>
               )}
             </div>
@@ -3589,6 +3818,21 @@ export default function Page() {
             )}
             {/* min-w-0 一定要有：textarea 預設有最小寬度，不加就會把「送出」按鈕擠出畫面（手機上等於不能用）*/}
             <div className="flex gap-2 pt-2 border-t border-gray-200 items-end" data-tour="chat-input">
+              {/* 待辦清單 PDF 匯入：總經理的私人待辦，只有管理者看得到這顆按鈕（真正的門在 API 那一關）*/}
+              {isAdmin && (
+                <>
+                  <input ref={pdfFileRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handlePdfImport} />
+                  <button onClick={() => pdfFileRef.current?.click()} disabled={chatLoading}
+                    title="上傳待辦清單 PDF（抽出標了【自己】的項目）"
+                    aria-label="上傳待辦清單 PDF"
+                    className="shrink-0 rounded-xl px-4 py-3 text-base font-semibold border bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-600 transition-colors disabled:opacity-40">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7l-5-5zm-1 6V3.5L18.5 9H14a1 1 0 0 1-1-1z" />
+                      <path d="M8.5 13.5h7a.75.75 0 0 1 0 1.5h-7a.75.75 0 0 1 0-1.5zm0 3h5a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1 0-1.5z" fill="#fff" />
+                    </svg>
+                  </button>
+                </>
+              )}
               <button onClick={() => (recording ? stopRecording() : startRecording())} disabled={transcribing}
                 title={recording ? '停止錄音' : '按一下開始講話，講完再按一次'}
                 aria-label={recording ? '停止錄音' : '語音輸入'}
