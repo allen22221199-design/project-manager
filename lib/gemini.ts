@@ -965,7 +965,7 @@ export async function evaluateTrainingThought(params: { cardTitle: string; quest
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: TRAINING_EVAL_SYSTEM_PROMPT + langInstruction(params.lang) })
   const res = await withRetry(() => model.generateContent(prompt))
   return res.response.text().trim()
-}\n
+}
 // 總經理把 PDF 待辦清單丟進 AI 助理：只抽出「標了『自己』」的項目，其餘一律忽略。
 // 直接把 PDF 交給 Gemini 讀，不自己寫解析器——PDF 的排版（表格、多欄、掃描件）
 // 變化太大，自己拆很容易掉字或把兩欄的字黏在一起。
