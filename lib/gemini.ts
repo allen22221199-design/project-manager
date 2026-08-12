@@ -965,4 +965,60 @@ export async function evaluateTrainingThought(params: { cardTitle: string; quest
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: TRAINING_EVAL_SYSTEM_PROMPT + langInstruction(params.lang) })
   const res = await withRetry(() => model.generateContent(prompt))
   return res.response.text().trim()
+}\n
+// 總經理把 PDF 待辦清單丟進 AI 助理：只抽出「標了『自己』」的項目，其餘一律忽略。
+// 直接把 PDF 交給 Gemini 讀，不自己寫解析器——PDF 的排版（表格、多欄、掃描件）
+// 變化太大，自己拆很容易掉字或把兩欄的字黏在一起。
+export type OwnTaskItem = {
+  task: string          // 乾淨、可執行的一句話
+  due: string | null    // YYYY-MM-DD；判斷不出來就 null
+  dueFrom: string       // 日期是哪裡來的：'項目' | '檔案' | '檔名' | ''
+}
+export async function extractOwnTasksFromPdf(
+  base64: string,
+  filename: string,
+  todayISO: string,
+): Promise<OwnTaskItem[]> {
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: { responseMimeType: 'application/json' },
+  })
+  const sys = `這是一份待辦清單 PDF。請只做一件事：把「標記為『自己』的項目」抽出來。
+
+【判斷哪些要抽】
+・項目所在的那一行／那一列／那一段，只要出現「自己」兩個字，就是要抽的。
+・其他人的項目（寫了別人名字、或沒有標「自己」的）一律不要抽，不要順便整理。
+・抽不到任何一項就回傳空陣列，不要為了有東西交差而硬湊。
+
+【task 怎麼寫】
+・整理成乾淨、具體、可執行的一句話。
+・去掉「自己」這兩個字本身、也去掉編號與項目符號，但要保留案場、數量、對象、規格等細節。
+
+【due 日期怎麼判斷】依這個優先順序，找到就停：
+1. 該項目自己帶的日期（例如「8/15 前跟客戶確認報價」）→ dueFrom 填「項目」
+2. 檔案內容裡涵蓋全部項目的日期（例如開頭寫「8月第二週待辦」）→ dueFrom 填「檔案」
+3. 檔名裡的日期 → dueFrom 填「檔名」
+4. 以上都沒有 → due 填 null、dueFrom 填空字串。【不可以自己填今天】
+・一律換算成 YYYY-MM-DD。只有月日沒有年份時，用今天的年份。
+
+這份 PDF 的檔名是：「${filename}」
+今天是 ${todayISO}。
+
+只輸出 JSON：{ "items": [ { "task": "...", "due": "YYYY-MM-DD 或 null", "dueFrom": "項目|檔案|檔名|" } ] }`
+  try {
+    const res = await withRetry(() => model.generateContent([
+      { inlineData: { data: base64, mimeType: 'application/pdf' as any } },
+      sys,
+    ]))
+    const parsed = JSON.parse(res.response.text().replace(/```json|```/g, '').trim())
+    return (Array.isArray(parsed.items) ? parsed.items : [])
+      .map((it: any) => ({
+        task: String(it?.task ?? '').trim(),
+        due: /^\d{4}-\d{2}-\d{2}$/.test(String(it?.due ?? '')) ? String(it.due) : null,
+        dueFrom: String(it?.dueFrom ?? '').trim(),
+      }))
+      .filter((it: OwnTaskItem) => it.task)
+  } catch {
+    return []
+  }
 }
