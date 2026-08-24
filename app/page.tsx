@@ -115,7 +115,14 @@ const PROJECT_COLORS_LIST = [
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string; ganttStart?: string; ganttEnd?: string; schedule?: string; latestProgress?: string; latestProgressDate?: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
-type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private' | 'training' | 'meeting'
+type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private' | 'training' | 'meeting' | 'issues'
+// 會議事項（品質會議的問題追蹤）。跟每日工作是兩套獨立資料，欄位也不一樣。
+type MeetingItem = {
+  id: string; no: string; meetDate: string; category: string; issue: string
+  proposer: string; discussion: string; suggester: string; owner: string
+  due: string; progress: string; status: string; closedDate: string
+}
+const ISSUE_CATEGORIES = ['前處理', '底漆', '噴印', '面漆', '包裝', '施工', '品管', '研發', '廠務', '其他']
 type PrivateEvent = { id: string; title: string; date: string; note?: string; time?: string; endTime?: string; allDay?: boolean }
 type FileResult = { title: string; name: string; url: string }
 type ImageResult = { source: string; url: string; caption: string; kind?: 'image' | 'video' | 'embed' }
@@ -232,6 +239,19 @@ export default function Page() {
   const [reminderOk, setReminderOk] = useState(false)
   // 管理者登入 / 私人行事曆
   const [isAdmin, setIsAdmin] = useState(false)
+  // 會議事項
+  const [issues, setIssues] = useState<MeetingItem[]>([])
+  const [issuesClosed, setIssuesClosed] = useState<MeetingItem[]>([])
+  const [issueTab, setIssueTab] = useState<'open' | 'closed'>('open')
+  const [issuesLoading, setIssuesLoading] = useState(false)
+  const [issueSearch, setIssueSearch] = useState('')
+  const [issueCatFilter, setIssueCatFilter] = useState('')
+  const [issueOwnerFilter, setIssueOwnerFilter] = useState('')
+  const [issueExpanded, setIssueExpanded] = useState<Record<string, string[]>>({})
+  const [issueForm, setIssueForm] = useState(false)
+  const [issueProgressId, setIssueProgressId] = useState<string | null>(null)
+  const [issueBusy, setIssueBusy] = useState(false)
+  const [issueErr, setIssueErr] = useState('')
   const [showLogin, setShowLogin] = useState(false)
   const [loginUser, setLoginUser] = useState('')
   const [loginPass, setLoginPass] = useState('')
@@ -1996,6 +2016,68 @@ export default function Page() {
     )
   }
 
+  // ── 會議事項 ──────────────────────────────────────────
+  async function fetchIssues(tab: 'open' | 'closed') {
+    setIssueTab(tab)
+    setIssuesLoading(true)
+    try {
+      const r = await fetch('/api/meeting-items' + (tab === 'closed' ? '?closed=1' : ''))
+      const d = await readJson(r)
+      if (r.ok) { tab === 'closed' ? setIssuesClosed(d.items ?? []) : setIssues(d.items ?? []) }
+    } catch { /* 讀取失敗就維持原本清單 */ }
+    finally { setIssuesLoading(false) }
+  }
+  // 展開卡片才去讀完整歷程：欄位版可能被截斷過，而且沒展開的不用花這個請求
+  async function loadIssueHistory(id: string) {
+    if (issueExpanded[id]) { setIssueExpanded(s => { const n = { ...s }; delete n[id]; return n }) ; return }
+    setIssueExpanded(s => ({ ...s, [id]: [] }))
+    try {
+      const r = await fetch('/api/meeting-items?history=' + encodeURIComponent(id))
+      const d = await readJson(r)
+      if (r.ok) setIssueExpanded(s => ({ ...s, [id]: d.history ?? [] }))
+    } catch { /* 讀不到就顯示空的 */ }
+  }
+  async function submitIssue(form: HTMLFormElement) {
+    const f = new FormData(form)
+    setIssueBusy(true); setIssueErr('')
+    try {
+      const r = await fetch('/api/meeting-items', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meetDate: f.get('meetDate'), category: f.get('category'), issue: f.get('issue'),
+          proposer: f.get('proposer'), discussion: f.get('discussion'),
+          suggester: f.get('suggester'), owner: f.get('owner'), due: f.get('due'),
+        }),
+      })
+      const d = await readJson(r)
+      if (!r.ok) { setIssueErr(d.error ?? '新增失敗'); return }
+      setIssueForm(false); form.reset(); fetchIssues('open')
+    } catch (e: any) { setIssueErr(e.message) }
+    finally { setIssueBusy(false) }
+  }
+  async function submitIssueProgress(id: string, form: HTMLFormElement, close = false) {
+    const f = new FormData(form)
+    const progress = String(f.get('progress') ?? '').trim()
+    // 結案可以不寫進度；一般更新則至少要有一項變動，不然是空按
+    const due = String(f.get('due') ?? '').trim()
+    const owner = String(f.get('owner') ?? '').trim()
+    if (!close && !progress && !due && !owner) { setIssueErr('請至少填一項'); return }
+    setIssueBusy(true); setIssueErr('')
+    try {
+      const r = await fetch('/api/meeting-items', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, progress, close, ...(due ? { due } : {}), ...(owner ? { owner } : {}) }),
+      })
+      const d = await readJson(r)
+      if (!r.ok) { setIssueErr(d.error ?? '更新失敗'); return }
+      setIssueProgressId(null)
+      // 結案的那筆會從進行中消失，所以兩邊都重抓
+      fetchIssues('open')
+      if (close) setIssuesClosed([])
+    } catch (e: any) { setIssueErr(e.message) }
+    finally { setIssueBusy(false) }
+  }
+
   // 導覽項目：電腦版側欄與手機版底部導覽共用（label 給側欄、short 給底部列）
   const NAV_ITEMS: { v: View; icon: string; label: string; short: string; onClick: () => void }[] = [
     { v: 'dashboard', icon: '📊', label: '總覽', short: '總覽', onClick: () => { setView('dashboard'); fetchProjects(); fetchDailyTasks() } },
@@ -2004,6 +2086,7 @@ export default function Page() {
     { v: 'search', icon: '🔍', label: '任務查詢', short: '查詢', onClick: () => { setView('search'); fetchInProgress() } },
     { v: 'chat', icon: '💬', label: 'AI 助理', short: 'AI', onClick: () => setView('chat') },
     { v: 'training', icon: '📚', label: '教育訓練', short: '培訓', onClick: () => { setView('training'); fetchTrainingCourses() } },
+    { v: 'issues', icon: '🔧', label: '會議事項', short: '議題', onClick: () => { setView('issues'); fetchIssues('open') } },
     ...(isAdmin ? [
       { v: 'meeting' as View, icon: '📋', label: '會議模式', short: '會議', onClick: () => { setView('meeting'); fetchInProgress(); fetchPrivatePersonTasks() } },
       { v: 'private' as View, icon: '🔐', label: '私人行事曆', short: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } },
@@ -3867,6 +3950,263 @@ export default function Page() {
 
         {/* PRIVATE CALENDAR（僅管理者） */}
         {/* 會議模式（僅管理者）：全員任務一次攤開，開會照著逐項說明 */}
+        {view === 'issues' && (() => {
+          const list = issueTab === 'closed' ? issuesClosed : issues
+          const q = issueSearch.trim().toLowerCase()
+          // 搜尋掃「編號＋問題＋討論＋進度＋執行人＋類別」——查舊案時記得的往往是現象或人，不是編號
+          const hit = (it: MeetingItem) => !q || [it.no, it.issue, it.discussion, it.progress, it.owner, it.category]
+            .some(v => (v ?? '').toLowerCase().includes(q))
+          const shown = list
+            .filter(hit)
+            .filter(it => !issueCatFilter || it.category === issueCatFilter)
+            .filter(it => !issueOwnerFilter || it.owner === issueOwnerFilter)
+          const owners = Array.from(new Set(list.map(it => it.owner).filter(Boolean))).sort()
+          // 進行中按類別分組；已結案按新到舊平鋪不分組——查找時分組反而要多找一層
+          const groups: { cat: string; items: MeetingItem[] }[] = []
+          if (issueTab === 'open') {
+            ISSUE_CATEGORIES.forEach(c => {
+              const items = shown.filter(it => it.category === c)
+              if (items.length) groups.push({ cat: c, items })
+            })
+            const rest = shown.filter(it => ISSUE_CATEGORIES.indexOf(it.category) < 0)
+            if (rest.length) groups.push({ cat: '未分類', items: rest })
+          }
+          const isOverdue = (d: string) => !!d && d < todayISO()
+          return (
+            <div className="max-w-5xl">
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+                <h2 className="text-xl font-bold text-gray-900">🔧 會議事項</h2>
+                <button onClick={() => { setIssueForm(v => !v); setIssueErr('') }}
+                  className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700">
+                  {issueForm ? '取消' : '＋ 新增項目'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mb-4">品質會議的問題追蹤，跟「今日工作」是分開的兩套資料。</p>
+
+              {issueForm && (
+                <form onSubmit={e => { e.preventDefault(); submitIssue(e.currentTarget) }}
+                  className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-600">會議日期</span>
+                      <input name="meetDate" type="date" defaultValue={todayISO()} required
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-600">類別 *</span>
+                      <select name="category" required defaultValue=""
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                        <option value="" disabled>請選擇</option>
+                        {ISSUE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <label className="block">
+                    <span className="text-xs font-medium text-gray-600">檢討及提案項目 *（遇到的問題）</span>
+                    <textarea name="issue" required rows={2}
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium text-gray-600">改善提議及討論（後續要完成的事）</span>
+                    <textarea name="discussion" rows={2}
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </label>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-600">提案人</span>
+                      <input name="proposer" className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-600">提議人</span>
+                      <input name="suggester" className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-600">執行人</span>
+                      <input name="owner" className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-600">預計日</span>
+                      <input name="due" type="date" className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <button type="submit" disabled={issueBusy}
+                      className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                      {issueBusy ? '新增中…' : '新增'}
+                    </button>
+                    <span className="text-xs text-gray-400">編號與狀態由系統自動填</span>
+                    {issueErr && <span className="text-xs text-red-500">{issueErr}</span>}
+                  </div>
+                </form>
+              )}
+
+              <div className="flex items-center gap-2 flex-wrap mb-3">
+                <button onClick={() => { setIssueSearch(''); fetchIssues('open') }}
+                  className={`px-4 py-1.5 rounded-full text-sm font-medium border ${issueTab === 'open'
+                    ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                  進行中{issueTab === 'open' ? `（${shown.length}）` : ''}
+                </button>
+                <button onClick={() => { setIssueSearch(''); fetchIssues('closed') }}
+                  className={`px-4 py-1.5 rounded-full text-sm font-medium border ${issueTab === 'closed'
+                    ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                  已結案{issueTab === 'closed' ? `（${shown.length}）` : ''}
+                </button>
+                <input value={issueSearch} onChange={e => setIssueSearch(e.target.value)}
+                  placeholder={issueTab === 'closed' ? '搜尋舊案（橘皮、斷墨、Z字…）' : '搜尋'}
+                  className="flex-1 min-w-[180px] border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                <select value={issueCatFilter} onChange={e => setIssueCatFilter(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white">
+                  <option value="">全部類別</option>
+                  {ISSUE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                {owners.length > 0 && (
+                  <select value={issueOwnerFilter} onChange={e => setIssueOwnerFilter(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white">
+                    <option value="">全部執行人</option>
+                    {owners.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                )}
+              </div>
+
+              {issuesLoading ? (
+                <p className="text-sm text-gray-400 py-6">讀取中…</p>
+              ) : shown.length === 0 ? (
+                <p className="text-sm text-gray-400 py-6">
+                  {issueTab === 'closed'
+                    ? '還沒有結案的項目。結案後會累積到這裡，之後可以搜尋。'
+                    : '目前沒有進行中的項目，按右上角「＋ 新增項目」開始。'}
+                </p>
+              ) : (
+                <div className="space-y-5">
+                  {(issueTab === 'open' ? groups : [{ cat: '', items: shown }]).map(g => (
+                    <div key={g.cat || 'all'}>
+                      {g.cat && (
+                        <p className="text-sm font-bold text-gray-500 mb-2">
+                          {g.cat} <span className="font-normal text-gray-400">（{g.items.length}）</span>
+                        </p>
+                      )}
+                      <div className="space-y-2">
+                        {g.items.map(it => {
+                          const od = isOverdue(it.due)
+                          const latest = (it.progress || '').split('\n')[0]
+                          const hist = issueExpanded[it.id]
+                          return (
+                            <div key={it.id}
+                              className={`rounded-2xl border p-3.5 bg-white ${od ? 'border-red-200' : 'border-gray-200'}`}>
+                              <div className="flex items-start justify-between gap-3 flex-wrap">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-mono text-gray-400">{it.no}</span>
+                                    {issueTab === 'closed' && it.category && (
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{it.category}</span>
+                                    )}
+                                    {it.status === '已結案' ? (
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">
+                                        已結案 {it.closedDate}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">持續進行</span>
+                                    )}
+                                  </div>
+                                  <p className="text-base font-medium text-gray-900 mt-1 leading-snug">{it.issue}</p>
+                                  <div className="flex items-center gap-3 flex-wrap mt-1.5 text-xs">
+                                    {it.owner && <span className="text-gray-600">執行人 <b className="text-gray-800">{it.owner}</b></span>}
+                                    {it.due && (
+                                      <span className={od ? 'text-red-600 font-semibold' : 'text-gray-500'}>
+                                        預計日 {it.due}{od ? ' 🔴 逾期' : ''}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {latest && (
+                                    <p className="text-sm text-gray-600 mt-2 leading-snug">
+                                      <span className="text-gray-400">最新　</span>{latest}
+                                    </p>
+                                  )}
+                                </div>
+                                {it.status !== '已結案' && (
+                                  <button onClick={() => { setIssueProgressId(issueProgressId === it.id ? null : it.id); setIssueErr('') }}
+                                    className="shrink-0 bg-white border border-indigo-300 text-indigo-700 rounded-lg px-3 py-1.5 text-sm font-medium hover:bg-indigo-50">
+                                    更新進度
+                                  </button>
+                                )}
+                              </div>
+
+                              <button onClick={() => loadIssueHistory(it.id)}
+                                className="mt-2 text-xs text-indigo-600 hover:underline">
+                                {hist ? '收合' : '展開討論與進度歷程'}
+                              </button>
+                              {hist && (
+                                <div className="mt-2 pt-2 border-t border-gray-100 space-y-2 text-sm">
+                                  {it.discussion && (
+                                    <div>
+                                      <p className="text-xs text-gray-400">改善提議及討論</p>
+                                      <p className="text-gray-700 whitespace-pre-wrap leading-snug">{it.discussion}</p>
+                                    </div>
+                                  )}
+                                  {(it.proposer || it.suggester || it.meetDate) && (
+                                    <p className="text-xs text-gray-500">
+                                      {it.meetDate && <>會議日期 {it.meetDate}　</>}
+                                      {it.proposer && <>提案 {it.proposer}　</>}
+                                      {it.suggester && <>提議 {it.suggester}</>}
+                                    </p>
+                                  )}
+                                  <div>
+                                    <p className="text-xs text-gray-400">進度歷程</p>
+                                    {hist.length === 0 ? (
+                                      <p className="text-xs text-gray-300">還沒有進度記錄</p>
+                                    ) : hist.map((h, hi) => (
+                                      <p key={hi} className="text-gray-700 leading-snug border-l-2 border-gray-200 pl-2 my-1">{h}</p>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {issueProgressId === it.id && (
+                                <form onSubmit={e => { e.preventDefault(); submitIssueProgress(it.id, e.currentTarget) }}
+                                  className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                                  <label className="block">
+                                    <span className="text-xs font-medium text-gray-600">本次進度</span>
+                                    <textarea name="progress" rows={2} autoFocus
+                                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                  </label>
+                                  <div className="flex gap-3 flex-wrap">
+                                    <label className="block">
+                                      <span className="text-xs text-gray-500">改預計日（不改就留空）</span>
+                                      <input name="due" type="date"
+                                        className="mt-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                                    </label>
+                                    <label className="block">
+                                      <span className="text-xs text-gray-500">改執行人（不改就留空）</span>
+                                      <input name="owner"
+                                        className="mt-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                                    </label>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <button type="submit" disabled={issueBusy}
+                                      className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                                      {issueBusy ? '送出中…' : '送出'}
+                                    </button>
+                                    <button type="button" disabled={issueBusy}
+                                      onClick={e => submitIssueProgress(it.id, e.currentTarget.closest('form') as HTMLFormElement, true)}
+                                      className="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
+                                      ✓ 結案
+                                    </button>
+                                    {issueErr && <span className="text-xs text-red-500">{issueErr}</span>}
+                                  </div>
+                                </form>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
         {view === 'meeting' && isAdmin && (() => {
           const today = todayISO()
           // 本週結束日（週日）：範圍＝本週內 + 之前未完成 + 沒有日期的
