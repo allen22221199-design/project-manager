@@ -2302,7 +2302,7 @@ export default function Page() {
       )}
 
       <div className="md:pl-[246px]">
-      <main className={`relative z-10 mx-auto p-4 pb-24 md:px-[34px] md:pt-[26px] md:pb-10 animate-fade-in ${view === 'meeting' ? 'max-w-none' : view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' || view === 'training' ? 'max-w-3xl' : 'max-w-2xl'}`}>
+      <main className={`relative z-10 mx-auto p-4 pb-24 md:px-[34px] md:pt-[26px] md:pb-10 animate-fade-in ${view === 'meeting' || view === 'issues' ? 'max-w-none' : view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' || view === 'training' ? 'max-w-3xl' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
@@ -4097,174 +4097,172 @@ export default function Page() {
                     : '目前沒有進行中的項目，按右上角「＋ 新增項目」開始。'}
                 </p>
               ) : (
-                /* 表格：每一筆佔兩列。上列是掃視用的關鍵欄位，下列把討論、支線任務、
-                   進度攤開——不做展開收合，因為開會時要能一眼看完，點來點去反而慢 */
-                <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
-                  <table className="w-full text-sm" style={{ minWidth: 980 }}>
-                    <thead>
-                      <tr className="bg-gray-50 text-left text-xs text-gray-500">
-                        <th className="px-3 py-2 font-semibold whitespace-nowrap">編號</th>
-                        <th className="px-3 py-2 font-semibold whitespace-nowrap">類別</th>
-                        <th className="px-3 py-2 font-semibold">檢討及提案項目（問題）</th>
-                        <th className="px-3 py-2 font-semibold whitespace-nowrap">負責人</th>
-                        <th className="px-3 py-2 font-semibold whitespace-nowrap">預計日</th>
-                        <th className="px-3 py-2 font-semibold whitespace-nowrap">狀態</th>
-                        <th className="px-3 py-2 font-semibold whitespace-nowrap"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {shown.map(it => {
-                        const od = isOverdue(it.due)
-                        const subs = (it.subtasks || '').split('\n').map(l => l.trim()).filter(Boolean)
-                        const prog = (it.progress || '').split('\n').map(l => l.trim()).filter(Boolean)
-                        return (
-                          <React.Fragment key={it.id}>
-                            <tr className="border-t border-gray-200">
-                              <td className="px-3 py-2.5 align-top font-mono text-xs text-gray-500 whitespace-nowrap">{it.no}</td>
-                              <td className="px-3 py-2.5 align-top whitespace-nowrap">
-                                {it.category && (
-                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAT_COLOR[it.category] ?? 'bg-gray-100 text-gray-600'}`}>
-                                    {it.category}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2.5 align-top text-gray-900 font-medium leading-snug">{it.issue}</td>
-                              <td className="px-3 py-2.5 align-top whitespace-nowrap">
-                                {it.owner
-                                  ? <span className="text-gray-900 font-semibold">{it.owner}</span>
-                                  : <span className="text-xs text-amber-600">未指定</span>}
-                              </td>
-                              <td className={`px-3 py-2.5 align-top whitespace-nowrap text-xs ${od ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
-                                {it.due ? <>{it.due}{od && <><br />🔴 逾期</>}</> : <span className="text-gray-300">未設</span>}
-                              </td>
-                              <td className="px-3 py-2.5 align-top whitespace-nowrap">
-                                {it.status === '已結案'
-                                  ? <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">已結案</span>
-                                  : <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">持續進行</span>}
-                                {it.closedDate && <div className="text-xs text-gray-400 mt-1">{it.closedDate}</div>}
-                              </td>
-                              <td className="px-3 py-2.5 align-top whitespace-nowrap">
-                                {it.status !== '已結案' && (
-                                  <button onClick={() => { setIssueProgressId(issueProgressId === it.id ? null : it.id); setIssueErr('') }}
-                                    className="text-xs bg-white border border-indigo-300 text-indigo-700 rounded-lg px-2.5 py-1.5 font-medium hover:bg-indigo-50">
-                                    {issueProgressId === it.id ? '關閉' : '更新'}
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                            <tr className="bg-gray-50/60">
-                              <td className="px-3 pb-3 pt-0" colSpan={7}>
-                                <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
-                                  <div>
-                                    <p className="text-xs font-semibold text-gray-400 mb-1">改善提議及討論</p>
-                                    {it.discussion
-                                      ? <p className="text-gray-700 whitespace-pre-wrap leading-snug text-sm">{it.discussion}</p>
-                                      : <p className="text-xs text-gray-300">尚未討論</p>}
-                                    {(it.meetDate || it.proposer || it.suggester) && (
-                                      <p className="text-xs text-gray-400 mt-1.5">
-                                        {it.meetDate && <>會議 {it.meetDate}　</>}
-                                        {it.proposer && <>提案 {it.proposer}　</>}
-                                        {it.suggester && <>提議 {it.suggester}</>}
-                                      </p>
+                /* 表格用格狀排版做，不用 <table>：<table> 的欄寬撐不下就會逼出橫向捲軸，
+                   而開會時要能一眼看完，左右拉就失去意義。
+                   寬螢幕照樣是對齊的表格，窄螢幕自動變成一項一塊、每格帶標籤。 */
+                <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+                  <div className="hidden md:grid gap-x-3 px-3 py-2 bg-gray-50 text-xs text-gray-500 font-semibold"
+                    style={{ gridTemplateColumns: '6.5rem 4rem 1fr 4.5rem 5.5rem 5rem 3.5rem' }}>
+                    <div>編號</div><div>類別</div><div>檢討及提案項目（問題）</div>
+                    <div>負責人</div><div>預計日</div><div>狀態</div><div />
+                  </div>
+                  {shown.map(it => {
+                    const od = isOverdue(it.due)
+                    const subs = (it.subtasks || '').split('\n').map(l => l.trim()).filter(Boolean)
+                    const prog = (it.progress || '').split('\n').map(l => l.trim()).filter(Boolean)
+                    const L = 'md:hidden text-xs text-gray-400 mr-1'   // 窄螢幕才出現的欄位標籤
+                    return (
+                      <div key={it.id} className="border-t border-gray-200">
+                        <div className="grid gap-x-3 gap-y-1 px-3 py-2.5 md:items-start"
+                          style={{ gridTemplateColumns: '1fr' }}>
+                          <div className="contents md:hidden" />
+                          <div className="md:grid md:gap-x-3" style={{ gridTemplateColumns: '6.5rem 4rem 1fr 4.5rem 5.5rem 5rem 3.5rem' }}>
+                            <div className="font-mono text-xs text-gray-500 py-0.5"><span className={L}>編號</span>{it.no}</div>
+                            <div className="py-0.5">
+                              <span className={L}>類別</span>
+                              {it.category && (
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAT_COLOR[it.category] ?? 'bg-gray-100 text-gray-600'}`}>
+                                  {it.category}
+                                </span>
+                              )}
+                            </div>
+                            <div className="py-0.5 text-gray-900 font-medium leading-snug break-words">{it.issue}</div>
+                            <div className="py-0.5 text-sm">
+                              <span className={L}>負責人</span>
+                              {it.owner
+                                ? <span className="text-gray-900 font-semibold">{it.owner}</span>
+                                : <span className="text-xs text-amber-600">未指定</span>}
+                            </div>
+                            <div className={`py-0.5 text-xs ${od ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+                              <span className={L}>預計日</span>
+                              {it.due ? <>{it.due}{od && <span className="md:block"> 🔴 逾期</span>}</> : <span className="text-gray-300">未設</span>}
+                            </div>
+                            <div className="py-0.5">
+                              <span className={L}>狀態</span>
+                              {it.status === '已結案'
+                                ? <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">已結案</span>
+                                : <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">持續進行</span>}
+                              {it.closedDate && <span className="text-xs text-gray-400 ml-1 md:block md:ml-0">{it.closedDate}</span>}
+                            </div>
+                            <div className="py-0.5">
+                              {it.status !== '已結案' && (
+                                <button onClick={() => { setIssueProgressId(issueProgressId === it.id ? null : it.id); setIssueErr('') }}
+                                  className="text-xs bg-white border border-indigo-300 text-indigo-700 rounded-lg px-2.5 py-1.5 font-medium hover:bg-indigo-50">
+                                  {issueProgressId === it.id ? '關閉' : '更新'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="px-3 pb-3 bg-gray-50/60">
+                          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
+                            <div>
+                              <p className="text-xs font-semibold text-gray-400 mb-1">改善提議及討論</p>
+                              {it.discussion
+                                ? <p className="text-gray-700 whitespace-pre-wrap leading-snug text-sm break-words">{it.discussion}</p>
+                                : <p className="text-xs text-gray-300">尚未討論</p>}
+                              {(it.meetDate || it.proposer || it.suggester) && (
+                                <p className="text-xs text-gray-400 mt-1.5">
+                                  {it.meetDate && <>會議 {it.meetDate}　</>}
+                                  {it.proposer && <>提案 {it.proposer}　</>}
+                                  {it.suggester && <>提議 {it.suggester}</>}
+                                </p>
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-gray-400 mb-1">支線任務／執行人</p>
+                              {subs.length === 0 ? (
+                                <p className="text-xs text-gray-300">討論後分派的子任務會列在這裡</p>
+                              ) : (
+                                <ul className="space-y-1">
+                                  {subs.map((l, li) => {
+                                    const parts = l.split('｜').map(x => (x ?? '').trim())
+                                    const who = parts[0], what = parts[1], when = parts[2]
+                                    const sOd = isOverdue(when)
+                                    return (
+                                      <li key={li} className="text-sm leading-snug flex items-start gap-1.5 flex-wrap">
+                                        <span className="shrink-0 text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-medium">{who || '待指定'}</span>
+                                        <span className="text-gray-700 break-words">{what}</span>
+                                        {when && <span className={`shrink-0 text-xs ${sOd ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>{when}</span>}
+                                      </li>
+                                    )
+                                  })}
+                                </ul>
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-gray-400 mb-1">進度歷程</p>
+                              {(() => {
+                                const full = issueExpanded[it.id]
+                                const lines = full && full.length ? full : prog
+                                if (lines.length === 0) return <p className="text-xs text-gray-300">還沒有進度記錄</p>
+                                return (
+                                  <div className="space-y-1">
+                                    {lines.map((l, li) => (
+                                      <p key={li} className={`text-sm leading-snug break-words ${li === 0 ? 'text-gray-800' : 'text-gray-500'}`}>{l}</p>
+                                    ))}
+                                    {!full && (it.progress || '').length > 1700 && (
+                                      <button onClick={() => loadIssueHistory(it.id)}
+                                        className="text-xs text-indigo-600 hover:underline">載入更早的歷程</button>
                                     )}
                                   </div>
-                                  <div>
-                                    <p className="text-xs font-semibold text-gray-400 mb-1">支線任務／執行人</p>
-                                    {subs.length === 0 ? (
-                                      <p className="text-xs text-gray-300">討論後分派的子任務會列在這裡</p>
-                                    ) : (
-                                      <ul className="space-y-1">
-                                        {subs.map((l, li) => {
-                                          const [who, what, when] = l.split('｜').map(x => (x ?? '').trim())
-                                          const sOd = isOverdue(when)
-                                          return (
-                                            <li key={li} className="text-sm leading-snug flex items-start gap-1.5">
-                                              <span className="shrink-0 text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-medium">{who || '待指定'}</span>
-                                              <span className="text-gray-700">{what}</span>
-                                              {when && (
-                                                <span className={`shrink-0 text-xs ${sOd ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>{when}</span>
-                                              )}
-                                            </li>
-                                          )
-                                        })}
-                                      </ul>
-                                    )}
-                                  </div>
-                                  <div>
-                                    <p className="text-xs font-semibold text-gray-400 mb-1">進度歷程</p>
-                                    {(() => {
-                                      const full = issueExpanded[it.id]
-                                      const lines = full && full.length ? full : prog
-                                      if (lines.length === 0) return <p className="text-xs text-gray-300">還沒有進度記錄</p>
-                                      return (
-                                        <div className="space-y-1">
-                                          {lines.map((l, li) => (
-                                            <p key={li} className={`text-sm leading-snug ${li === 0 ? 'text-gray-800' : 'text-gray-500'}`}>{l}</p>
-                                          ))}
-                                          {!full && (it.progress || '').length > 1700 && (
-                                            <button onClick={() => loadIssueHistory(it.id)}
-                                              className="text-xs text-indigo-600 hover:underline">載入更早的歷程</button>
-                                          )}
-                                        </div>
-                                      )
-                                    })()}
+                                )
+                              })()}
+                            </div>
+                          </div>
+
+                          {issueProgressId === it.id && (
+                            <form onSubmit={e => { e.preventDefault(); submitIssueProgress(it.id, e.currentTarget) }}
+                              className="mt-3 pt-3 border-t border-gray-200">
+                              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-gray-600">本次進度</span>
+                                  <textarea name="progress" rows={2} autoFocus
+                                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                </label>
+                                <div>
+                                  <span className="text-xs font-medium text-gray-600">新增支線任務（討論後分派）</span>
+                                  <div className="mt-1 flex gap-2 flex-wrap">
+                                    <input name="subWho" placeholder="執行人"
+                                      className="w-24 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                                    <input name="subWhat" placeholder="要做什麼"
+                                      className="flex-1 min-w-[120px] border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                                    <input name="subWhen" type="date"
+                                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
                                   </div>
                                 </div>
-
-                                {issueProgressId === it.id && (
-                                  <form onSubmit={e => { e.preventDefault(); submitIssueProgress(it.id, e.currentTarget) }}
-                                    className="mt-3 pt-3 border-t border-gray-200 rounded-xl">
-                                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-                                      <label className="block">
-                                        <span className="text-xs font-medium text-gray-600">本次進度</span>
-                                        <textarea name="progress" rows={2} autoFocus
-                                          className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                                      </label>
-                                      <div>
-                                        <span className="text-xs font-medium text-gray-600">新增支線任務（討論後分派）</span>
-                                        <div className="mt-1 flex gap-2 flex-wrap">
-                                          <input name="subWho" placeholder="執行人"
-                                            className="w-24 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
-                                          <input name="subWhat" placeholder="要做什麼"
-                                            className="flex-1 min-w-[120px] border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
-                                          <input name="subWhen" type="date"
-                                            className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="flex gap-3 flex-wrap mt-2">
-                                      <label className="block">
-                                        <span className="text-xs text-gray-500">改預計日（不改就留空）</span>
-                                        <input name="due" type="date"
-                                          className="mt-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
-                                      </label>
-                                      <label className="block">
-                                        <span className="text-xs text-gray-500">改負責人（不改就留空）</span>
-                                        <input name="owner"
-                                          className="mt-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
-                                      </label>
-                                    </div>
-                                    <div className="flex items-center gap-2 flex-wrap mt-3">
-                                      <button type="submit" disabled={issueBusy}
-                                        className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
-                                        {issueBusy ? '送出中…' : '送出'}
-                                      </button>
-                                      <button type="button" disabled={issueBusy}
-                                        onClick={e => submitIssueProgress(it.id, e.currentTarget.closest('form') as HTMLFormElement, true)}
-                                        className="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
-                                        ✓ 結案
-                                      </button>
-                                      {issueErr && <span className="text-xs text-red-500">{issueErr}</span>}
-                                    </div>
-                                  </form>
-                                )}
-                              </td>
-                            </tr>
-                          </React.Fragment>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                              </div>
+                              <div className="flex gap-3 flex-wrap mt-2">
+                                <label className="block">
+                                  <span className="text-xs text-gray-500">改預計日（不改就留空）</span>
+                                  <input name="due" type="date"
+                                    className="mt-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs text-gray-500">改負責人（不改就留空）</span>
+                                  <input name="owner"
+                                    className="mt-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                                </label>
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap mt-3">
+                                <button type="submit" disabled={issueBusy}
+                                  className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                                  {issueBusy ? '送出中…' : '送出'}
+                                </button>
+                                <button type="button" disabled={issueBusy}
+                                  onClick={e => submitIssueProgress(it.id, e.currentTarget.closest('form') as HTMLFormElement, true)}
+                                  className="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
+                                  ✓ 結案
+                                </button>
+                                {issueErr && <span className="text-xs text-red-500">{issueErr}</span>}
+                              </div>
+                            </form>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
