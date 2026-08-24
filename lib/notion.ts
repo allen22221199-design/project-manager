@@ -1409,6 +1409,11 @@ export async function updateMeetingProgress(id: string, f: {
   await notion.pages.update({ page_id: id, properties })
 }
 
+// 刪除一筆（Notion 是移到垃圾桶，30 天內都救得回來，不是真的抹掉）
+export async function deleteMeetingItem(id: string) {
+  await notion.pages.update({ page_id: id, archived: true })
+}
+
 // 展開卡片時才讀完整歷程（欄位版可能被截斷過）
 export async function getMeetingHistory(id: string): Promise<string[]> {
   try {

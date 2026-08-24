@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  getMeetingItems, addMeetingItem, updateMeetingProgress, getMeetingHistory,
+  getMeetingItems, addMeetingItem, updateMeetingProgress, getMeetingHistory, deleteMeetingItem,
 } from '@/lib/notion'
 
 // 會議事項（品質會議的問題追蹤）。跟每日工作是兩個獨立資料庫，互不影響。
@@ -73,6 +73,18 @@ export async function PATCH(req: NextRequest) {
       close,
       today: taipeiTodayISO(),
     })
+    return NextResponse.json({ ok: true })
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}
+
+// DELETE ?id=<pageId> 刪除一筆（誤填時用）
+export async function DELETE(req: NextRequest) {
+  try {
+    const id = req.nextUrl.searchParams.get('id')
+    if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
+    await deleteMeetingItem(id)
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
