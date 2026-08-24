@@ -1271,3 +1271,148 @@ export async function saveTrainingRecord(person: string, courseId: string, passe
   })
   return { id: res.id }
 }
+
+// ===== 會議事項（品質會議的問題追蹤）=====
+// 跟「任務事項-每日」刻意分開：兩邊是不同的人、不同的節奏。
+// 品質會議的執行人（廖鵬翔、王仕華、賴漢量、林瑞安…）跟每日工作名單只有王治先重疊，
+// 所以「執行人」是純文字，不綁 DAILY_PEOPLE，晨會逐字稿也不會誤派到這批人身上。
+export const MEETING_DB_ID = '411c1a4c04ff4e3aad175762daf93e51'
+
+export type MeetingItem = {
+  id: string
+  no: string           // 編號 20260812001
+  meetDate: string     // 會議日期
+  category: string     // 類別
+  issue: string        // 檢討及提案項目（問題）
+  proposer: string     // 提案人
+  discussion: string   // 改善提議及討論（後續要完成的事）
+  suggester: string    // 提議人
+  owner: string        // 執行人
+  due: string          // 預計日
+  progress: string     // 進度更新（累加，最新在最上面）
+  status: string       // 持續進行 / 已結案
+  closedDate: string   // 結案日
+}
+
+const mText = (p: any, k: string) => (p[k]?.rich_text ?? []).map((r: any) => r.plain_text).join('')
+const mDate = (p: any, k: string) => p[k]?.date?.start ?? ''
+
+export async function getMeetingItems(opts: { closed?: boolean } = {}): Promise<MeetingItem[]> {
+  const filter = opts.closed === undefined ? undefined
+    : { property: '狀態', select: opts.closed ? { equals: '已結案' } : { does_not_equal: '已結案' } }
+  const results: any[] = []
+  let cursor: string | undefined = undefined
+  do {
+    const res: any = await notion.databases.query({
+      database_id: MEETING_DB_ID,
+      ...(filter ? { filter } : {}),
+      // 進行中看「快到期的排前面」，已結案看「最近結的排前面」；兩邊都用預計日排，
+      // 前端再依分頁決定方向，這裡統一給新的在前
+      sorts: [{ timestamp: 'created_time', direction: 'descending' }],
+      page_size: 100,
+      ...(cursor ? { start_cursor: cursor } : {}),
+    })
+    results.push(...res.results)
+    cursor = res.has_more ? res.next_cursor : undefined
+  } while (cursor)
+  return results.map((page: any) => {
+    const p = page.properties
+    return {
+      id: page.id,
+      no: (p['編號']?.title ?? []).map((r: any) => r.plain_text).join(''),
+      meetDate: mDate(p, '會議日期'),
+      category: p['類別']?.select?.name ?? '',
+      issue: mText(p, '檢討及提案項目'),
+      proposer: mText(p, '提案人'),
+      discussion: mText(p, '改善提議及討論'),
+      suggester: mText(p, '提議人'),
+      owner: mText(p, '執行人'),
+      due: mDate(p, '預計日'),
+      progress: mText(p, '進度更新'),
+      status: p['狀態']?.select?.name ?? '持續進行',
+      closedDate: mDate(p, '結案日'),
+    }
+  })
+}
+
+// 編號＝會議日期 + 當天序號。抓當天已有幾筆再 +1，不是抓總筆數——
+// 補記舊會議時才不會拿到跟今天混在一起的號碼。
+async function nextMeetingNo(meetDate: string): Promise<string> {
+  const prefix = meetDate.replace(/-/g, '')
+  try {
+    const res: any = await notion.databases.query({
+      database_id: MEETING_DB_ID,
+      filter: { property: '編號', title: { starts_with: prefix } },
+      page_size: 100,
+    })
+    return prefix + String(res.results.length + 1).padStart(3, '0')
+  } catch {
+    return prefix + '001'
+  }
+}
+
+export async function addMeetingItem(f: {
+  meetDate: string; category: string; issue: string
+  proposer?: string; discussion?: string; suggester?: string; owner?: string; due?: string
+}) {
+  const no = await nextMeetingNo(f.meetDate)
+  const properties: any = {
+    編號: { title: [{ text: { content: no } }] },
+    會議日期: { date: { start: f.meetDate } },
+    類別: { select: { name: f.category } },
+    檢討及提案項目: { rich_text: toRichText(f.issue) },
+    狀態: { select: { name: '持續進行' } },
+  }
+  if (f.proposer) properties['提案人'] = { rich_text: toRichText(f.proposer) }
+  if (f.discussion) properties['改善提議及討論'] = { rich_text: toRichText(f.discussion) }
+  if (f.suggester) properties['提議人'] = { rich_text: toRichText(f.suggester) }
+  if (f.owner) properties['執行人'] = { rich_text: toRichText(f.owner) }
+  if (f.due) properties['預計日'] = { date: { start: f.due } }
+  const page = await notion.pages.create({ parent: { database_id: MEETING_DB_ID }, properties })
+  return { id: (page as any).id, no }
+}
+
+// 每週追蹤最常用的動作：加一行進度，順便可以改預計日／執行人／結案。
+// 進度同時寫兩個地方：
+//   ・「進度更新」欄位——卡片直接顯示，Notion 文字欄上限 2000 字，滿了砍最舊的
+//   ・頁面內文——完整歷程，永不刪，一年後回頭查也還在
+export async function updateMeetingProgress(id: string, f: {
+  progress?: string; due?: string; owner?: string; close?: boolean; today: string
+}) {
+  const properties: any = {}
+  if (f.progress) {
+    const page: any = await notion.pages.retrieve({ page_id: id })
+    const prev = mText(page.properties, '進度更新')
+    const line = `${f.today.replace(/-/g, '/')}　${f.progress}`
+    let merged = prev ? line + '\n' + prev : line
+    if (merged.length > 1900) merged = merged.slice(0, 1900).replace(/\n[^\n]*$/, '')  // 從最舊的整行砍起
+    properties['進度更新'] = { rich_text: toRichText(merged) }
+    // 完整歷程留在內文，欄位滿了也不會掉
+    try {
+      await notion.blocks.children.append({
+        block_id: id,
+        children: [{ object: 'block', type: 'paragraph', paragraph: { rich_text: toRichText(line) } }] as any,
+      })
+    } catch { /* 內文寫入失敗不影響欄位更新 */ }
+  }
+  if (f.due !== undefined) properties['預計日'] = f.due ? { date: { start: f.due } } : { date: null }
+  if (f.owner !== undefined) properties['執行人'] = { rich_text: toRichText(f.owner) }
+  if (f.close) {
+    properties['狀態'] = { select: { name: '已結案' } }
+    properties['結案日'] = { date: { start: f.today } }
+  }
+  if (Object.keys(properties).length === 0) return
+  await notion.pages.update({ page_id: id, properties })
+}
+
+// 展開卡片時才讀完整歷程（欄位版可能被截斷過）
+export async function getMeetingHistory(id: string): Promise<string[]> {
+  try {
+    const res: any = await notion.blocks.children.list({ block_id: id, page_size: 100 })
+    return res.results
+      .filter((b: any) => b.type === 'paragraph')
+      .map((b: any) => (b.paragraph.rich_text ?? []).map((r: any) => r.plain_text).join(''))
+      .filter((t: string) => t.trim())
+      .reverse()   // 最新在最上面
+  } catch { return [] }
+}
