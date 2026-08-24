@@ -62,13 +62,14 @@ export async function PATCH(req: NextRequest) {
     const progress = String(b.progress ?? '').trim()
     const close = b.close === true
     // 結案時不強迫寫進度，但一般更新至少要有一項變動，否則就是空按
-    if (!progress && !close && b.due === undefined && b.owner === undefined) {
+    if (!progress && !close && b.due === undefined && b.owner === undefined && b.subtasks === undefined) {
       return NextResponse.json({ error: '沒有要更新的內容' }, { status: 400 })
     }
     await updateMeetingProgress(id, {
       progress,
       due: b.due,
       owner: b.owner === undefined ? undefined : String(b.owner).trim(),
+      subtasks: b.subtasks === undefined ? undefined : String(b.subtasks),
       close,
       today: taipeiTodayISO(),
     })
