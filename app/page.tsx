@@ -2071,6 +2071,15 @@ export default function Page() {
       const d = await readJson(r)
       if (!r.ok) { setIssueErr(d.error ?? '更新失敗'); return }
       setIssueProgressId(null)
+      // 卡片正展開時，剛加的那行也要出現在歷程裡；不重抓的話畫面上「最新」變了、
+      // 底下的歷程還是舊的，看起來像沒存進去
+      if (issueExpanded[id]) {
+        try {
+          const h = await fetch('/api/meeting-items?history=' + encodeURIComponent(id))
+          const hd = await readJson(h)
+          if (h.ok) setIssueExpanded(st => ({ ...st, [id]: hd.history ?? [] }))
+        } catch { /* 抓不到就維持原本歷程 */ }
+      }
       // 結案的那筆會從進行中消失，所以兩邊都重抓
       fetchIssues('open')
       if (close) setIssuesClosed([])
