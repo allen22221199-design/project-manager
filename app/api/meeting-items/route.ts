@@ -63,8 +63,18 @@ export async function PATCH(req: NextRequest) {
     if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
     const progress = String(b.progress ?? '').trim()
     const close = b.close === true
-    // 結案時不強迫寫進度，但一般更新至少要有一項變動，否則就是空按
-    if (!progress && !close && b.due === undefined && b.owner === undefined && b.subtasks === undefined) {
+    const reopen = b.reopen === true
+    const issue = b.issue === undefined ? undefined : String(b.issue).trim()
+    if (issue !== undefined && !issue) {
+      return NextResponse.json({ error: '「檢討及提案項目」不能清成空白' }, { status: 400 })
+    }
+    const category = b.category === undefined ? undefined : String(b.category).trim()
+    if (category !== undefined && CATEGORIES.indexOf(category) < 0) {
+      return NextResponse.json({ error: '類別不在清單內' }, { status: 400 })
+    }
+    // 結案／重開不強迫寫進度，但一般更新至少要有一項變動，否則就是空按
+    if (!progress && !close && !reopen && b.due === undefined && b.owner === undefined
+        && b.subtasks === undefined && issue === undefined && category === undefined) {
       return NextResponse.json({ error: '沒有要更新的內容' }, { status: 400 })
     }
     await updateMeetingProgress(id, {
@@ -72,7 +82,7 @@ export async function PATCH(req: NextRequest) {
       due: b.due,
       owner: b.owner === undefined ? undefined : String(b.owner).trim(),
       subtasks: b.subtasks === undefined ? undefined : String(b.subtasks),
-      close,
+      issue, category, close, reopen,
       today: taipeiTodayISO(),
     })
     return NextResponse.json({ ok: true })

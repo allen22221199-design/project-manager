@@ -1379,7 +1379,8 @@ export async function addMeetingItem(f: {
 //   ・「進度更新」欄位——卡片直接顯示，Notion 文字欄上限 2000 字，滿了砍最舊的
 //   ・頁面內文——完整歷程，永不刪，一年後回頭查也還在
 export async function updateMeetingProgress(id: string, f: {
-  progress?: string; due?: string; owner?: string; subtasks?: string; close?: boolean; today: string
+  progress?: string; due?: string; owner?: string; subtasks?: string
+  issue?: string; category?: string; close?: boolean; reopen?: boolean; today: string
 }) {
   const properties: any = {}
   if (f.progress) {
@@ -1401,9 +1402,15 @@ export async function updateMeetingProgress(id: string, f: {
   if (f.owner !== undefined) properties['負責人'] = { rich_text: toRichText(f.owner) }
   // 支線任務整批覆寫（前端送完整清單），不做逐行合併——合併的規則一旦有歧義就會弄丟資料
   if (f.subtasks !== undefined) properties['支線任務'] = { rich_text: toRichText(f.subtasks) }
+  if (f.issue !== undefined) properties['檢討及提案項目'] = { rich_text: toRichText(f.issue) }
+  if (f.category !== undefined) properties['類別'] = { select: { name: f.category } }
   if (f.close) {
     properties['狀態'] = { select: { name: '已結案' } }
     properties['結案日'] = { date: { start: f.today } }
+  } else if (f.reopen) {
+    // 結錯案或又冒出來：回到進行中，結案日一併清掉，否則已結案分頁還會顯示日期
+    properties['狀態'] = { select: { name: '持續進行' } }
+    properties['結案日'] = { date: null }
   }
   if (Object.keys(properties).length === 0) return
   await notion.pages.update({ page_id: id, properties })

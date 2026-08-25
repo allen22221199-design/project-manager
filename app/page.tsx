@@ -2108,9 +2108,15 @@ export default function Page() {
     }
   }
 
-  async function submitIssueProgress(id: string, form: HTMLFormElement, close = false) {
+  async function submitIssueProgress(id: string, form: HTMLFormElement, close = false, reopen = false) {
     const f = new FormData(form)
     const progress = String(f.get('progress') ?? '').trim()
+    // 問題本文與類別：只有真的改過才送，沒動就不要覆寫
+    const cur = [...issues, ...issuesClosed].find(x => x.id === id)
+    const issueRaw = String(f.get('issue') ?? '').trim()
+    const issue = issueRaw && issueRaw !== (cur?.issue ?? '') ? issueRaw : undefined
+    const catRaw = String(f.get('category') ?? '').trim()
+    const category = catRaw && catRaw !== (cur?.category ?? '') ? catRaw : undefined
     // 結案可以不寫進度；一般更新則至少要有一項變動，不然是空按
     const due = String(f.get('due') ?? '').trim()
     const owner = String(f.get('owner') ?? '').trim()
@@ -2124,12 +2130,17 @@ export default function Page() {
       cur.push([subWho, subWhat, subWhen].join('｜'))
       subtasks = cur.join('\n')
     }
-    if (!close && !progress && !due && !owner && !subtasks) { setIssueErr('請至少填一項'); return }
+    if (!close && !reopen && !progress && !due && !owner && !subtasks && !issue && !category) {
+      setIssueErr('請至少填一項'); return
+    }
     setIssueBusy(true); setIssueErr('')
     try {
       const r = await fetch('/api/meeting-items', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, progress, close, ...(due ? { due } : {}), ...(owner ? { owner } : {}), ...(subtasks !== undefined ? { subtasks } : {}) }),
+        body: JSON.stringify({ id, progress, close, reopen,
+          ...(due ? { due } : {}), ...(owner ? { owner } : {}),
+          ...(subtasks !== undefined ? { subtasks } : {}),
+          ...(issue ? { issue } : {}), ...(category ? { category } : {}) }),
       })
       const d = await readJson(r)
       if (!r.ok) { setIssueErr(d.error ?? '更新失敗'); return }
@@ -4209,12 +4220,11 @@ export default function Page() {
                               {it.closedDate && <span className="text-xs text-gray-400 ml-1 md:block md:ml-0">{it.closedDate}</span>}
                             </div>
                             <div className="py-0.5">
-                              {it.status !== '已結案' && (
-                                <button onClick={() => { setIssueProgressId(issueProgressId === it.id ? null : it.id); setIssueErr('') }}
-                                  className="text-xs bg-white border border-indigo-300 text-indigo-700 rounded-lg px-2.5 py-1.5 font-medium hover:bg-indigo-50">
-                                  {issueProgressId === it.id ? '關閉' : '更新'}
-                                </button>
-                              )}
+                              {/* 已結案的也要能開——結錯案要能重開，內容打錯也要能改 */}
+                              <button onClick={() => { setIssueProgressId(issueProgressId === it.id ? null : it.id); setIssueErr('') }}
+                                className="text-xs bg-white border border-indigo-300 text-indigo-700 rounded-lg px-2.5 py-1.5 font-medium hover:bg-indigo-50">
+                                {issueProgressId === it.id ? '關閉' : '更新'}
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -4282,6 +4292,20 @@ export default function Page() {
                           {issueProgressId === it.id && (
                             <form onSubmit={e => { e.preventDefault(); submitIssueProgress(it.id, e.currentTarget) }}
                               className="mt-3 pt-3 border-t border-gray-200">
+                              <div className="mb-3 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                                <label className="block md:col-span-2">
+                                  <span className="text-xs font-medium text-gray-600">檢討及提案項目（問題）</span>
+                                  <textarea name="issue" rows={2} defaultValue={it.issue}
+                                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-gray-600">類別</span>
+                                  <select name="category" defaultValue={it.category}
+                                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                                    {ISSUE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                </label>
+                              </div>
                               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
                                 <label className="block">
                                   <span className="text-xs font-medium text-gray-600">本次進度</span>
@@ -4317,11 +4341,19 @@ export default function Page() {
                                   className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
                                   {issueBusy ? '送出中…' : '送出'}
                                 </button>
-                                <button type="button" disabled={issueBusy}
-                                  onClick={e => submitIssueProgress(it.id, e.currentTarget.closest('form') as HTMLFormElement, true)}
-                                  className="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
-                                  ✓ 結案
-                                </button>
+                                {it.status === '已結案' ? (
+                                  <button type="button" disabled={issueBusy}
+                                    onClick={e => submitIssueProgress(it.id, e.currentTarget.closest('form') as HTMLFormElement, false, true)}
+                                    className="bg-amber-500 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-amber-600 disabled:opacity-40">
+                                    ↩ 重新開啟
+                                  </button>
+                                ) : (
+                                  <button type="button" disabled={issueBusy}
+                                    onClick={e => submitIssueProgress(it.id, e.currentTarget.closest('form') as HTMLFormElement, true)}
+                                    className="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
+                                    ✓ 結案
+                                  </button>
+                                )}
                                 {issueErr && <span className="text-xs text-red-500">{issueErr}</span>}
                               </div>
                             </form>
