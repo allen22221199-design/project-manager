@@ -2050,8 +2050,7 @@ export default function Page() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           meetDate: f.get('meetDate'), category: f.get('category'), issue: f.get('issue'),
-          proposer: f.get('proposer'), discussion: f.get('discussion'),
-          suggester: f.get('suggester'), owner: f.get('owner'), due: f.get('due'),
+          proposer: f.get('proposer'), owner: f.get('owner'), due: f.get('due'),
         }),
       })
       const d = await readJson(r)
@@ -4129,20 +4128,9 @@ export default function Page() {
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </label>
                   <label className="block">
-                    <span className="text-xs font-medium text-gray-600">改善提議及討論（後續要完成的事）</span>
-                    <textarea name="discussion" rows={2}
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                    <span className="text-xs font-medium text-gray-600">提案人</span>
+                    <input name="proposer" className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </label>
-                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-                    <label className="block">
-                      <span className="text-xs font-medium text-gray-600">提案人</span>
-                      <input name="proposer" className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-medium text-gray-600">提議人</span>
-                      <input name="suggester" className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                    </label>
-                  </div>
                   <div className="flex items-center gap-3 flex-wrap">
                     <button type="submit" disabled={issueBusy}
                       className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
@@ -4254,20 +4242,13 @@ export default function Page() {
                         </div>
 
                         <div className="px-3 pb-3 bg-gray-50/60">
+                          {(it.meetDate || it.proposer) && (
+                            <p className="text-xs text-gray-400 pb-1.5">
+                              {it.meetDate && <>會議 {it.meetDate}　</>}
+                              {it.proposer && <>提案 {it.proposer}</>}
+                            </p>
+                          )}
                           <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
-                            <div>
-                              <p className="text-xs font-semibold text-gray-400 mb-1">改善提議及討論</p>
-                              {it.discussion
-                                ? <p className="text-gray-700 whitespace-pre-wrap leading-snug text-sm break-words">{it.discussion}</p>
-                                : <p className="text-xs text-gray-300">尚未討論</p>}
-                              {(it.meetDate || it.proposer || it.suggester) && (
-                                <p className="text-xs text-gray-400 mt-1.5">
-                                  {it.meetDate && <>會議 {it.meetDate}　</>}
-                                  {it.proposer && <>提案 {it.proposer}　</>}
-                                  {it.suggester && <>提議 {it.suggester}</>}
-                                </p>
-                              )}
-                            </div>
                             <div>
                               <p className="text-xs font-semibold text-gray-400 mb-1">支線任務／執行人</p>
                               {subs.length === 0 ? (
