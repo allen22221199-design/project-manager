@@ -22,6 +22,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
+      logDate: result.logDate,
+      meetTime: result.meetTime,
+      replaced: result.replaced,
       count: result.assignedCount,
       pendingCount: result.pendingCount,
       dailyLogText: result.dailyLogText,

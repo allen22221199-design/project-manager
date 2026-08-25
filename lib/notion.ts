@@ -546,6 +546,27 @@ function toRichText(s: string) {
 const HISTORY_PAGE_ID = '3872cda48d7781ecafe5e5bfca9c4270'
 
 // 刪除某日期的所有每日工作項目（重寫當天時用）
+// 只刪掉「同一天、同一場會議」寫進來的項目。
+// 之前是整天全刪，所以同一天開第二場會、貼上第二份逐字稿時，
+// 第一場的工作連同「手動新增」的項目都會被清掉。改成用來源比對，
+// 各場會議互不干擾，手動加的也不會被掃到。
+export async function deleteDailyTasksBySource(dateStr: string, source: string) {
+  const res = await notion.databases.query({
+    database_id: DAILY_TASKS_DATABASE_ID,
+    filter: {
+      and: [
+        { property: '截止日期', date: { equals: dateStr } },
+        { property: '來源錄音', rich_text: { equals: source } },
+      ],
+    },
+    page_size: 100,
+  })
+  for (const page of res.results as any[]) {
+    try { await notion.pages.update({ page_id: page.id, archived: true }) } catch {}
+  }
+  return res.results.length
+}
+
 export async function deleteDailyTasksByDate(dateStr: string) {
   const res = await notion.databases.query({
     database_id: DAILY_TASKS_DATABASE_ID,
