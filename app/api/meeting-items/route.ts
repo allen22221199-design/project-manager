@@ -6,7 +6,9 @@ import {
 // 會議事項（品質會議的問題追蹤）。跟每日工作是兩個獨立資料庫，互不影響。
 export const maxDuration = 60
 
-const CATEGORIES = ['前處理', '底漆', '噴印', '面漆', '包裝', '施工', '品管', '研發', '廠務', '其他']
+// 前九項是生產工序（品質會議用），後四項給專案／行銷類的議題，順序要跟 Notion 的選單一致
+const CATEGORIES = ['前處理', '底漆', '噴印', '面漆', '包裝', '施工', '品管', '研發', '廠務',
+  '官網', '行銷', '業務', '樣品', '其他']
 
 function taipeiTodayISO(): string {
   return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)

@@ -124,7 +124,8 @@ type MeetingItem = {
   subtasks: string     // 支線任務：一行一筆「執行人｜任務｜預計日」
   due: string; progress: string; status: string; closedDate: string
 }
-const ISSUE_CATEGORIES = ['前處理', '底漆', '噴印', '面漆', '包裝', '施工', '品管', '研發', '廠務', '其他']
+const ISSUE_CATEGORIES = ['前處理', '底漆', '噴印', '面漆', '包裝', '施工', '品管', '研發', '廠務',
+  '官網', '行銷', '業務', '樣品', '其他']
 type PrivateEvent = { id: string; title: string; date: string; note?: string; time?: string; endTime?: string; allDay?: boolean }
 type FileResult = { title: string; name: string; url: string }
 type ImageResult = { source: string; url: string; caption: string; kind?: 'image' | 'video' | 'embed' }
@@ -3990,7 +3991,10 @@ export default function Page() {
             噴印: 'bg-orange-100 text-orange-800', 面漆: 'bg-yellow-100 text-yellow-800',
             包裝: 'bg-green-100 text-green-800', 施工: 'bg-blue-100 text-blue-800',
             品管: 'bg-purple-100 text-purple-800', 研發: 'bg-pink-100 text-pink-800',
-            廠務: 'bg-red-100 text-red-800', 其他: 'bg-gray-100 text-gray-600',
+            廠務: 'bg-red-100 text-red-800',
+            官網: 'bg-sky-100 text-sky-800', 行銷: 'bg-emerald-100 text-emerald-800',
+            業務: 'bg-orange-100 text-orange-800', 樣品: 'bg-amber-100 text-amber-800',
+            其他: 'bg-gray-100 text-gray-600',
           }
           return (
             <div className="max-w-none">
