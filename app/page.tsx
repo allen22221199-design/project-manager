@@ -248,6 +248,7 @@ export default function Page() {
   const [issueTab, setIssueTab] = useState<'open' | 'closed'>('open')
   const [issuesLoading, setIssuesLoading] = useState(false)
   const [issueSearch, setIssueSearch] = useState('')
+  const [editSub, setEditSub] = useState<string | null>(null)   // 正在編輯的支線任務：`${itemId}:${行號}`
   const [issueCatFilter, setIssueCatFilter] = useState('')
   const [issueOwnerFilter, setIssueOwnerFilter] = useState('')
   const [issueExpanded, setIssueExpanded] = useState<Record<string, string[]>>({})
@@ -2079,23 +2080,14 @@ export default function Page() {
 
   // 勾選／取消勾選某一條支線任務。做法是在該行前面加上或拿掉「✔」，
   // 整欄回寫回去——支線任務本來就是一整段文字，沒有各自的資料列可以更新。
-  async function toggleSubtask(it: MeetingItem, lineIndex: number) {
-    const lines = (it.subtasks || '').split('\n')
-    let n = -1
-    const next = lines.map(raw => {
-      if (!raw.trim()) return raw
-      n++
-      if (n !== lineIndex) return raw
-      return raw.trimStart().startsWith('✔')
-        ? raw.replace(/^\s*✔\s*/, '')
-        : '✔' + raw.trimStart()
-    })
-    const text = next.join('\n')
+  // 支線任務是一整欄文字（一行一筆），所以勾選、修改、刪除都是「改完整欄再整批回寫」。
+  // 三個動作共用這一支：先動畫面再送出，失敗就退回原本的內容。
+  async function writeSubtasks(it: MeetingItem, text: string) {
     const apply = (v: string) => {
       const upd = (arr: MeetingItem[]) => arr.map(x => x.id === it.id ? { ...x, subtasks: v } : x)
       setIssues(upd); setIssuesClosed(upd)
     }
-    apply(text)   // 先動畫面，不要等來回
+    apply(text)
     try {
       const r = await fetch('/api/meeting-items', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -2103,9 +2095,41 @@ export default function Page() {
       })
       if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
     } catch (e: any) {
-      apply(it.subtasks)   // 失敗就退回
+      apply(it.subtasks)
       setIssueErr(e.message)
     }
+  }
+  // 只取有內容的行；顯示、編輯、刪除都用同一組索引，才不會對到別行
+  const subLines = (it: MeetingItem) => (it.subtasks || '').split('\n').filter(l => l.trim())
+
+  function toggleSubtask(it: MeetingItem, lineIndex: number) {
+    const lines = subLines(it)
+    const raw = lines[lineIndex]
+    if (raw === undefined) return
+    lines[lineIndex] = raw.trimStart().startsWith('✔')
+      ? raw.replace(/^\s*✔\s*/, '')
+      : '✔' + raw.trimStart()
+    return writeSubtasks(it, lines.join('\n'))
+  }
+
+  function saveSubtask(it: MeetingItem, lineIndex: number, who: string, what: string, when: string) {
+    const lines = subLines(it)
+    if (lines[lineIndex] === undefined) return
+    const done = lines[lineIndex].trimStart().startsWith('✔')
+    lines[lineIndex] = (done ? '✔' : '') + [who.trim(), what.trim(), when.trim()].join('｜')
+    setEditSub(null)
+    return writeSubtasks(it, lines.join('\n'))
+  }
+
+  function deleteSubtask(it: MeetingItem, lineIndex: number) {
+    const lines = subLines(it)
+    const raw = lines[lineIndex]
+    if (raw === undefined) return
+    const what = raw.replace(/^\s*✔\s*/, '').split('｜')[1] || raw
+    if (!confirm(`確定刪除這條支線任務？\n\n${what}`)) return
+    lines.splice(lineIndex, 1)
+    setEditSub(null)
+    return writeSubtasks(it, lines.join('\n'))
   }
 
   async function submitIssueProgress(id: string, form: HTMLFormElement, close = false, reopen = false) {
@@ -4255,13 +4279,44 @@ export default function Page() {
                                     const parts = l.replace(/^\s*✔\s*/, '').split('｜').map(x => (x ?? '').trim())
                                     const who = parts[0], what = parts[1], when = parts[2]
                                     const sOd = !done && isOverdue(when)   // 做完了就不再算逾期
+                                    const key = `${it.id}:${li}`
+                                    if (editSub === key) {
+                                      return (
+                                        <li key={li} className="rounded-lg border border-indigo-200 bg-white p-2">
+                                          <div className="flex gap-1.5 flex-wrap">
+                                            <input id={`sw-${key}`} defaultValue={who} placeholder="執行人"
+                                              className="w-20 border border-gray-300 rounded px-2 py-1 text-sm" />
+                                            <input id={`st-${key}`} defaultValue={what} placeholder="要做什麼" autoFocus
+                                              className="flex-1 min-w-[120px] border border-gray-300 rounded px-2 py-1 text-sm" />
+                                            <input id={`sd-${key}`} type="date" defaultValue={when}
+                                              className="border border-gray-300 rounded px-2 py-1 text-sm" />
+                                          </div>
+                                          <div className="flex gap-2 mt-1.5">
+                                            <button onClick={() => saveSubtask(it, li,
+                                                (document.getElementById(`sw-${key}`) as HTMLInputElement).value,
+                                                (document.getElementById(`st-${key}`) as HTMLInputElement).value,
+                                                (document.getElementById(`sd-${key}`) as HTMLInputElement).value)}
+                                              className="text-xs bg-indigo-600 text-white rounded px-3 py-1 font-medium hover:bg-indigo-700">儲存</button>
+                                            <button onClick={() => setEditSub(null)}
+                                              className="text-xs text-gray-500 px-2 hover:text-gray-700">取消</button>
+                                          </div>
+                                        </li>
+                                      )
+                                    }
                                     return (
-                                      <li key={li} className="text-sm leading-snug flex items-start gap-1.5 flex-wrap">
+                                      <li key={li} className="group text-sm leading-snug flex items-start gap-1.5 flex-wrap">
                                         <input type="checkbox" checked={done} onChange={() => toggleSubtask(it, li)}
                                           className="mt-1 shrink-0 w-4 h-4 accent-emerald-600 cursor-pointer" />
                                         <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${done ? 'bg-gray-100 text-gray-400' : 'bg-indigo-100 text-indigo-800'}`}>{who || '待指定'}</span>
                                         <span className={`break-words ${done ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{what}</span>
                                         {when && <span className={`shrink-0 text-xs ${sOd ? 'text-red-600 font-semibold' : done ? 'text-gray-300' : 'text-gray-400'}`}>{when}</span>}
+                                        {/* 手機沒有滑鼠不會 hover，所以按鈕一直都在，只是平常淡一點 */}
+                                        <span className="shrink-0 ml-auto flex gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
+                                          <button onClick={() => setEditSub(key)} title="修改"
+                                            className="text-xs text-gray-500 hover:text-indigo-600 px-1">✎</button>
+                                          <button onClick={() => deleteSubtask(it, li)} title="刪除"
+                                            className="text-xs text-gray-400 hover:text-red-600 px-1">✕</button>
+                                        </span>
                                       </li>
                                     )
                                   })}
