@@ -4172,7 +4172,7 @@ export default function Page() {
                    寬螢幕照樣是對齊的表格，窄螢幕自動變成一項一塊、每格帶標籤。 */
                 <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
                   <div className="hidden md:grid gap-x-3 px-3 py-2 bg-gray-50 text-xs text-gray-500 font-semibold"
-                    style={{ gridTemplateColumns: '6rem 1fr 4.5rem 5.5rem 6rem 4rem' }}>
+                    style={{ gridTemplateColumns: '6rem 1fr 4.5rem 8.5rem 6rem 4rem' }}>
                     <div>編號</div><div>檢討及提案項目（問題）</div>
                     <div>負責人</div><div>預計日</div><div>狀態</div><div />
                   </div>
@@ -4194,7 +4194,7 @@ export default function Page() {
                         <div className="grid gap-x-3 gap-y-1 px-3 py-2.5 md:items-start"
                           style={{ gridTemplateColumns: '1fr' }}>
                           <div className="contents md:hidden" />
-                          <div className="md:grid md:gap-x-3" style={{ gridTemplateColumns: '6rem 1fr 4.5rem 5.5rem 6rem 4rem' }}>
+                          <div className="md:grid md:gap-x-3" style={{ gridTemplateColumns: '6rem 1fr 4.5rem 8.5rem 6rem 4rem' }}>
                             <div className="font-mono text-xs text-gray-500 py-0.5"><span className={L}>編號</span>{it.no}</div>
                             <div className="py-0.5 text-gray-900 font-medium leading-snug break-words">{it.issue}</div>
                             <div className="py-0.5 text-sm">
@@ -4208,7 +4208,7 @@ export default function Page() {
                               <input type="date" defaultValue={it.due || ''} disabled={issueBusy}
                                 onChange={e => updateIssueDue(it.id, e.target.value)}
                                 title="直接改就會存檔"
-                                className={`bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-400 rounded px-1 py-0.5 cursor-pointer
+                                className={`w-full min-w-0 bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-400 rounded px-1 py-0.5 cursor-pointer
                                   ${od ? 'text-red-600 font-semibold' : it.due ? 'text-gray-700' : 'text-gray-300'}`} />
                               {od && <span className="text-red-600 font-semibold md:block"> 🔴 逾期</span>}
                             </div>
