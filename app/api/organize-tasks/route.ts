@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       logDate: result.logDate,
       replaced: result.replaced,
+      dates: result.dates,
       count: result.assignedCount,
       pendingCount: result.pendingCount,
       dailyLogText: result.dailyLogText,

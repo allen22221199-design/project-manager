@@ -61,9 +61,29 @@ function detectLogDate(rawText: string): string {
   return todayStr
 }
 
+// 把每一筆自己帶的截止日期正規化成 YYYY-MM-DD。
+// 一般晨會逐字稿不會逐筆寫日期，這時回 null，整批就用當天；
+// 但「已經整理好的管理日誌」每筆都寫了截止日期，那就要照著放，
+// 不然補匯入前幾天的內容會全部堆到今天，還把今天的工作洗掉。
+function normalizeDue(raw: string | null, fallbackYear: number): string | null {
+  if (!raw) return null
+  const t = String(raw).trim()
+  const pad = (n: string | number) => String(n).padStart(2, '0')
+  const valid = (y: number, mo: number, d: number) =>
+    mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && y >= 2000 && y <= 2100
+  const m1 = t.match(/(20\d{2})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/)
+  if (m1 && valid(+m1[1], +m1[2], +m1[3])) return `${m1[1]}-${pad(m1[2])}-${pad(m1[3])}`
+  const m2 = t.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/)
+  if (m2 && valid(fallbackYear, +m2[1], +m2[2])) return `${fallbackYear}-${pad(m2[1])}-${pad(m2[2])}`
+  const m3 = t.match(/^(\d{1,2})[\/\-](\d{1,2})$/)
+  if (m3 && valid(fallbackYear, +m3[1], +m3[2])) return `${fallbackYear}-${pad(m3[1])}-${pad(m3[2])}`
+  return null   // 「未指定」「下週」這類看不懂的，一律不猜
+}
+
 export type DailyTaskPipelineResult = {
   logDate: string
-  replaced: number        // 這次覆蓋掉幾筆同一天的舊資料
+  replaced: number        // 這次覆蓋掉幾筆舊資料
+  dates: string[]         // 這批實際寫進了哪幾天
   dailyLogText: string
   assignedCount: number
   pendingCount: number
@@ -94,11 +114,21 @@ export async function runDailyTaskPipeline(rawText: string, opts: { sendLine?: b
   // 或格式沒對上）卻照樣往下走，等於把當天已經排好的工作清空、又沒有東西補回去，
   // 使用者只會看到「貼了沒新增」，實際上是既有資料被洗掉了。
   if (stage1.assigned_tasks.length === 0 && stage1.unassigned_tasks.length === 0) {
-    return { logDate, replaced: 0, dailyLogText, assignedCount: 0, pendingCount: 0, line: null }
+    return { logDate, replaced: 0, dates: [], dailyLogText, assignedCount: 0, pendingCount: 0, line: null }
   }
 
-  // 重寫這一天：只刪掉同一天、同樣由貼上功能寫進來的舊資料
-  const replaced = await deleteDailyTasksBySource(logDate, source)
+  // 先算出每一筆要落在哪一天：自己有寫截止日期就照著放，沒寫的才用整批的日期。
+  const year = Number(logDate.slice(0, 4))
+  const dueOf = (deadline: string | null) => normalizeDue(deadline, year) ?? logDate
+  const dates = Array.from(new Set([
+    ...stage1.assigned_tasks.map(t => dueOf(t.deadline)),
+    ...(stage1.unassigned_tasks.length ? [logDate] : []),
+  ])).sort()
+
+  // 只重寫「這批真的有寫到的那幾天」。補匯入 8/24～8/28 的內容時，
+  // 今天如果不在這批裡面就完全不會被動到。
+  let replaced = 0
+  for (const d of dates) replaced += await deleteDailyTasksBySource(d, source)
 
   const grouped: Record<string, string[]> = {}
   let assignedCount = 0
@@ -108,19 +138,18 @@ export async function runDailyTaskPipeline(rawText: string, opts: { sendLine?: b
     const owner = normalizeOwner(task.owner)
     if (!owner) {
       // 負責人不在名單內（AI 自創或無法辨識的名字）→ 一律歸類為待確認，不可自行新增人名標籤
-      const page = await addDailyTask('待確認', task.task, logDate, source)
+      const page = await addDailyTask('待確認', task.task, dueOf(task.deadline), source)
       const steps = stepsByTaskId.get(task.id) ?? []
       if (steps.length) { try { await updateDailyTask((page as any).id, { steps }) } catch {} }
       ;(grouped['待確認'] ??= []).push(task.task)
       pendingCount++
       continue
     }
-    // 「今日工作」的分頁一律用建立當天（錄音處理日），不可被錄音裡講的期限改變分類
-    const page = await addDailyTask(owner, task.task, logDate, source)
+    const page = await addDailyTask(owner, task.task, dueOf(task.deadline), source)
     const steps = stepsByTaskId.get(task.id) ?? []
     // 錄音裡提到的期限只當參考資訊存進任務內容，不影響分頁歸類
+    // 日期已經進到「截止日期」欄了，內容只留備註
     const contentParts: string[] = []
-    if (task.deadline) contentParts.push(`期限：${task.deadline}`)
     if (task.notes) contentParts.push(task.notes)
     try { await updateDailyTask((page as any).id, { content: contentParts.join('\n'), steps }) } catch {}
     ;(grouped[owner] ??= []).push(task.task)
@@ -145,6 +174,7 @@ export async function runDailyTaskPipeline(rawText: string, opts: { sendLine?: b
   return {
     logDate,
     replaced,
+    dates,
     dailyLogText,
     assignedCount,
     pendingCount,
