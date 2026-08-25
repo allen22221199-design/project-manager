@@ -2059,6 +2059,24 @@ export default function Page() {
     } catch (e: any) { setIssueErr(e.message) }
     finally { setIssueBusy(false) }
   }
+  // 預計日直接在表格上改。日期本來就常常要動（延期、對外約好時間），
+  // 為了改一個日期還要展開「更新進度」表單、又逼著寫一段進度，太重了。
+  async function updateIssueDue(id: string, due: string) {
+    setIssueBusy(true)
+    try {
+      const r = await fetch('/api/meeting-items', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, due }),
+      })
+      const d = await readJson(r)
+      if (!r.ok) { setIssueErr(d.error ?? '更新失敗'); return }
+      // 只改本機那一筆就好，不整份重抓——重抓會把展開中的卡片收起來
+      const patch = (list: MeetingItem[]) => list.map(x => x.id === id ? { ...x, due } : x)
+      issueTab === 'closed' ? setIssuesClosed(patch) : setIssues(patch)
+    } catch (e: any) { setIssueErr(e.message) }
+    finally { setIssueBusy(false) }
+  }
+
   async function submitIssueProgress(id: string, form: HTMLFormElement, close = false) {
     const f = new FormData(form)
     const progress = String(f.get('progress') ?? '').trim()
@@ -4137,9 +4155,14 @@ export default function Page() {
                                 ? <span className="text-gray-900 font-semibold">{it.owner}</span>
                                 : <span className="text-xs text-amber-600">未指定</span>}
                             </div>
-                            <div className={`py-0.5 text-xs ${od ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+                            <div className="py-0.5 text-xs">
                               <span className={L}>預計日</span>
-                              {it.due ? <>{it.due}{od && <span className="md:block"> 🔴 逾期</span>}</> : <span className="text-gray-300">未設</span>}
+                              <input type="date" defaultValue={it.due || ''} disabled={issueBusy}
+                                onChange={e => updateIssueDue(it.id, e.target.value)}
+                                title="直接改就會存檔"
+                                className={`bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-400 rounded px-1 py-0.5 cursor-pointer
+                                  ${od ? 'text-red-600 font-semibold' : it.due ? 'text-gray-700' : 'text-gray-300'}`} />
+                              {od && <span className="text-red-600 font-semibold md:block"> 🔴 逾期</span>}
                             </div>
                             <div className="py-0.5">
                               <span className={L}>狀態</span>
