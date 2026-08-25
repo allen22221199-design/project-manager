@@ -61,39 +61,9 @@ function detectLogDate(rawText: string): string {
   return todayStr
 }
 
-// 從內容開頭找出「這是哪一場會議」的時間。同一天可能開好幾場，
-// 有了時間才能只重寫那一場，而不是把整天洗掉。
-// 只看前三行——時間通常在抬頭，往下找會撈到內文裡談到的時間。
-function detectMeetingTime(rawText: string): string {
-  const head = rawText.trim().split('\n').slice(0, 3).join(' ')
-  const pad = (n: string | number) => String(n).padStart(2, '0')
-  const ok = (h: number, m: number) => h >= 0 && h <= 23 && m >= 0 && m <= 59
-  // 09:30 / 9:30 / 09.30（含前面可能帶 AM/PM 或上午下午）
-  const m1 = head.match(/(上午|下午|早上|晚上|凌晨|AM|PM|am|pm)?\s*(\d{1,2})\s*[:：.]\s*(\d{2})/)
-  if (m1) {
-    let h = +m1[2]
-    const pm = /下午|晚上|PM|pm/.test(m1[1] ?? '')
-    if (pm && h < 12) h += 12
-    if (/上午|早上|AM|am/.test(m1[1] ?? '') && h === 12) h = 0
-    if (ok(h, +m1[3])) return `${pad(h)}:${m1[3]}`
-  }
-  // 9點30分 / 上午9點 / 下午2點
-  const m2 = head.match(/(上午|下午|早上|晚上|凌晨)?\s*(\d{1,2})\s*[點時]\s*(\d{1,2})?\s*分?/)
-  if (m2) {
-    let h = +m2[2]
-    const pm = /下午|晚上/.test(m2[1] ?? '')
-    if (pm && h < 12) h += 12
-    if (/上午|早上/.test(m2[1] ?? '') && h === 12) h = 0
-    const mm = m2[3] ? +m2[3] : 0
-    if (ok(h, mm)) return `${pad(h)}:${pad(mm)}`
-  }
-  return ''
-}
-
 export type DailyTaskPipelineResult = {
   logDate: string
-  meetTime: string        // 抓到的會議時間，空字串代表沒抓到
-  replaced: number        // 這次覆蓋掉幾筆同場次的舊資料
+  replaced: number        // 這次覆蓋掉幾筆同一天的舊資料
   dailyLogText: string
   assignedCount: number
   pendingCount: number
@@ -102,10 +72,9 @@ export type DailyTaskPipelineResult = {
 
 export async function runDailyTaskPipeline(rawText: string, opts: { sendLine?: boolean } = {}): Promise<DailyTaskPipelineResult> {
   const logDate = detectLogDate(rawText)
-  const meetTime = detectMeetingTime(rawText)
-  // 來源同時當成「場次代號」：同一天同一個時間再貼一次才會覆蓋，
-  // 不同場次、以及手動新增的項目都不會被動到。
-  const source = meetTime ? `Plaud ${meetTime}` : 'Plaud'
+  // 以「日期」為單位重寫：同一天再貼一次就覆蓋掉上一次貼的。
+  // 來源固定為 Plaud，刪除時也只挑這個來源——手動新增的項目不會被掃到。
+  const source = 'Plaud'
 
   // Stage 0：原始逐字稿／摘要 → 五段式管理日誌
   const dailyLogText = await generateMorningLog(rawText.trim(), logDate)
@@ -125,10 +94,10 @@ export async function runDailyTaskPipeline(rawText: string, opts: { sendLine?: b
   // 或格式沒對上）卻照樣往下走，等於把當天已經排好的工作清空、又沒有東西補回去，
   // 使用者只會看到「貼了沒新增」，實際上是既有資料被洗掉了。
   if (stage1.assigned_tasks.length === 0 && stage1.unassigned_tasks.length === 0) {
-    return { logDate, meetTime, replaced: 0, dailyLogText, assignedCount: 0, pendingCount: 0, line: null }
+    return { logDate, replaced: 0, dailyLogText, assignedCount: 0, pendingCount: 0, line: null }
   }
 
-  // 重寫這一場：只刪掉同一天、同一場次貼進來的舊資料
+  // 重寫這一天：只刪掉同一天、同樣由貼上功能寫進來的舊資料
   const replaced = await deleteDailyTasksBySource(logDate, source)
 
   const grouped: Record<string, string[]> = {}
@@ -175,7 +144,6 @@ export async function runDailyTaskPipeline(rawText: string, opts: { sendLine?: b
 
   return {
     logDate,
-    meetTime,
     replaced,
     dailyLogText,
     assignedCount,
