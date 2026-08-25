@@ -2080,8 +2080,7 @@ export default function Page() {
   // 勾選／取消勾選某一條支線任務。做法是在該行前面加上或拿掉「✔」，
   // 整欄回寫回去——支線任務本來就是一整段文字，沒有各自的資料列可以更新。
   async function toggleSubtask(it: MeetingItem, lineIndex: number) {
-    const lines = (it.subtasks || '').split('
-')
+    const lines = (it.subtasks || '').split('\n')
     let n = -1
     const next = lines.map(raw => {
       if (!raw.trim()) return raw
@@ -2091,8 +2090,7 @@ export default function Page() {
         ? raw.replace(/^\s*✔\s*/, '')
         : '✔' + raw.trimStart()
     })
-    const text = next.join('
-')
+    const text = next.join('\n')
     const apply = (v: string) => {
       const upd = (arr: MeetingItem[]) => arr.map(x => x.id === it.id ? { ...x, subtasks: v } : x)
       setIssues(upd); setIssuesClosed(upd)
