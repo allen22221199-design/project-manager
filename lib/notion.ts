@@ -615,6 +615,26 @@ export async function writeHistorySection(dateStr: string, grouped: Record<strin
 }
 
 // 依某日期，從資料庫現況重建歷史頁面該天的區塊（編輯後同步用）
+// 讀出「工作歷史」頁面上某一天的區塊（唯讀，救援用）。
+// 每日工作被覆蓋時，這裡還留著當時的任務清單。
+export async function readHistorySection(dateStr: string): Promise<string[]> {
+  const res = await notion.blocks.children.list({ block_id: HISTORY_PAGE_ID, page_size: 100 })
+  const blocks = res.results as any[]
+  const out: string[] = []
+  let inSection = false
+  for (const b of blocks) {
+    const text = (b[b.type]?.rich_text ?? []).map((r: any) => r.plain_text).join('')
+    if (b.type === 'heading_2') {
+      if (inSection) break                    // 已經走到下一天，停
+      inSection = text.includes(dateStr)
+      if (inSection) out.push('【' + text + '】')
+      continue
+    }
+    if (inSection && text.trim()) out.push(text)
+  }
+  return out
+}
+
 export async function syncHistoryForDate(dateStr: string) {
   const tasks = await getDailyTasks(dateStr)
   const grouped: Record<string, string[]> = {}
