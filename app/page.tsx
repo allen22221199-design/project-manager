@@ -4172,7 +4172,7 @@ export default function Page() {
                    寬螢幕照樣是對齊的表格，窄螢幕自動變成一項一塊、每格帶標籤。 */
                 <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
                   <div className="hidden md:grid gap-x-3 px-3 py-2 bg-gray-50 text-xs text-gray-500 font-semibold"
-                    style={{ gridTemplateColumns: '6.5rem 1fr 5rem 5.5rem 5rem 3.5rem' }}>
+                    style={{ gridTemplateColumns: '6rem 1fr 4.5rem 5.5rem 6rem 4rem' }}>
                     <div>編號</div><div>檢討及提案項目（問題）</div>
                     <div>負責人</div><div>預計日</div><div>狀態</div><div />
                   </div>
@@ -4194,13 +4194,13 @@ export default function Page() {
                         <div className="grid gap-x-3 gap-y-1 px-3 py-2.5 md:items-start"
                           style={{ gridTemplateColumns: '1fr' }}>
                           <div className="contents md:hidden" />
-                          <div className="md:grid md:gap-x-3" style={{ gridTemplateColumns: '6.5rem 1fr 5rem 5.5rem 5rem 3.5rem' }}>
+                          <div className="md:grid md:gap-x-3" style={{ gridTemplateColumns: '6rem 1fr 4.5rem 5.5rem 6rem 4rem' }}>
                             <div className="font-mono text-xs text-gray-500 py-0.5"><span className={L}>編號</span>{it.no}</div>
                             <div className="py-0.5 text-gray-900 font-medium leading-snug break-words">{it.issue}</div>
                             <div className="py-0.5 text-sm">
                               <span className={L}>負責人</span>
                               {it.owner
-                                ? <span className="text-gray-900 font-semibold">{it.owner}</span>
+                                ? <span className="text-gray-900 font-semibold break-words">{it.owner}</span>
                                 : <span className="text-xs text-amber-600">未指定</span>}
                             </div>
                             <div className="py-0.5 text-xs">
@@ -4215,14 +4215,14 @@ export default function Page() {
                             <div className="py-0.5">
                               <span className={L}>狀態</span>
                               {it.status === '已結案'
-                                ? <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">已結案</span>
-                                : <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">持續進行</span>}
-                              {it.closedDate && <span className="text-xs text-gray-400 ml-1 md:block md:ml-0">{it.closedDate}</span>}
+                                ? <span className="inline-block whitespace-nowrap text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">已結案</span>
+                                : <span className="inline-block whitespace-nowrap text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">持續進行</span>}
+                              {it.closedDate && <span className="text-xs text-gray-400 ml-1 md:block md:ml-0 whitespace-nowrap">{it.closedDate}</span>}
                             </div>
                             <div className="py-0.5">
                               {/* 已結案的也要能開——結錯案要能重開，內容打錯也要能改 */}
                               <button onClick={() => { setIssueProgressId(issueProgressId === it.id ? null : it.id); setIssueErr('') }}
-                                className="text-xs bg-white border border-indigo-300 text-indigo-700 rounded-lg px-2.5 py-1.5 font-medium hover:bg-indigo-50">
+                                className="text-xs whitespace-nowrap bg-white border border-indigo-300 text-indigo-700 rounded-lg px-2 py-1.5 font-medium hover:bg-indigo-50">
                                 {issueProgressId === it.id ? '關閉' : '更新'}
                               </button>
                             </div>
