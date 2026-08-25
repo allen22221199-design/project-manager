@@ -2077,6 +2077,39 @@ export default function Page() {
     finally { setIssueBusy(false) }
   }
 
+  // 勾選／取消勾選某一條支線任務。做法是在該行前面加上或拿掉「✔」，
+  // 整欄回寫回去——支線任務本來就是一整段文字，沒有各自的資料列可以更新。
+  async function toggleSubtask(it: MeetingItem, lineIndex: number) {
+    const lines = (it.subtasks || '').split('
+')
+    let n = -1
+    const next = lines.map(raw => {
+      if (!raw.trim()) return raw
+      n++
+      if (n !== lineIndex) return raw
+      return raw.trimStart().startsWith('✔')
+        ? raw.replace(/^\s*✔\s*/, '')
+        : '✔' + raw.trimStart()
+    })
+    const text = next.join('
+')
+    const apply = (v: string) => {
+      const upd = (arr: MeetingItem[]) => arr.map(x => x.id === it.id ? { ...x, subtasks: v } : x)
+      setIssues(upd); setIssuesClosed(upd)
+    }
+    apply(text)   // 先動畫面，不要等來回
+    try {
+      const r = await fetch('/api/meeting-items', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: it.id, subtasks: text }),
+      })
+      if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
+    } catch (e: any) {
+      apply(it.subtasks)   // 失敗就退回
+      setIssueErr(e.message)
+    }
+  }
+
   async function submitIssueProgress(id: string, form: HTMLFormElement, close = false) {
     const f = new FormData(form)
     const progress = String(f.get('progress') ?? '').trim()
@@ -4003,6 +4036,12 @@ export default function Page() {
             .filter(it => !issueCatFilter || it.category === issueCatFilter)
             .filter(it => !issueOwnerFilter || it.owner === issueOwnerFilter)
           const owners = Array.from(new Set(list.map(it => it.owner).filter(Boolean))).sort()
+          // 依類別分組。順序照 ISSUE_CATEGORIES，沒有項目的類別不出現；
+          // 沒填類別的收在最後，才不會整批混在最前面看不出是漏填的。
+          const grouped = [
+            ...ISSUE_CATEGORIES.map(c => ({ cat: c, items: shown.filter(it => it.category === c) })),
+            { cat: '未分類', items: shown.filter(it => !ISSUE_CATEGORIES.includes(it.category)) },
+          ].filter(g => g.items.length > 0)
           const isOverdue = (d: string) => !!d && d < todayISO()
           const CAT_COLOR: Record<string, string> = {
             前處理: 'bg-gray-100 text-gray-700', 底漆: 'bg-amber-100 text-amber-800',
@@ -4124,11 +4163,19 @@ export default function Page() {
                    寬螢幕照樣是對齊的表格，窄螢幕自動變成一項一塊、每格帶標籤。 */
                 <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
                   <div className="hidden md:grid gap-x-3 px-3 py-2 bg-gray-50 text-xs text-gray-500 font-semibold"
-                    style={{ gridTemplateColumns: '6.5rem 4rem 1fr 4.5rem 5.5rem 5rem 3.5rem' }}>
-                    <div>編號</div><div>類別</div><div>檢討及提案項目（問題）</div>
+                    style={{ gridTemplateColumns: '6.5rem 1fr 5rem 5.5rem 5rem 3.5rem' }}>
+                    <div>編號</div><div>檢討及提案項目（問題）</div>
                     <div>負責人</div><div>預計日</div><div>狀態</div><div />
                   </div>
-                  {shown.map(it => {
+                  {grouped.map(g => (
+                  <div key={g.cat}>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100/80 border-t border-gray-200">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAT_COLOR[g.cat] ?? 'bg-gray-200 text-gray-600'}`}>
+                        {g.cat}
+                      </span>
+                      <span className="text-xs text-gray-400">{g.items.length} 筆</span>
+                    </div>
+                  {g.items.map(it => {
                     const od = isOverdue(it.due)
                     const subs = (it.subtasks || '').split('\n').map(l => l.trim()).filter(Boolean)
                     const prog = (it.progress || '').split('\n').map(l => l.trim()).filter(Boolean)
@@ -4138,16 +4185,8 @@ export default function Page() {
                         <div className="grid gap-x-3 gap-y-1 px-3 py-2.5 md:items-start"
                           style={{ gridTemplateColumns: '1fr' }}>
                           <div className="contents md:hidden" />
-                          <div className="md:grid md:gap-x-3" style={{ gridTemplateColumns: '6.5rem 4rem 1fr 4.5rem 5.5rem 5rem 3.5rem' }}>
+                          <div className="md:grid md:gap-x-3" style={{ gridTemplateColumns: '6.5rem 1fr 5rem 5.5rem 5rem 3.5rem' }}>
                             <div className="font-mono text-xs text-gray-500 py-0.5"><span className={L}>編號</span>{it.no}</div>
-                            <div className="py-0.5">
-                              <span className={L}>類別</span>
-                              {it.category && (
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAT_COLOR[it.category] ?? 'bg-gray-100 text-gray-600'}`}>
-                                  {it.category}
-                                </span>
-                              )}
-                            </div>
                             <div className="py-0.5 text-gray-900 font-medium leading-snug break-words">{it.issue}</div>
                             <div className="py-0.5 text-sm">
                               <span className={L}>負責人</span>
@@ -4204,14 +4243,17 @@ export default function Page() {
                               ) : (
                                 <ul className="space-y-1">
                                   {subs.map((l, li) => {
-                                    const parts = l.split('｜').map(x => (x ?? '').trim())
+                                    const done = l.trimStart().startsWith('✔')
+                                    const parts = l.replace(/^\s*✔\s*/, '').split('｜').map(x => (x ?? '').trim())
                                     const who = parts[0], what = parts[1], when = parts[2]
-                                    const sOd = isOverdue(when)
+                                    const sOd = !done && isOverdue(when)   // 做完了就不再算逾期
                                     return (
                                       <li key={li} className="text-sm leading-snug flex items-start gap-1.5 flex-wrap">
-                                        <span className="shrink-0 text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-medium">{who || '待指定'}</span>
-                                        <span className="text-gray-700 break-words">{what}</span>
-                                        {when && <span className={`shrink-0 text-xs ${sOd ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>{when}</span>}
+                                        <input type="checkbox" checked={done} onChange={() => toggleSubtask(it, li)}
+                                          className="mt-1 shrink-0 w-4 h-4 accent-emerald-600 cursor-pointer" />
+                                        <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${done ? 'bg-gray-100 text-gray-400' : 'bg-indigo-100 text-indigo-800'}`}>{who || '待指定'}</span>
+                                        <span className={`break-words ${done ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{what}</span>
+                                        {when && <span className={`shrink-0 text-xs ${sOd ? 'text-red-600 font-semibold' : done ? 'text-gray-300' : 'text-gray-400'}`}>{when}</span>}
                                       </li>
                                     )
                                   })}
@@ -4290,6 +4332,8 @@ export default function Page() {
                       </div>
                     )
                   })}
+                  </div>
+                  ))}
                 </div>
               )}
             </div>
