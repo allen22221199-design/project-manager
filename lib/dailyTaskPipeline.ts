@@ -85,6 +85,14 @@ export async function runDailyTaskPipeline(rawText: string, opts: { sendLine?: b
     catch { stepsByTaskId.set(task.id, []) }
   }))
 
+  // 一筆都沒抽到就直接收工，「不要」刪除當天既有的資料。
+  // 這一步是重寫：先刪當天、再寫新版。如果抽取失敗（內容不是逐字稿、AI 回空、
+  // 或格式沒對上）卻照樣往下走，等於把當天已經排好的工作清空、又沒有東西補回去，
+  // 使用者只會看到「貼了沒新增」，實際上是既有資料被洗掉了。
+  if (stage1.assigned_tasks.length === 0 && stage1.unassigned_tasks.length === 0) {
+    return { logDate, dailyLogText, assignedCount: 0, pendingCount: 0, line: null }
+  }
+
   // 重寫當天：先刪掉這一天的舊資料，再寫入新版
   await deleteDailyTasksByDate(logDate)
 

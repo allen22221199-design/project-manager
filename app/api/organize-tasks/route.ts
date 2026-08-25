@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runDailyTaskPipeline } from '@/lib/dailyTaskPipeline'
 
+// 這支要跑完 3 段 AI（產日誌 → 抽任務 → 逐項拆步驟）再寫進 Notion，
+// 十幾項任務時輕易超過一分鐘。沒有指定就會用平台預設的十幾秒，
+// 於是請求被切斷、畫面沒有反應——就是「貼了卻沒新增」的來源。
+export const maxDuration = 300
+
 export async function POST(req: NextRequest) {
   if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json({ error: '尚未設定 GEMINI_API_KEY' }, { status: 503 })
