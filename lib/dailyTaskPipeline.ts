@@ -38,46 +38,45 @@ function normalizeOwner(name: string): string | null {
   return null
 }
 
-// 從貼上內容的第一行嘗試解析出「這份記錄屬於哪一天」（支援 YYYY/MM/DD、M月D日、M/D）
+// 解析出「這份記錄屬於哪一天」。整份會用同一個日期，不依每筆的截止日期拆開。
+// 先看標題區（前 5 行）——標題通常就寫著日期；標題沒有的話，
+// 退而求其次抓內容裡第一個「截止日期」，那通常就是這份記錄的當天。
 function detectLogDate(rawText: string): string {
   const nowTW = new Date(Date.now() + 8 * 3600 * 1000)
   const todayStr = nowTW.toISOString().slice(0, 10)
   const yr = nowTW.getUTCFullYear()
-  const firstLine = rawText.trim().split('\n')[0]
   const validMD = (mo: number, d: number) => mo >= 1 && mo <= 12 && d >= 1 && d <= 31
   const pad = (n: string | number) => String(n).padStart(2, '0')
 
-  const m1 = firstLine.match(/(20\d{2})[\/\-](\d{1,2})[\/\-](\d{1,2})/)
-  const m3 = firstLine.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/)
-  const m2 = firstLine.match(/(?:^|[\s　])(\d{1,2})\/(\d{1,2})(?![\/\d])/)
+  const fromText = (txt: string, allowShort: boolean): string | null => {
+    const m1 = txt.match(/(20\d{2})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/)
+    if (m1 && validMD(+m1[2], +m1[3])) return `${m1[1]}-${pad(m1[2])}-${pad(m1[3])}`
+    const m3 = txt.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/)
+    if (m3 && validMD(+m3[1], +m3[2])) return `${yr}-${pad(m3[1])}-${pad(m3[2])}`
+    if (!allowShort) return null
+    // 「8/24」這種只有月日的，離今天太遠多半是講別的事，不當成標題日期
+    const m2 = txt.match(/(?:^|[\s　])(\d{1,2})\/(\d{1,2})(?![\/\d])/)
+    if (m2 && validMD(+m2[1], +m2[2])) {
+      const cand = `${yr}-${pad(m2[1])}-${pad(m2[2])}`
+      const diff = Math.abs((new Date(cand).getTime() - new Date(todayStr).getTime()) / 86400000)
+      if (diff <= 14) return cand
+    }
+    return null
+  }
 
-  if (m1 && validMD(+m1[2], +m1[3])) return `${m1[1]}-${pad(m1[2])}-${pad(m1[3])}`
-  if (m3 && validMD(+m3[1], +m3[2])) return `${yr}-${pad(m3[1])}-${pad(m3[2])}`
-  if (m2 && validMD(+m2[1], +m2[2])) {
-    const cand = `${yr}-${pad(m2[1])}-${pad(m2[2])}`
-    const diffDays = Math.abs((new Date(cand).getTime() - new Date(todayStr).getTime()) / 86400000)
-    return diffDays <= 14 ? cand : todayStr
+  const lines = rawText.trim().split('\n').map(l => l.trim()).filter(Boolean)
+  // ① 標題區：前 5 行
+  for (const line of lines.slice(0, 5)) {
+    const hit = fromText(line, true)
+    if (hit) return hit
+  }
+  // ② 內容裡第一個「截止日期」欄位
+  const due = rawText.match(/截止日期[^0-9]{0,6}(20\d{2}[\/\-.]\d{1,2}[\/\-.]\d{1,2})/)
+  if (due) {
+    const hit = fromText(due[1], false)
+    if (hit) return hit
   }
   return todayStr
-}
-
-// 把每一筆自己帶的截止日期正規化成 YYYY-MM-DD。
-// 一般晨會逐字稿不會逐筆寫日期，這時回 null，整批就用當天；
-// 但「已經整理好的管理日誌」每筆都寫了截止日期，那就要照著放，
-// 不然補匯入前幾天的內容會全部堆到今天，還把今天的工作洗掉。
-function normalizeDue(raw: string | null, fallbackYear: number): string | null {
-  if (!raw) return null
-  const t = String(raw).trim()
-  const pad = (n: string | number) => String(n).padStart(2, '0')
-  const valid = (y: number, mo: number, d: number) =>
-    mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && y >= 2000 && y <= 2100
-  const m1 = t.match(/(20\d{2})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/)
-  if (m1 && valid(+m1[1], +m1[2], +m1[3])) return `${m1[1]}-${pad(m1[2])}-${pad(m1[3])}`
-  const m2 = t.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/)
-  if (m2 && valid(fallbackYear, +m2[1], +m2[2])) return `${fallbackYear}-${pad(m2[1])}-${pad(m2[2])}`
-  const m3 = t.match(/^(\d{1,2})[\/\-](\d{1,2})$/)
-  if (m3 && valid(fallbackYear, +m3[1], +m3[2])) return `${fallbackYear}-${pad(m3[1])}-${pad(m3[2])}`
-  return null   // 「未指定」「下週」這類看不懂的，一律不猜
 }
 
 export type DailyTaskPipelineResult = {
@@ -117,18 +116,10 @@ export async function runDailyTaskPipeline(rawText: string, opts: { sendLine?: b
     return { logDate, replaced: 0, dates: [], dailyLogText, assignedCount: 0, pendingCount: 0, line: null }
   }
 
-  // 先算出每一筆要落在哪一天：自己有寫截止日期就照著放，沒寫的才用整批的日期。
-  const year = Number(logDate.slice(0, 4))
-  const dueOf = (deadline: string | null) => normalizeDue(deadline, year) ?? logDate
-  const dates = Array.from(new Set([
-    ...stage1.assigned_tasks.map(t => dueOf(t.deadline)),
-    ...(stage1.unassigned_tasks.length ? [logDate] : []),
-  ])).sort()
-
-  // 只重寫「這批真的有寫到的那幾天」。補匯入 8/24～8/28 的內容時，
-  // 今天如果不在這批裡面就完全不會被動到。
-  let replaced = 0
-  for (const d of dates) replaced += await deleteDailyTasksBySource(d, source)
+  // 整份記錄用同一個日期（標題那天），不依每筆的截止日期拆開。
+  // 只重寫這一天，而且只刪同樣由貼上功能寫進來的——手動新增的不會被掃到。
+  const dates = [logDate]
+  const replaced = await deleteDailyTasksBySource(logDate, source)
 
   const grouped: Record<string, string[]> = {}
   let assignedCount = 0
@@ -138,18 +129,19 @@ export async function runDailyTaskPipeline(rawText: string, opts: { sendLine?: b
     const owner = normalizeOwner(task.owner)
     if (!owner) {
       // 負責人不在名單內（AI 自創或無法辨識的名字）→ 一律歸類為待確認，不可自行新增人名標籤
-      const page = await addDailyTask('待確認', task.task, dueOf(task.deadline), source)
+      const page = await addDailyTask('待確認', task.task, logDate, source)
       const steps = stepsByTaskId.get(task.id) ?? []
       if (steps.length) { try { await updateDailyTask((page as any).id, { steps }) } catch {} }
       ;(grouped['待確認'] ??= []).push(task.task)
       pendingCount++
       continue
     }
-    const page = await addDailyTask(owner, task.task, dueOf(task.deadline), source)
+    const page = await addDailyTask(owner, task.task, logDate, source)
     const steps = stepsByTaskId.get(task.id) ?? []
     // 錄音裡提到的期限只當參考資訊存進任務內容，不影響分頁歸類
-    // 日期已經進到「截止日期」欄了，內容只留備註
+    // 整批同一天，所以各筆自己寫的期限只當參考資訊放進內容，不改變歸屬的日期
     const contentParts: string[] = []
+    if (task.deadline) contentParts.push(`期限：${task.deadline}`)
     if (task.notes) contentParts.push(task.notes)
     try { await updateDailyTask((page as any).id, { content: contentParts.join('\n'), steps }) } catch {}
     ;(grouped[owner] ??= []).push(task.task)
