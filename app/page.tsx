@@ -4042,7 +4042,7 @@ export default function Page() {
                    寬螢幕照樣是對齊的表格，窄螢幕自動變成一項一塊、每格帶標籤。 */
                 <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
                   <div className="hidden lg:grid gap-x-3 px-3 py-2 bg-gray-50 text-xs text-gray-500 font-semibold"
-                    style={{ gridTemplateColumns: '6rem 1fr 4.5rem 8.5rem 6rem 4rem' }}>
+                    style={{ gridTemplateColumns: 'minmax(4.5rem,6rem) minmax(9rem,3fr) minmax(3.5rem,4.5rem) minmax(6.5rem,8.5rem) minmax(4.5rem,6rem) minmax(3rem,4rem)' }}>
                     <div>編號</div><div>檢討及提案項目（問題）</div>
                     <div>負責人</div><div>預計日</div><div>狀態</div><div />
                   </div>
@@ -4064,7 +4064,7 @@ export default function Page() {
                         <div className="grid gap-x-3 gap-y-1 px-3 py-2.5 lg:items-start"
                           style={{ gridTemplateColumns: '1fr' }}>
                           <div className="contents lg:hidden" />
-                          <div className="lg:grid lg:gap-x-3" style={{ gridTemplateColumns: '6rem 1fr 4.5rem 8.5rem 6rem 4rem' }}>
+                          <div className="lg:grid lg:gap-x-3" style={{ gridTemplateColumns: 'minmax(4.5rem,6rem) minmax(9rem,3fr) minmax(3.5rem,4.5rem) minmax(6.5rem,8.5rem) minmax(4.5rem,6rem) minmax(3rem,4rem)' }}>
                             <div className="font-mono text-xs text-gray-500 py-0.5"><span className={L}>編號</span>{it.no}</div>
                             <div className="py-0.5 text-gray-900 font-medium leading-snug break-words">{it.issue}</div>
                             <div className="py-0.5 text-sm">
