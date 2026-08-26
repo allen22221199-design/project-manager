@@ -214,9 +214,8 @@ export default function Page() {
   const [issues, setIssues] = useState<MeetingItem[]>([])
   const [issuesClosed, setIssuesClosed] = useState<MeetingItem[]>([])
   const [issueTab, setIssueTab] = useState<'open' | 'closed'>('open')
-  // 清單模式／週一晨會流程模式。流程模式兩邊資料都要（上週結案要用已結案那份）
+  // 清單模式／週一晨會流程模式（同一份進行中的議題，換一種排法）
   const [issueView, setIssueView] = useState<'list' | 'flow'>('list')
-  const [issuesClosedLoaded, setIssuesClosedLoaded] = useState(false)
   const [issuesLoading, setIssuesLoading] = useState(false)
   const [issueSearch, setIssueSearch] = useState('')
   const [editSub, setEditSub] = useState<string | null>(null)   // 正在編輯的支線任務：`${itemId}:${行號}`
@@ -1861,25 +1860,7 @@ export default function Page() {
     try {
       const r = await fetch('/api/meeting-items' + (tab === 'closed' ? '?closed=1' : ''))
       const d = await readJson(r)
-      if (r.ok) {
-        if (tab === 'closed') { setIssuesClosed(d.items ?? []); setIssuesClosedLoaded(true) }
-        else setIssues(d.items ?? [])
-      }
-    } catch { /* 讀取失敗就維持原本清單 */ }
-    finally { setIssuesLoading(false) }
-  }
-  // 晨會流程要同時看進行中與已結案（上週結案回顧），而且不能動到清單的分頁狀態，
-  // 所以不走 fetchIssues——那支會順手把 issueTab 切掉。
-  async function fetchIssuesBoth() {
-    setIssuesLoading(true)
-    try {
-      const [ro, rc] = await Promise.all([
-        fetch('/api/meeting-items'),
-        fetch('/api/meeting-items?closed=1'),
-      ])
-      const [dopen, dclosed] = await Promise.all([readJson(ro), readJson(rc)])
-      if (ro.ok) setIssues(dopen.items ?? [])
-      if (rc.ok) { setIssuesClosed(dclosed.items ?? []); setIssuesClosedLoaded(true) }
+      if (r.ok) { tab === 'closed' ? setIssuesClosed(d.items ?? []) : setIssues(d.items ?? []) }
     } catch { /* 讀取失敗就維持原本清單 */ }
     finally { setIssuesLoading(false) }
   }
@@ -2043,8 +2024,7 @@ export default function Page() {
     { v: 'daily', icon: '✅', label: '今日工作', short: '今日', onClick: () => { setView('daily'); fetchDailyTasks() } },
     { v: 'search', icon: '🔍', label: '任務查詢', short: '查詢', onClick: () => { setView('search'); fetchInProgress() } },
     { v: 'chat', icon: '💬', label: 'AI 助理', short: 'AI', onClick: () => setView('chat') },
-    // 停在晨會流程時要連已結案一起帶回來（上週結案回顧要用），不然回到這頁那一段會是空的
-    { v: 'issues', icon: '🔧', label: '會議事項', short: '議題', onClick: () => { setView('issues'); issueView === 'flow' ? fetchIssuesBoth() : fetchIssues('open') } },
+    { v: 'issues', icon: '🔧', label: '會議事項', short: '議題', onClick: () => { setView('issues'); fetchIssues('open') } },
     ...(isAdmin ? [
       { v: 'meeting' as View, icon: '📋', label: '會議模式', short: '會議', onClick: () => { setView('meeting'); fetchInProgress(); fetchPrivatePersonTasks() } },
       { v: 'private' as View, icon: '🔐', label: '私人行事曆', short: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } },
@@ -3945,10 +3925,15 @@ export default function Page() {
                 ← 回議題清單
               </button>
               <MeetingFlow
-                open={issues} closed={issuesClosed}
+                open={issues}
                 categories={ISSUE_CATEGORIES} catColor={CAT_COLOR}
-                loading={issuesLoading} closedLoaded={issuesClosedLoaded}
-                onRefresh={fetchIssuesBoth}
+                loading={issuesLoading}
+                onRefresh={() => fetchIssues('open')}
+                onAddIssue={() => {
+                  // 第三步按「當場新增議題」→ 回清單、開表單、捲到最上面
+                  setIssueView('list'); setIssueForm(true); setIssueErr('')
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }}
               />
             </div>
           )
@@ -3957,7 +3942,7 @@ export default function Page() {
               <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
                 <h2 className="text-xl font-bold text-gray-900">🔧 會議事項</h2>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => { setIssueView('flow'); if (!issuesClosedLoaded) fetchIssuesBoth() }}
+                  <button onClick={() => { setIssueView('flow'); fetchIssues('open') }}
                     className="bg-white border border-indigo-300 text-indigo-700 rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-50">
                     📅 週一晨會流程
                   </button>

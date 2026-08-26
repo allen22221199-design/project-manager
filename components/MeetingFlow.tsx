@@ -11,7 +11,7 @@ export type FlowItem = {
   status: string; closedDate: string
 }
 
-type StepKind = 'review' | 'category' | 'wrap'
+type StepKind = 'people' | 'help' | 'propose'
 type Step = {
   key: StepKind
   icon: string
@@ -22,44 +22,54 @@ type Step = {
   act: string[]        // 該做什麼（會後要留下的東西）
 }
 
-// 流程步驟固定三段。第二段的順序刻意跟生產工序一致（前處理→…→施工），
-// 讓現場的人照著自己站的位置報，不用在腦袋裡跳來跳去。
+// 三步：先各自報自己手上的、再喬需要別人幫忙的、最後才提新的。
+// 順序刻意這樣排——沒先聽完現況就開始提新案，會變成舊案一直沒人收尾。
 const STEPS: Step[] = [
   {
-    key: 'review', icon: '🔔', title: '開場・上週回顧', min: 5, who: '主席（會議召集人）',
+    key: 'people', icon: '🧑‍🔧', title: '逐人回報任務與進度', min: 30, who: '每個人輪流講自己名下的（含支線任務的執行人）',
     talk: [
-      '宣布開會：唸出今天的會議日期、出席與缺席的人',
-      '唸出上週結案的項目，逐筆確認「真的解決了」，不是拖到沒人提',
-      '唸出逾期紅燈清單，先講今天要盯的是哪幾件',
+      '一個人一個人講，把自己負責的議題與支線任務唸過一遍',
+      '每一筆稍微解釋：這件事在做什麼、現在做到哪',
+      '講事實與數字，不要說「有在處理」',
     ],
-    act: ['缺席者的議題由主席代唸，會後補追，不可以跳過'],
+    act: ['講完當場更新「進度更新」與「預計日」', '名下沒有東西的人也要出聲，不要跳過'],
   },
   {
-    key: 'category', icon: '🏭', title: '逐工序檢討（主戲）', min: 25, who: '各類別的負責人，依工序順序輪流',
+    key: 'help', icon: '🤝', title: '協助需求與難題討論', min: 15, who: '需要別人幫忙的人，以及被點到名的人',
     talk: [
-      '照下面的五句話報告，講完就換下一個，不要在細節上打轉',
-      '對事不對人：講現象、講數據，不要講「他都沒做」',
-      '不是自己負責的工序，有意見等該工序報完再補充',
+      '照這句話講：「我需要〈誰〉在〈哪一天前〉幫我〈做什麼〉，因為〈卡在哪〉」',
+      '被點名的人當場回一句做不做得到、哪一天可以給',
+      '一時喬不定的難題就攤開來討論，不要私下再約',
     ],
-    act: ['每一筆當場更新「進度更新」與「預計日」', '講不出可驗收結果的，當場拆成支線任務'],
+    act: ['喬好的當場開一條支線任務：執行人｜任務｜預計日', '做不到就當場改日期，會議上改沒關係，會後跳票才有關係'],
   },
   {
-    key: 'wrap', icon: '📌', title: '結尾・下週重點', min: 5, who: '主席',
+    key: 'propose', icon: '💡', title: '新的提議項目', min: 15, who: '提案人（任何人都可以提）',
     talk: [
-      '唸出今天談過幾件、還有幾件逾期沒解決',
-      '講出下週一要優先追的三件事',
+      '照 5W2H 講一遍，七項缺一項大家就聽不懂在講什麼',
+      '原因還沒查清楚就直接說「未確認」，不要用猜的當結論',
     ],
-    act: ['確認下週會議日期', '確認會議紀錄由誰發送'],
+    act: ['當場按「＋ 新增議題」建檔，選類別、寫提案人', '當場指定負責人與預計日，沒指定的不准離開這一步'],
   },
 ]
 
-// 逐工序檢討時，每個人照這五句話講，講完換人。
+// 第一步：每個人照這幾句話把自己名下的東西講一遍
 const REPORT_TEMPLATE = [
-  '① 上週做到哪：講事實與數字，不要說「有在處理」',
-  '② 現在卡在哪：卡料／卡人／卡設備／卡技術／卡錢，講清楚是哪一種',
-  '③ 這週要做到什麼：講得出可以驗收的結果',
-  '④ 需要誰配合：當場點名，不要會後再去找人',
-  '⑤ 預計完成日：講一個日期，不要說「盡快」',
+  '① 這件事在做什麼：一句話讓沒碰過的人也聽得懂',
+  '② 現在做到哪：講事實與數字，不要說「有在處理」',
+  '③ 下一步要做什麼：講得出可以驗收的結果',
+  '④ 預計哪一天完成：講一個日期，不要說「盡快」',
+]
+
+// 第三步：新提議要講滿的 7 個必問項（跟教材那套 5W2H 同一組，講法一致）
+const PROPOSE_5W2H = [
+  { en: 'What', zh: '什麼事', q: '哪個工序、哪一批、什麼現象', color: '#2563EB' },
+  { en: 'When', zh: '何時', q: '什麼時候發現、發生幾次、多久一次', color: '#0F766E' },
+  { en: 'Where', zh: '何地', q: '哪一台機、哪一區、哪個工地', color: '#0F766E' },
+  { en: 'Who', zh: '誰', q: '誰發現的、誰經手的（對事不對人）', color: '#0F766E' },
+  { en: 'Why', zh: '為什麼', q: '目前判斷的原因；還沒查清楚就說「未確認」', color: '#7C3AED' },
+  { en: 'How', zh: '怎麼辦', q: '建議的對策，越具體越好', color: '#B45309' },
+  { en: 'How much', zh: '花多少', q: '影響幾片／幾坪／多少錢／多少工時', color: '#B45309' },
 ]
 
 type Sub = { who: string; what: string; when: string; done: boolean }
@@ -69,6 +79,10 @@ function parseSubs(it: FlowItem): Sub[] {
     const p = l.replace(/^\s*✔\s*/, '').split('｜').map(x => (x ?? '').trim())
     return { who: p[0] || '', what: p[1] || '', when: p[2] || '', done }
   })
+}
+// 負責人欄位常寫成「王仕華、賴漢量」，拆開才算得出每個人各自有多少
+function splitNames(s: string): string[] {
+  return (s || '').split(/[、,，/／\s]+/).map(x => x.trim()).filter(Boolean)
 }
 
 // 台北時間的今天；跟 page.tsx 的 todayISO 同一個算法
@@ -84,11 +98,6 @@ function defaultMondayISO(): string {
   t.setUTCDate(t.getUTCDate() + shift)
   return t.toISOString().slice(0, 10)
 }
-function addDaysISO(iso: string, n: number): string {
-  const d = new Date(iso + 'T00:00:00Z')
-  d.setUTCDate(d.getUTCDate() + n)
-  return d.toISOString().slice(0, 10)
-}
 function zhDate(iso: string): string {
   if (!iso) return ''
   const d = new Date(iso + 'T00:00:00Z')
@@ -100,19 +109,18 @@ function mmss(sec: number): string {
 }
 
 export default function MeetingFlow({
-  open, closed, categories, catColor, loading, closedLoaded, onRefresh,
+  open, categories, catColor, loading, onRefresh, onAddIssue,
 }: {
   open: FlowItem[]
-  closed: FlowItem[]
   categories: string[]
   catColor: Record<string, string>
   loading?: boolean
-  closedLoaded?: boolean
   onRefresh: () => void
+  onAddIssue: () => void
 }) {
   const [meetDate, setMeetDate] = useState(defaultMondayISO)
-  // flow=整份流程一次看完；run=開始開會，一次只出現一步；people=分工總表
-  const [tab, setTab] = useState<'flow' | 'run' | 'people'>('flow')
+  // flow=整份流程一次看完；run=開始開會，一次只出現一步
+  const [tab, setTab] = useState<'flow' | 'run'>('flow')
   const [cur, setCur] = useState(0)
   const [ticked, setTicked] = useState<Record<string, boolean>>({})
 
@@ -141,43 +149,48 @@ export default function MeetingFlow({
 
   const today = todayISO()
   const isOverdue = (d: string) => !!d && d < today
+  const latestProgress = (it: FlowItem) =>
+    (it.progress || '').split('\n').map(s => s.trim()).filter(Boolean)[0] || ''
 
-  // ── 各步驟要吃的資料 ────────────────────────────────
-  const overdue = useMemo(
-    () => open.filter(it => isOverdue(it.due)).sort((a, b) => (a.due || '').localeCompare(b.due || '')),
-    [open, today])
-  const noOwner = useMemo(() => open.filter(it => !it.owner.trim()), [open])
-  // 上週結案：結案日落在會議日前 7 天內
-  const lastWeekClosed = useMemo(() => {
-    const from = addDaysISO(meetDate, -7)
-    return closed.filter(it => it.closedDate && it.closedDate >= from && it.closedDate <= meetDate)
-  }, [closed, meetDate])
-  const byCategory = useMemo(() => [
-    ...categories.map(c => ({ cat: c, items: open.filter(it => it.category === c) })),
-    { cat: '未分類', items: open.filter(it => !categories.includes(it.category)) },
-  ].filter(g => g.items.length > 0), [open, categories])
-  const openSubs = useMemo(() => {
-    const rows: { it: FlowItem; s: Sub }[] = []
-    open.forEach(it => parseSubs(it).forEach(s => { if (!s.done) rows.push({ it, s }) }))
-    return rows
-  }, [open])
-
-  // ── 分工總表：誰要報告、誰要交東西 ──────────────────
+  // ── 第一步：每個人名下有什麼（議題 ＋ 支線任務）──────
   const people = useMemo(() => {
     const map = new Map<string, { name: string; reports: FlowItem[]; tasks: { it: FlowItem; s: Sub }[] }>()
     const slot = (name: string) => {
-      const k = name.trim()
-      if (!map.has(k)) map.set(k, { name: k, reports: [], tasks: [] })
-      return map.get(k)!
+      if (!map.has(name)) map.set(name, { name, reports: [], tasks: [] })
+      return map.get(name)!
     }
     open.forEach(it => {
-      // 負責人欄位可能寫成「王仕華、賴漢量」，拆開才算得出每個人的量
-      it.owner.split(/[、,，/／\s]+/).map(s => s.trim()).filter(Boolean).forEach(n => slot(n).reports.push(it))
-      parseSubs(it).forEach(s => { if (!s.done && s.who) slot(s.who).tasks.push({ it, s }) })
+      splitNames(it.owner).forEach(n => slot(n).reports.push(it))
+      parseSubs(it).forEach(s => { if (!s.done && s.who) splitNames(s.who).forEach(n => slot(n).tasks.push({ it, s })) })
     })
     return Array.from(map.values()).sort((a, b) =>
       (b.reports.length + b.tasks.length) - (a.reports.length + a.tasks.length) || a.name.localeCompare(b.name))
   }, [open])
+  // 沒掛到任何人身上的，第一步結束前要有人認領
+  const orphans = useMemo(() => open.filter(it =>
+    !splitNames(it.owner).length && !parseSubs(it).some(s => !s.done && s.who)), [open])
+
+  // ── 第二步：需要別人幫忙的、以及卡住的 ───────────────
+  // 支線任務的執行人不是議題負責人 → 這條就是「A 需要 B 在某天前幫忙做某事」
+  const crossHelp = useMemo(() => {
+    const rows: { it: FlowItem; s: Sub }[] = []
+    open.forEach(it => {
+      const owners = splitNames(it.owner)
+      parseSubs(it).forEach(s => {
+        if (s.done || !s.who) return
+        if (splitNames(s.who).every(n => !owners.includes(n))) rows.push({ it, s })
+      })
+    })
+    return rows.sort((a, b) => (a.s.when || '9999').localeCompare(b.s.when || '9999'))
+  }, [open])
+  const overdue = useMemo(
+    () => open.filter(it => isOverdue(it.due)).sort((a, b) => (a.due || '').localeCompare(b.due || '')),
+    [open, today])
+  const noDate = useMemo(() => open.filter(it => !it.due), [open])
+  const stalled = useMemo(() => open.filter(it => !it.progress.trim()), [open])
+
+  // ── 第三步：今天這場提出來的新議題 ──────────────────
+  const newToday = useMemo(() => open.filter(it => it.meetDate === meetDate), [open, meetDate])
 
   const totalMin = STEPS.reduce((a, s) => a + s.min, 0)
   const doneSteps = STEPS.filter(s => ticked['step:' + s.key]).length
@@ -223,9 +236,15 @@ export default function MeetingFlow({
   const Cat = ({ c }: { c: string }) => (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${catColor[c] ?? 'bg-gray-200 text-gray-600'}`}>{c}</span>
   )
+  const Empty = ({ children }: { children: ReactNode }) => (
+    <p className="text-sm text-gray-400 py-1.5">{children}</p>
+  )
+  const Head = ({ children }: { children: ReactNode }) => (
+    <p className="text-xs font-bold text-gray-500 mt-3 mb-1.5">{children}</p>
+  )
   function ItemRow({ it, showCat }: { it: FlowItem; showCat?: boolean }) {
     const od = isOverdue(it.due)
-    const latest = (it.progress || '').split('\n').map(s => s.trim()).filter(Boolean)[0] || ''
+    const latest = latestProgress(it)
     return (
       <label className={`flex items-start gap-2 rounded-lg border px-2.5 py-2 cursor-pointer
         ${ticked['it:' + it.id] ? 'bg-gray-50 border-gray-200 opacity-60' : od ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
@@ -245,79 +264,157 @@ export default function MeetingFlow({
               : <span className="text-amber-600">未定預計日</span>}
             <span className="font-mono text-gray-300">{it.no}</span>
           </span>
-          {latest && <span className="block text-xs text-gray-500 mt-0.5 truncate">最新進度：{latest}</span>}
+          <span className={`block text-xs mt-0.5 ${latest ? 'text-gray-500' : 'text-amber-600'}`}>
+            {latest ? '最新進度：' + latest : '還沒有任何進度紀錄'}
+          </span>
         </span>
       </label>
     )
   }
-  const Empty = ({ children }: { children: ReactNode }) => (
-    <p className="text-sm text-gray-400 py-1.5">{children}</p>
-  )
-  const Head = ({ children }: { children: ReactNode }) => (
-    <p className="text-xs font-bold text-gray-500 mt-3 mb-1.5">{children}</p>
-  )
-
-  // 每一步下面自動帶出來的實際資料
-  function StepData({ kind }: { kind: StepKind }) {
-    if (kind === 'review') return (
-      <>
-        <Head>✅ 上週結案（{lastWeekClosed.length} 件）— 逐筆唸出來確認</Head>
-        {!closedLoaded ? <Empty>已結案資料還沒載入，按上面的「↻ 重新整理」。</Empty>
-          : lastWeekClosed.length === 0 ? <Empty>上週沒有結案的項目——這件事本身就值得在會議上問一句。</Empty>
-          : <div className="space-y-1">{lastWeekClosed.map(it => (
-              <div key={it.id} className="flex items-start gap-2 text-sm bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-1.5">
-                <span className="shrink-0 text-emerald-600">✔</span>
-                <span className="flex-1 min-w-0"><span className="text-gray-800">{it.issue}</span>
-                  <span className="text-xs text-gray-400 ml-1">{it.owner} · 結案 {it.closedDate}</span></span>
-              </div>))}
-            </div>}
-        <Head>🔴 逾期紅燈（{overdue.length} 件）— 今天一定要處理掉</Head>
-        {overdue.length === 0 ? <Empty>沒有逾期項目。</Empty>
-          : <div className="space-y-1.5">{overdue.map(it => <ItemRow key={it.id} it={it} showCat />)}</div>}
-      </>
+  // 一條支線任務（第一步、第二步共用）
+  function SubRow({ it, s, idx, showFrom }: { it: FlowItem; s: Sub; idx: string; showFrom?: boolean }) {
+    const od = isOverdue(s.when)
+    const k = 'sub:' + idx
+    return (
+      <label className={`flex items-start gap-2 rounded-lg border px-2.5 py-2 cursor-pointer
+        ${ticked[k] ? 'bg-gray-50 border-gray-200 opacity-60' : od ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
+        <input type="checkbox" checked={!!ticked[k]} onChange={() => tick(k)} className="mt-1 w-4 h-4 accent-indigo-600 shrink-0" />
+        <span className="min-w-0 flex-1">
+          <span className="text-sm">
+            <span className="font-bold text-gray-900">{s.who || '未指定執行人'}</span>
+            <span className="text-gray-800 ml-1.5">{s.what}</span>
+          </span>
+          <span className="flex items-center gap-2 flex-wrap text-xs mt-0.5">
+            <span className={od ? 'text-red-600 font-semibold' : 'text-gray-400'}>
+              {s.when ? (od ? `🔴 逾期 ${s.when}` : s.when) : '未定日期'}
+            </span>
+            {showFrom && <span className="text-gray-400 truncate">來自 {it.owner || '無主'} 的：{it.issue}</span>}
+          </span>
+        </span>
+      </label>
     )
-    if (kind === 'category') return (
-      <>
-        <div className="mt-3 rounded-xl bg-indigo-50 border border-indigo-100 p-3">
-          <p className="text-xs font-bold text-indigo-800 mb-1.5">📣 報告的人照這五句話講（每人 2 分鐘）</p>
-          <ul className="space-y-1">{REPORT_TEMPLATE.map(t => (
-            <li key={t} className="text-sm text-gray-700 leading-snug">{t}</li>))}</ul>
-        </div>
-        {byCategory.length === 0 ? <Empty>目前沒有進行中的議題。</Empty> : byCategory.map(g => {
-          const owners = Array.from(new Set(g.items.map(i => i.owner.trim()).filter(Boolean)))
+  }
+
+  // 第一步的主體：一個人一塊，議題與支線任務都在自己名下
+  function PeopleBoard() {
+    if (people.length === 0) return <Empty>目前沒有指定到人的議題。</Empty>
+    return (
+      <div className="space-y-2.5">
+        {people.map(p => {
+          const od = p.reports.filter(it => isOverdue(it.due)).length + p.tasks.filter(t => isOverdue(t.s.when)).length
+          const k = 'person:' + p.name
           return (
-            <div key={g.cat} className="mt-3">
-              <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                <Cat c={g.cat} />
-                <span className="text-xs text-gray-400">{g.items.length} 件</span>
-                <span className="text-xs text-gray-600">
-                  發言：{owners.length ? owners.join('、') : <span className="text-amber-600">未指定，這一輪要指定出來</span>}
-                </span>
+            <div key={p.name} className={`rounded-2xl border ${ticked[k] ? 'border-emerald-200 bg-emerald-50/30' : od ? 'border-red-200 bg-red-50/20' : 'border-gray-200 bg-white'}`}>
+              <div className="px-3 py-2 border-b border-gray-200/70 flex items-center gap-2 flex-wrap">
+                <button onClick={() => tick(k)}
+                  className={`shrink-0 w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center border-2
+                    ${ticked[k] ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-gray-400 border-gray-300 hover:border-indigo-400'}`}
+                  title={ticked[k] ? '取消「講完了」' : '標記這個人講完了'}>
+                  {ticked[k] ? '✓' : ''}
+                </button>
+                <p className="font-bold text-gray-900 text-lg">{p.name}</p>
+                <span className="text-xs bg-indigo-100 text-indigo-700 rounded-full px-2 py-0.5 font-medium">負責議題 {p.reports.length}</span>
+                <span className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 font-medium">支線任務 {p.tasks.length}</span>
+                {od > 0 && <span className="text-xs bg-red-100 text-red-700 rounded-full px-2 py-0.5 font-bold">逾期 {od}</span>}
               </div>
-              <div className="space-y-1.5">{g.items.map(it => <ItemRow key={it.id} it={it} />)}</div>
+              <div className="p-2 space-y-2">
+                <div>
+                  <p className="text-xs font-bold text-gray-400 mb-1">🎤 負責的議題（說明內容與進度）</p>
+                  {p.reports.length === 0 ? <p className="text-xs text-gray-300 pl-1">無</p> : (
+                    <div className="space-y-1.5">{p.reports.map(it => <ItemRow key={it.id} it={it} showCat />)}</div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-400 mb-1">🛠 名下的支線任務</p>
+                  {p.tasks.length === 0 ? <p className="text-xs text-gray-300 pl-1">無</p> : (
+                    <div className="space-y-1.5">{p.tasks.map(({ it, s }, i) =>
+                      <SubRow key={it.id + i} it={it} s={s} idx={`${p.name}:${it.id}:${i}`} showFrom />)}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )
         })}
+      </div>
+    )
+  }
+
+  // 每一步下面自動帶出來的實際資料
+  function StepData({ kind }: { kind: StepKind }) {
+    if (kind === 'people') return (
+      <>
+        <div className="mt-3 rounded-xl bg-indigo-50 border border-indigo-100 p-3">
+          <p className="text-xs font-bold text-indigo-800 mb-1.5">📣 每一筆照這四句話講</p>
+          <ul className="space-y-1">{REPORT_TEMPLATE.map(t => (
+            <li key={t} className="text-sm text-gray-700 leading-snug">{t}</li>))}</ul>
+        </div>
+        <Head>👥 逐人清單（{people.length} 人）— 講完一個就打勾</Head>
+        <PeopleBoard />
+        {orphans.length > 0 && (
+          <>
+            <Head>⚠️ 沒掛在任何人身上的（{orphans.length} 件）— 這一步結束前要有人認領</Head>
+            <div className="space-y-1.5">{orphans.map(it => <ItemRow key={it.id} it={it} showCat />)}</div>
+          </>
+        )}
+      </>
+    )
+    if (kind === 'help') return (
+      <>
+        <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 p-3">
+          <p className="text-xs font-bold text-amber-800 mb-1">🗣 提協助需求就照這句話講</p>
+          <p className="text-base text-gray-800 leading-snug">
+            「我需要 <span className="font-bold text-amber-800">〈誰〉</span> 在 <span className="font-bold text-amber-800">〈哪一天前〉</span> 幫我 <span className="font-bold text-amber-800">〈做什麼〉</span>，因為 <span className="font-bold text-amber-800">〈卡在哪〉</span>」
+          </p>
+          <p className="text-xs text-gray-500 mt-1">被點名的人當場回一句：做得到／做不到、哪一天可以給。喬好就開一條支線任務。</p>
+        </div>
+
+        <Head>🤝 已經在等別人的（{crossHelp.length} 條）— 執行人不是該議題的負責人</Head>
+        {crossHelp.length === 0 ? <Empty>目前沒有跨人協助的任務。</Empty> : (
+          <div className="space-y-1.5">{crossHelp.map(({ it, s }, i) =>
+            <SubRow key={it.id + i} it={it} s={s} idx={`help:${it.id}:${i}`} showFrom />)}
+          </div>
+        )}
+
+        <Head>🔴 逾期（{overdue.length} 件）— 卡在哪，當場講，當場改日期</Head>
+        {overdue.length === 0 ? <Empty>沒有逾期項目。</Empty>
+          : <div className="space-y-1.5">{overdue.map(it => <ItemRow key={it.id} it={it} showCat />)}</div>}
+
+        <Head>😴 完全沒有進度紀錄（{stalled.length} 件）— 通常就是卡住沒人動</Head>
+        {stalled.length === 0 ? <Empty>每件都有進度紀錄。</Empty>
+          : <div className="space-y-1.5">{stalled.map(it => <ItemRow key={it.id} it={it} showCat />)}</div>}
+
+        <Head>📅 還沒訂預計日（{noDate.length} 件）— 當場喬一個日期出來</Head>
+        {noDate.length === 0 ? <Empty>每件都有預計日。</Empty>
+          : <div className="space-y-1.5">{noDate.map(it => <ItemRow key={it.id} it={it} showCat />)}</div>}
       </>
     )
     return (
       <>
-        <div className="mt-3 grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
-          {[
-            { l: '進行中議題', v: open.length, c: 'text-gray-900' },
-            { l: '今天談過', v: open.filter(it => ticked['it:' + it.id]).length, c: 'text-indigo-700' },
-            { l: '待辦支線任務', v: openSubs.length, c: 'text-gray-900' },
-            { l: '逾期紅燈', v: overdue.length, c: overdue.length ? 'text-red-600' : 'text-gray-400' },
-            { l: '沒有負責人', v: noOwner.length, c: noOwner.length ? 'text-amber-600' : 'text-gray-400' },
-          ].map(s => (
-            <div key={s.l} className="rounded-xl border border-gray-200 bg-white px-3 py-2">
-              <p className="text-xs text-gray-400">{s.l}</p>
-              <p className={`text-2xl font-bold ${s.c}`}>{s.v}</p>
-            </div>
-          ))}
+        <div className="mt-3 rounded-xl bg-white border border-gray-200 p-3">
+          <p className="text-xs font-bold text-gray-500 mb-2">🗣 提案人要講滿這七項，主席逐項確認</p>
+          <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
+            {PROPOSE_5W2H.map(f => (
+              <label key={f.en} className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" checked={!!ticked['5w2h:' + f.en]} onChange={() => tick('5w2h:' + f.en)}
+                  className="mt-1 w-4 h-4 accent-indigo-600 shrink-0" />
+                <span className="min-w-0">
+                  <span style={{ background: `${f.color}18`, color: f.color }}
+                    className="inline-block text-xs font-bold px-2 py-0.5 rounded-full">{f.en} · {f.zh}</span>
+                  <span className="block text-sm text-gray-700 leading-snug mt-0.5">{f.q}</span>
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
-        <Head>📅 下週會議：{zhDate(addDaysISO(meetDate, 7))} {addDaysISO(meetDate, 7)}</Head>
-        <Empty>散會前確認：會議紀錄由誰發、下週一要優先追的三件事是哪三件。</Empty>
+        <Head>📝 今天（{zhDate(meetDate)}）新增的議題（{newToday.length} 件）</Head>
+        {newToday.length === 0
+          ? <Empty>還沒建檔。講完就當場建，散會後沒人會記得。</Empty>
+          : <div className="space-y-1.5">{newToday.map(it => <ItemRow key={it.id} it={it} showCat />)}</div>}
+        <button onClick={onAddIssue}
+          className="mt-2 bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700">
+          ＋ 當場新增議題
+        </button>
       </>
     )
   }
@@ -412,7 +509,7 @@ export default function MeetingFlow({
     )
   }
 
-  // ── 一般模式：整份流程／分工總表 ────────────────────
+  // ── 一般模式：整份流程攤開來看 ──────────────────────
   return (
     <div>
       <div className="flex items-center gap-3 flex-wrap mb-1">
@@ -423,22 +520,12 @@ export default function MeetingFlow({
           ↻ 重新整理
         </button>
       </div>
-      <p className="text-xs text-gray-400 mb-3">照著這三步跑，每一步下面就是今天該講的議題與該點名的人，全部取自「會議事項」的即時資料。打勾只存在這台裝置上。</p>
+      <p className="text-xs text-gray-400 mb-3">照這三步跑：先逐人報自己手上的、再喬需要別人幫忙的、最後才提新的。每一步下面就是今天該講的內容，全部取自「會議事項」的即時資料。打勾只存在這台裝置上。</p>
 
       <div className="flex items-center gap-2 flex-wrap mb-3">
         <button onClick={enterRun}
           className="bg-indigo-600 text-white rounded-full px-4 py-1.5 text-sm font-bold hover:bg-indigo-700">
           ▶ 開始開會
-        </button>
-        <button onClick={() => setTab('flow')}
-          className={`px-4 py-1.5 rounded-full text-sm font-medium border ${tab === 'flow'
-            ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-          流程步驟
-        </button>
-        <button onClick={() => setTab('people')}
-          className={`px-4 py-1.5 rounded-full text-sm font-medium border ${tab === 'people'
-            ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-          分工總表（{people.length} 人）
         </button>
         <label className="flex items-center gap-1.5 text-xs text-gray-500">
           會議日期
@@ -455,89 +542,37 @@ export default function MeetingFlow({
 
       {loading && <p className="text-sm text-gray-400 py-2">讀取中…</p>}
 
-      {tab === 'flow' ? (
-        <div className="space-y-3">
-          {STEPS.map((s, i) => {
-            const done = !!ticked['step:' + s.key]
-            return (
-              <div key={s.key}
-                className={`rounded-2xl border overflow-hidden ${done ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
-                <div className="flex items-start gap-3 px-3 py-2.5 border-b border-gray-200/70">
-                  <button onClick={() => tick('step:' + s.key)}
-                    className={`shrink-0 w-8 h-8 rounded-full font-bold text-sm flex items-center justify-center border-2
-                      ${done ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-gray-500 border-gray-300 hover:border-indigo-400'}`}
-                    title={done ? '取消完成' : '標記這一步完成'}>
-                    {done ? '✓' : i + 1}
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold text-gray-900 text-lg leading-snug">{s.icon} {s.title}
-                      <span className="text-xs font-normal text-gray-400 ml-2">{s.min} 分鐘</span></p>
-                    <p className="text-xs text-gray-500 mt-0.5">🎤 {s.who}</p>
-                  </div>
-                  <button onClick={() => { setCur(i); setTab('run') }}
-                    className="shrink-0 text-xs border border-indigo-300 text-indigo-700 rounded-lg px-2.5 py-1.5 font-medium hover:bg-indigo-50">
-                    ▶ 從這步開始
-                  </button>
+      <div className="space-y-3">
+        {STEPS.map((s, i) => {
+          const done = !!ticked['step:' + s.key]
+          return (
+            <div key={s.key}
+              className={`rounded-2xl border overflow-hidden ${done ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
+              <div className="flex items-start gap-3 px-3 py-2.5 border-b border-gray-200/70">
+                <button onClick={() => tick('step:' + s.key)}
+                  className={`shrink-0 w-8 h-8 rounded-full font-bold text-sm flex items-center justify-center border-2
+                    ${done ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-gray-500 border-gray-300 hover:border-indigo-400'}`}
+                  title={done ? '取消完成' : '標記這一步完成'}>
+                  {done ? '✓' : i + 1}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-gray-900 text-lg leading-snug">{s.icon} {s.title}
+                    <span className="text-xs font-normal text-gray-400 ml-2">{s.min} 分鐘</span></p>
+                  <p className="text-xs text-gray-500 mt-0.5">🎤 {s.who}</p>
                 </div>
-                <div className="px-3 py-2.5">
-                  <StepGuide s={s} />
-                  <StepData kind={s.key} />
-                </div>
+                <button onClick={() => { setCur(i); setTab('run') }}
+                  className="shrink-0 text-xs border border-indigo-300 text-indigo-700 rounded-lg px-2.5 py-1.5 font-medium hover:bg-indigo-50">
+                  ▶ 從這步開始
+                </button>
               </div>
-            )
-          })}
-        </div>
-      ) : (
-        <div>
-          <p className="text-xs text-gray-400 mb-2">
-            名單直接從議題的「負責人」與支線任務的「執行人」算出來，不用另外維護。多人共同負責時用頓號分開就會各自算一份。
-          </p>
-          {people.length === 0 ? <Empty>目前沒有指定到人的議題。</Empty> : (
-            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-              {people.map(p => {
-                const od = p.reports.filter(it => isOverdue(it.due)).length + p.tasks.filter(t => isOverdue(t.s.when)).length
-                return (
-                  <div key={p.name} className={`rounded-2xl border ${od ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-white'}`}>
-                    <div className="px-3 py-2 border-b border-gray-200/70 flex items-center gap-2 flex-wrap">
-                      <p className="font-bold text-gray-900 text-lg">{p.name}</p>
-                      <span className="text-xs bg-indigo-100 text-indigo-700 rounded-full px-2 py-0.5 font-medium">報告 {p.reports.length}</span>
-                      <span className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 font-medium">任務 {p.tasks.length}</span>
-                      {od > 0 && <span className="text-xs bg-red-100 text-red-700 rounded-full px-2 py-0.5 font-bold">逾期 {od}</span>}
-                    </div>
-                    <div className="p-2.5 space-y-2">
-                      <div>
-                        <p className="text-xs font-bold text-gray-400 mb-1">🎤 這場要報告的議題</p>
-                        {p.reports.length === 0 ? <p className="text-xs text-gray-300">無</p> : (
-                          <ul className="space-y-1">{p.reports.map(it => (
-                            <li key={it.id} className="text-sm leading-snug flex items-start gap-1.5">
-                              <Cat c={it.category || '未分類'} />
-                              <span className="min-w-0">
-                                <span className="text-gray-800">{it.issue}</span>
-                                {it.due && <span className={`text-xs ml-1 ${isOverdue(it.due) ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>{it.due}</span>}
-                              </span>
-                            </li>))}
-                          </ul>
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-gray-400 mb-1">🛠 這場要交代的任務</p>
-                        {p.tasks.length === 0 ? <p className="text-xs text-gray-300">無</p> : (
-                          <ul className="space-y-1">{p.tasks.map(({ it, s }, i) => (
-                            <li key={it.id + i} className="text-sm leading-snug text-gray-800">
-                              {s.what}
-                              <span className={`text-xs ml-1 ${isOverdue(s.when) ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>{s.when || '未定日期'}</span>
-                            </li>))}
-                          </ul>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
+              <div className="px-3 py-2.5">
+                <StepGuide s={s} />
+                <StepData kind={s.key} />
+              </div>
             </div>
-          )}
-        </div>
-      )}
+          )
+        })}
+      </div>
     </div>
   )
 }
