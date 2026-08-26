@@ -186,6 +186,13 @@ export default function MeetingFlow({
   const overdue = useMemo(
     () => open.filter(it => isOverdue(it.due)).sort((a, b) => (a.due || '').localeCompare(b.due || '')),
     [open, today])
+  // 逾期的支線任務要跟逾期的議題一起看。只看議題的預計日會漏掉一整批——
+  // 支線任務常常是最先跳票的那一層，議題本身的日期還沒到。
+  const overdueSubs = useMemo(() => {
+    const rows: { it: FlowItem; s: Sub }[] = []
+    open.forEach(it => parseSubs(it).forEach(s => { if (!s.done && isOverdue(s.when)) rows.push({ it, s }) }))
+    return rows.sort((a, b) => (a.s.when || '').localeCompare(b.s.when || ''))
+  }, [open, today])
   const noDate = useMemo(() => open.filter(it => !it.due), [open])
   const stalled = useMemo(() => open.filter(it => !it.progress.trim()), [open])
 
@@ -376,9 +383,14 @@ export default function MeetingFlow({
           </div>
         )}
 
-        <Head>🔴 逾期（{overdue.length} 件）— 卡在哪，當場講，當場改日期</Head>
-        {overdue.length === 0 ? <Empty>沒有逾期項目。</Empty>
-          : <div className="space-y-1.5">{overdue.map(it => <ItemRow key={it.id} it={it} showCat />)}</div>}
+        <Head>🔴 逾期（{overdue.length + overdueSubs.length} 件，含支線任務）— 卡在哪，當場講，當場改日期</Head>
+        {overdue.length + overdueSubs.length === 0 ? <Empty>沒有逾期項目。</Empty> : (
+          <div className="space-y-1.5">
+            {overdue.map(it => <ItemRow key={it.id} it={it} showCat />)}
+            {overdueSubs.map(({ it, s }, i) =>
+              <SubRow key={'od' + it.id + i} it={it} s={s} idx={`od:${it.id}:${i}`} showFrom />)}
+          </div>
+        )}
 
         <Head>😴 完全沒有進度紀錄（{stalled.length} 件）— 通常就是卡住沒人動</Head>
         {stalled.length === 0 ? <Empty>每件都有進度紀錄。</Empty>
