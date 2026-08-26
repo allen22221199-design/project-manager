@@ -194,7 +194,6 @@ export default function MeetingFlow({
     return rows.sort((a, b) => (a.s.when || '').localeCompare(b.s.when || ''))
   }, [open, today])
   const noDate = useMemo(() => open.filter(it => !it.due), [open])
-  const stalled = useMemo(() => open.filter(it => !it.progress.trim()), [open])
 
   // ── 第三步：今天這場提出來的新議題 ──────────────────
   const newToday = useMemo(() => open.filter(it => it.meetDate === meetDate), [open, meetDate])
@@ -391,10 +390,6 @@ export default function MeetingFlow({
               <SubRow key={'od' + it.id + i} it={it} s={s} idx={`od:${it.id}:${i}`} showFrom />)}
           </div>
         )}
-
-        <Head>😴 完全沒有進度紀錄（{stalled.length} 件）— 通常就是卡住沒人動</Head>
-        {stalled.length === 0 ? <Empty>每件都有進度紀錄。</Empty>
-          : <div className="space-y-1.5">{stalled.map(it => <ItemRow key={it.id} it={it} showCat />)}</div>}
 
         <Head>📅 還沒訂預計日（{noDate.length} 件）— 當場喬一個日期出來</Head>
         {noDate.length === 0 ? <Empty>每件都有預計日。</Empty>
