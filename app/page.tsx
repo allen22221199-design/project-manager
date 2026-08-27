@@ -38,8 +38,6 @@ const TOUR_STEPS: TourStep[] = [
   { view: 'issues', target: '[data-tour="issue-list"]', title: '📌 一眼看四件事', body: '每一筆都看得到：遇到什麼問題、誰在處理、什麼時候要好（逾期會變紅字）、目前進行到哪。項目按類別分組，點「更新」可以寫本次進度、改負責人或日期、也能改問題內容。', demo: { type: 'click' } },
   { view: 'issues', target: '[data-tour="issue-actions"]', title: '➕ 新增與週會流程', body: '「＋ 新增項目」開一筆新的問題追蹤；「📅 週一晨會流程」是開會時照著跑的流程表。解決了就按「結案」，會移到已結案分頁，之後用關鍵字（例如「橘皮」「斷墨」）就查得到當初怎麼解的。', demo: { type: 'click' } },
 
-  // ── 教育訓練 ──
-  { view: 'training', target: '[data-tour="nav-training"]', title: '📚 教育訓練', body: '公司的教學內容都在這裡，可以自我測驗。', demo: { type: 'click' } },
 
   { title: '這樣就會用囉！🎉', body: '之後想再看一次，隨時點左下角的「🎓 新手教學」。有些頁面（會議模式、私人行事曆）要管理者登入才看得到，一般同仁不會出現。開始操作看看吧！' },
 ]
