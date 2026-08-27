@@ -4,29 +4,44 @@ import Tour, { type TourStep } from './tour'
 import RichText, { MediaGroup } from './richtext'
 import MeetingFlow from '@/components/MeetingFlow'
 
-// 新手教學引導步驟（後台登入不列入）— 除了每個頁面，也帶到具體操作
+// 新手教學引導步驟。順序照「一天會用到的先後」排：先看今天要做什麼，
+// 再往下是查東西、記東西、開會追蹤。管理者限定的頁面不放進來——
+// 一般同仁看不到那些按鈕，框到空的地方只會讓人困惑。
 const TOUR_STEPS: TourStep[] = [
-  { title: '歡迎使用煌盛專案 App 👋', body: '第一次用嗎？我帶你花 2 分鐘認識每個功能和常用操作。點「下一步」開始，隨時可按右上角「跳過」。' },
-  // 總覽
+  { title: '歡迎使用煌盛專案 App 👋', body: '第一次用嗎？我帶你花 3 分鐘認識每個功能和常用操作。點「下一步」開始，隨時可按右上角「跳過」。' },
+
+  // ── 總覽 ──
   { view: 'dashboard', target: '[data-tour="nav-dashboard"]', title: '📊 總覽（主畫面）', body: '一進來就在這頁。上面是流程排程表，下面有今日待辦、逾期任務、本週完成率、進行中案件數。', demo: { type: 'click' } },
   { view: 'dashboard', target: '[data-tour="schedule"]', title: '🗓️ 流程排程表', body: '每個案子排在哪天、哪個工序，一格一格看清楚。操作：① 先點上方要排的「案件」→ ② 在格子上「按住滑鼠拖過去」就會塗上顏色；同一案件再塗一次可清除。', demo: { type: 'drag' } },
-  // 案件清單
+
+  // ── 今日工作（每天最常開的一頁）──
+  { view: 'daily', target: '[data-tour="nav-daily"]', title: '✅ 今日工作', body: '看每位同事今天要做什麼、直接勾選完成。這是每天最常開的一頁，下面幾個操作我一個一個講。', demo: { type: 'click' } },
+  { view: 'daily', target: '[data-tour="plaud"]', title: '📥 晨會記錄貼這裡', body: '開完晨會，把 Plaud 逐字稿或整理好的日誌「貼到這個框」，AI 會判斷負責人、拆成可勾選步驟，寫進今日工作。日期會從標題那天判斷；同一天再貼一次會蓋掉前一次貼的，但你手動加的不會被動到。要跑 40～70 秒，請等它轉完。', demo: { type: 'type', text: '2026/08/24 晨會：阿蔡負責前處理、艾里包裝…' } },
+  { view: 'daily', target: '[data-tour="add-task"]', title: '➕ 手動加一項工作', body: '先在「選人員」下拉選負責人 → 輸入任務內容 → 按「新增」，就指派給那個人。', demo: { type: 'type', text: '櫃體包裝完成、回報進度' } },
+  { view: 'daily', target: '[data-tour="task-drag"]', title: '✋ 換人、改狀態、改字', body: '任務卡片可以「拖曳」搬到別人名下換負責人；點「狀態」切換進行中／完成；點任務文字可直接改——都會即時同步到 Notion。', demo: { type: 'drag' } },
+
+  // ── 案件清單 ──
   { view: 'list', target: '[data-tour="nav-list"]', title: '📋 案件清單', body: '所有專案都在這，點任一個案子可看細節、改負責人與狀態。', demo: { type: 'click' } },
-  { view: 'list', target: '[data-tour="case-filters"]', title: '🔎 篩選 / 搜尋 / 新增專案', body: '用上面的狀態標籤（報價中／打樣中／施工中…）快速篩選；上方搜尋框可找名稱／聯絡人／地址；點「＋ 新增專案」建立新案子。', demo: { type: 'click' } },
-  // 新增專案 + 報價單
+  { view: 'list', target: '[data-tour="case-filters"]', title: '🔎 篩選 / 搜尋 / 新增專案', body: '用狀態標籤（報價中／打樣中／施工中…）快速篩選；搜尋框可找名稱、聯絡人、地址；點「＋ 新增專案」建立新案子。', demo: { type: 'click' } },
   { view: 'create', target: '[data-tour="create-form"]', title: '➕ 怎麼新增專案', body: '填「專案名稱」（必填）、聯絡人、地址、狀態，就能建立一個新案子。', demo: { type: 'type', text: '惠宇-新竹關埔案' } },
-  { view: 'create', target: '[data-tour="quote-upload"]', title: '📷 放上報價單（自動辨識品項）', body: '在「產品品項」按「📷 上傳圖片辨識」，拍或選一張報價單／材料清單照片，AI 會自動把品項、材質、規格、數量、單位辨識填進來，不用一項一項手打。', demo: { type: 'click' } },
-  // 今日工作
-  { view: 'daily', target: '[data-tour="nav-daily"]', title: '✅ 今日工作', body: '看每位同事今天要做什麼、直接勾選完成。下面幾個常用操作我一個一個講。', demo: { type: 'click' } },
-  { view: 'daily', target: '[data-tour="plaud"]', title: '📥 晨會記錄放這裡', body: '開完晨會，把 Plaud 的逐字稿或摘要「貼到這個框」，按下按鈕，AI 會自動修正錯字、判斷負責人、拆解成可勾選步驟，寫進今日工作（可同時發到 LINE 群組）。', demo: { type: 'type', text: '晨會：阿蔡負責前處理、艾里包裝，今天陶大要出貨…' } },
-  { view: 'daily', target: '[data-tour="add-task"]', title: '➕ 怎麼新增任務', body: '想手動加一項工作：先在「選人員」下拉選負責人 → 在旁邊輸入任務內容 → 按「新增」，就會指派給那個人。', demo: { type: 'type', text: '櫃體包裝完成、回報進度' } },
-  { view: 'daily', target: '[data-tour="task-drag"]', title: '✋ 怎麼拖移任務', body: '任務卡片可以「拖曳」搬到別人名下換負責人；點卡片上的「狀態」可切換進行中／完成；點任務文字可直接編輯——這些都會即時同步到 Notion。', demo: { type: 'drag' } },
-  // 任務查詢
+  { view: 'create', target: '[data-tour="quote-upload"]', title: '📷 報價單自動辨識', body: '在「產品品項」按「📷 上傳圖片辨識」，拍或選一張報價單／材料清單照片，AI 會把品項、材質、規格、數量、單位填進來，不用一項一項手打。', demo: { type: 'click' } },
+
+  // ── 任務查詢 ──
   { view: 'search', target: '[data-tour="nav-search"]', title: '🔍 任務查詢', body: '用關鍵字或點人名，快速查任務、看每個人手上的工作量。', demo: { type: 'click' } },
-  // AI 助理
-  { view: 'chat', target: '[data-tour="nav-chat"]', title: '💬 AI 助理', body: '不會的直接問它！查公司 SOP、機具參數、排除困難，都幫你從公司資料找答案。', demo: { type: 'click' } },
-  { view: 'chat', target: '[data-tour="chat-input"]', title: '⌨️ 怎麼問 / 怎麼記進度', body: '在這個框打字問問題（Enter 送出）。也能直接講一句進度，例如「冠德的箱蓋今天噴好了」，它會幫你對應專案、確認後寫進進度紀錄。', demo: { type: 'type', text: '冠德的箱蓋今天噴好了' } },
-  { title: '這樣就會用囉！🎉', body: '之後想再看一次，隨時點左下角的「🎓 新手教學」。開始操作看看吧！' },
+
+  // ── AI 助理 ──
+  { view: 'chat', target: '[data-tour="nav-chat"]', title: '💬 AI 助理', body: '不會的直接問它。查 SOP、機具參數、防火標章、丈量步驟，都會從公司資料找答案，還會把對應的圖片和教學影片一起附上。', demo: { type: 'click' } },
+  { view: 'chat', target: '[data-tour="chat-input"]', title: '⌨️ 它會做四件事', body: '① 問問題（Enter 送出）② 記進度：講「冠德的箱蓋今天噴好了」，它會對應到專案，確認後寫進進度 ③ 交辦任務：講「叫治先把冠德圖面畫完」，它會出確認卡片 ④ 按 🎤 用講的，會自動轉文字。不管哪一種，都要你按確認才會真的寫進去。', demo: { type: 'type', text: '冠德的箱蓋今天噴好了' } },
+
+  // ── 會議事項 ──
+  { view: 'issues', target: '[data-tour="nav-issues"]', title: '🔧 會議事項', body: '品質會議的問題追蹤，跟「今日工作」是分開的兩套。今日工作是「今天要做什麼」，會議事項是「這個問題還沒解決，誰在追」，可以跨好幾週。', demo: { type: 'click' } },
+  { view: 'issues', target: '[data-tour="issue-list"]', title: '📌 一眼看四件事', body: '每一筆都看得到：遇到什麼問題、誰在處理、什麼時候要好（逾期會變紅字）、目前進行到哪。項目按類別分組，點「更新」可以寫本次進度、改負責人或日期、也能改問題內容。', demo: { type: 'click' } },
+  { view: 'issues', target: '[data-tour="issue-actions"]', title: '➕ 新增與週會流程', body: '「＋ 新增項目」開一筆新的問題追蹤；「📅 週一晨會流程」是開會時照著跑的流程表。解決了就按「結案」，會移到已結案分頁，之後用關鍵字（例如「橘皮」「斷墨」）就查得到當初怎麼解的。', demo: { type: 'click' } },
+
+  // ── 教育訓練 ──
+  { view: 'training', target: '[data-tour="nav-training"]', title: '📚 教育訓練', body: '公司的教學內容都在這裡，可以自我測驗。', demo: { type: 'click' } },
+
+  { title: '這樣就會用囉！🎉', body: '之後想再看一次，隨時點左下角的「🎓 新手教學」。有些頁面（會議模式、私人行事曆）要管理者登入才看得到，一般同仁不會出現。開始操作看看吧！' },
 ]
 
 const STATUS_COLORS: Record<string, string> = {
@@ -1930,6 +1945,21 @@ export default function Page() {
       apply(it.subtasks)
       setIssueErr(e.message)
     }
+  }
+  // 晨會第二步「當場開一條支線任務」。跟表格那邊一樣是整欄覆寫，
+  // 但錯誤要往外丟——表單得知道成功沒有，不能像 writeSubtasks 那樣默默吞掉。
+  async function addFlowSubtask(itemId: string, who: string, what: string, when: string) {
+    const it = issues.find(x => x.id === itemId)
+    if (!it) throw new Error('找不到這個議題，請按重新整理')
+    const lines = (it.subtasks || '').split('\n').filter(l => l.trim())
+    lines.push([who, what, when].join('｜'))
+    const text = lines.join('\n')
+    const r = await fetch('/api/meeting-items', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: itemId, subtasks: text }),
+    })
+    if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
+    setIssues(prev => prev.map(x => x.id === itemId ? { ...x, subtasks: text } : x))
   }
   // 只取有內容的行；顯示、編輯、刪除都用同一組索引，才不會對到別行
   const subLines = (it: MeetingItem) => (it.subtasks || '').split('\n').filter(l => l.trim())
@@ -3926,9 +3956,10 @@ export default function Page() {
               </button>
               <MeetingFlow
                 open={issues}
-                categories={ISSUE_CATEGORIES} catColor={CAT_COLOR}
+                catColor={CAT_COLOR}
                 loading={issuesLoading}
                 onRefresh={() => fetchIssues('open')}
+                onAddSubtask={addFlowSubtask}
                 onAddIssue={() => {
                   // 第三步按「當場新增議題」→ 回清單、開表單、捲到最上面
                   setIssueView('list'); setIssueForm(true); setIssueErr('')
@@ -3941,7 +3972,7 @@ export default function Page() {
             <div className="max-w-none">
               <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
                 <h2 className="text-xl font-bold text-gray-900">🔧 會議事項</h2>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" data-tour="issue-actions">
                   <button onClick={() => { setIssueView('flow'); fetchIssues('open') }}
                     className="bg-white border border-indigo-300 text-indigo-700 rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-50">
                     📅 週一晨會流程
@@ -4040,7 +4071,7 @@ export default function Page() {
                 /* 表格用格狀排版做，不用 <table>：<table> 的欄寬撐不下就會逼出橫向捲軸，
                    而開會時要能一眼看完，左右拉就失去意義。
                    寬螢幕照樣是對齊的表格，窄螢幕自動變成一項一塊、每格帶標籤。 */
-                <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+                <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden" data-tour="issue-list">
                   <div className="hidden lg:grid gap-x-3 px-3 py-2 bg-gray-50 text-xs text-gray-500 font-semibold"
                     style={{ gridTemplateColumns: 'minmax(4.5rem,6rem) minmax(9rem,3fr) minmax(3.5rem,4.5rem) minmax(6.5rem,8.5rem) minmax(4.5rem,6rem) minmax(3rem,4rem)' }}>
                     <div>編號</div><div>檢討及提案項目（問題）</div>
