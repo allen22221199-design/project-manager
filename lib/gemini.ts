@@ -851,15 +851,39 @@ async function extractOwnTasksFromOne(
     .filter((it: OwnTaskItem) => it.task)
 }
 
+// 一次最多同時打幾張。全部一起送看似最快，但十幾個帶圖的請求並發很容易被 Gemini
+// 擋成 429，接著 withRetry 每張各退避重試，總時間反而變成好幾倍——這就是
+// 「伺服器忙碌或處理逾時」的來源。分批送穩定得多。
+const PDF_CONCURRENCY = 5
+// 單張切片的上限。有一張特別慢時，寧可放棄那一張、把其他張的結果交出去，
+// 也不要整批一起被平台砍掉（那樣使用者什麼都拿不到）。
+const PDF_TILE_TIMEOUT_MS = 60_000
+
+function withTimeout<T>(fn: () => Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    fn(),
+    new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`${label} 讀取逾時`)), ms)),
+  ])
+}
+
 export async function extractOwnTasksFromPdf(
   media: TaskSourceMedia[],
   filename: string,
   todayISO: string,
 ): Promise<{ items: OwnTaskItem[]; failed: number }> {
-  // 每張切片各跑各的：一張讀壞不會拖垮其他張，全部一起跑也比較快
-  const settled = await Promise.allSettled(
-    media.map((m, i) => extractOwnTasksFromOne(m, filename, todayISO, i + 1, media.length)),
-  )
+  // 分批送，每張各自有時間上限；一張讀壞或太慢都不會拖垮其他張
+  const settled: PromiseSettledResult<OwnTaskItem[]>[] = []
+  for (let i = 0; i < media.length; i += PDF_CONCURRENCY) {
+    const batch = media.slice(i, i + PDF_CONCURRENCY)
+    const part = await Promise.allSettled(batch.map((m, j) =>
+      withTimeout(
+        () => extractOwnTasksFromOne(m, filename, todayISO, i + j + 1, media.length),
+        PDF_TILE_TIMEOUT_MS,
+        `第 ${i + j + 1} 張`,
+      ),
+    ))
+    part.forEach(r => settled.push(r))
+  }
   const items: OwnTaskItem[] = []
   let failed = 0
   let firstErr: any = null

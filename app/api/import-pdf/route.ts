@@ -12,7 +12,9 @@ import { getTasksByPerson } from '@/lib/notion'
 //   ・9.4MB 的原檔過不了 Vercel 約 4MB 的請求上限；
 //   ・XMind 匯出的心智圖字只有約 1pt，原尺寸送給 AI 也讀不到字。
 // 仍然接受單一 PDF（小檔、或其他來源直接打這支 API），只是不保證讀得清楚。
-export const maxDuration = 120
+// 十幾張切片分批送給 AI，整批要跑上兩三分鐘。原本設 120 秒不夠，
+// 超過就被平台砍成 HTML 錯誤頁，前端只會看到「伺服器忙碌或處理逾時」。
+export const maxDuration = 300
 
 const PRIVATE_PERSON = '呂理論'   // 對應 Notion 的人員名稱（勿改）
 const MAX_TOTAL_MB = 3.5          // Vercel 的請求上限實測約 4MB，留一點餘裕
