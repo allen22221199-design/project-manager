@@ -2882,9 +2882,11 @@ export default function Page() {
             </div>
 
             {/* 左欄放品項與回報表單，右欄獨立一列放施工進度與進度紀錄。
-                寬螢幕才分欄；手機仍然是一欄由上往下排。 */}
-            <div className="lg:grid lg:grid-cols-3 lg:gap-4 lg:items-start">
-            <div className="lg:col-span-2 min-w-0">
+                分欄的門檻設在 1280px：更窄的螢幕硬分會讓右欄只剩兩百多像素，
+                進度紀錄的日期＋標籤＋內文會擠成一團，還不如一欄由上往下排。
+                比例 3:2 而不是 2:1，右欄才裝得下一整列不換行。 */}
+            <div className="xl:grid xl:grid-cols-5 xl:gap-4 xl:items-start">
+            <div className="xl:col-span-3 min-w-0">
             {/* 專案已有資訊 */}
             {projectDetailLoading && <p className="text-sm text-gray-400 text-center py-3">載入專案資訊中...</p>}
             {projectDetail && (
@@ -3020,7 +3022,7 @@ export default function Page() {
               </div>
             )}
             </div>
-            <div className="min-w-0">
+            <div className="xl:col-span-2 min-w-0">
               {projectDetail && (
                 <div className="mb-4 space-y-3">
                   {/* 🏗️ 施工進度：一棟一列，五道工序各打一次勾 */}
