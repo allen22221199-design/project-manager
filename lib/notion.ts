@@ -1350,3 +1350,70 @@ export async function getMeetingHistory(id: string): Promise<string[]> {
       .reverse()   // 最新在最上面
   } catch { return [] }
 }
+
+// ===== 施工進度（案場 × 棟別 × 五道工序）=====
+// 一棟一列，每道工序完成就打勾。刻意不分樓層——使用者要的是「每一項打一次」，
+// 分到樓層會變成兩百多個格子，反而看不出重點。
+const BUILDING_DB_ID = 'd3aca70ec9904f1db6dd6a3ad17d3fe1'
+export const BUILD_STEPS = ['門片', '門框', '裝鎖', '貼邊角料', '自主巡查'] as const
+export type BuildStep = typeof BUILD_STEPS[number]
+export type BuildingRow = {
+  id: string
+  site: string
+  building: string
+  note: string
+  steps: Record<string, boolean>
+  updatedAt: string
+}
+
+function toBuildingRow(p: any): BuildingRow {
+  const steps: Record<string, boolean> = {}
+  for (const s of BUILD_STEPS) steps[s] = p.properties[s]?.checkbox === true
+  return {
+    id: p.id,
+    site: mText(p.properties, '案場'),
+    building: mText(p.properties, '棟別'),
+    note: mText(p.properties, '備註'),
+    steps,
+    updatedAt: p.properties['更新時間']?.last_edited_time ?? '',
+  }
+}
+
+// 帶 site 就只取那個案場的；不帶就全部（AI 助理要用全部）
+export async function getBuildingProgress(site?: string): Promise<BuildingRow[]> {
+  const res: any = await notion.databases.query({
+    database_id: BUILDING_DB_ID,
+    ...(site ? { filter: { property: '案場', rich_text: { equals: site } } } : {}),
+    page_size: 100,
+  })
+  return (res.results as any[])
+    .map(toBuildingRow)
+    // 棟別用文字不用選單（要能隨時新增），所以排序自己做
+    .sort((a, b) => a.site.localeCompare(b.site) || a.building.localeCompare(b.building))
+}
+
+export async function addBuilding(site: string, building: string) {
+  const page: any = await notion.pages.create({
+    parent: { database_id: BUILDING_DB_ID },
+    properties: {
+      項目: { title: toRichText(`${site} ${building}`) },
+      案場: { rich_text: toRichText(site) },
+      棟別: { rich_text: toRichText(building) },
+    },
+  })
+  return { id: page.id }
+}
+
+export async function updateBuilding(id: string, f: { step?: string; done?: boolean; note?: string; building?: string }) {
+  const properties: any = {}
+  if (f.step && BUILD_STEPS.indexOf(f.step as BuildStep) >= 0) properties[f.step] = { checkbox: f.done === true }
+  if (f.note !== undefined) properties['備註'] = { rich_text: toRichText(f.note) }
+  if (f.building !== undefined) properties['棟別'] = { rich_text: toRichText(f.building) }
+  if (Object.keys(properties).length === 0) return
+  await notion.pages.update({ page_id: id, properties })
+}
+
+// 刪除＝移到垃圾桶，30 天內救得回來
+export async function deleteBuilding(id: string) {
+  await notion.pages.update({ page_id: id, archived: true })
+}
