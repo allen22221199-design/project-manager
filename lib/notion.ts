@@ -94,25 +94,87 @@ function detectSection(headingText: string): string | null {
   return null
 }
 
+const HEADING_TYPES = ['heading_1', 'heading_2', 'heading_3']
+const headingText = (b: any) => b[b.type]?.rich_text?.[0]?.plain_text ?? ''
+
+// 標題如果在 Notion 裡設成可收合（toggle heading），底下的表格就變成「標題的子區塊」，
+// 不會出現在頁面第一層——只掃第一層的話整個區塊等於不存在。
+// 案件頁的「📋項目清單」幾乎都是收合的，所以品項一直讀不到（讀出來永遠是空的）。
+// 這裡補一輪：凡是認得出區塊名、又有子內容的標題，就進去找表格。
+async function tablesInsideToggleHeadings(
+  blocks: any[], found: Record<string, { id: string }>,
+): Promise<Record<string, { id: string }>> {
+  const targets = blocks
+    .filter(b => HEADING_TYPES.indexOf(b.type) >= 0 && b.has_children)
+    .map(b => ({ block: b, section: detectSection(headingText(b)) }))
+    .filter(x => x.section && !found[x.section]) as { block: any; section: string }[]
+  if (targets.length === 0) return found
+
+  const kids = await Promise.all(targets.map(async t => {
+    try {
+      const res: any = await notion.blocks.children.list({ block_id: t.block.id, page_size: 100 })
+      return { section: t.section, table: (res.results as any[]).find(k => k.type === 'table') }
+    } catch { return { section: t.section, table: null } }
+  }))
+  for (const k of kids) if (k.table && !found[k.section]) found[k.section] = { id: k.table.id }
+  return found
+}
+
 // Find a named section table, returns { id, width } or null
 async function findSectionTable(pageId: string, keyword: string): Promise<{ id: string; width: number } | null> {
   const res = await notion.blocks.children.list({ block_id: pageId, page_size: 100 })
   const blocks = res.results as any[]
   let foundSection = false
   for (const block of blocks) {
-    if (['heading_1', 'heading_2', 'heading_3'].includes(block.type)) {
-      const text = block[block.type]?.rich_text?.[0]?.plain_text ?? ''
+    if (HEADING_TYPES.indexOf(block.type) >= 0) {
+      const text = headingText(block)
       foundSection = text.includes(keyword)
       continue
     }
     if (foundSection && block.type === 'table') {
       return { id: block.id, width: block.table?.table_width ?? 2 }
     }
-    if (!foundSection && block.type === 'table') {
-      // keep looking
-    }
+  }
+  // 第一層沒有，可能是收合標題把表格收在裡面（新增品項時常遇到）
+  for (const block of blocks) {
+    if (HEADING_TYPES.indexOf(block.type) < 0 || !block.has_children) continue
+    if (!headingText(block).includes(keyword)) continue
+    try {
+      const kids: any = await notion.blocks.children.list({ block_id: block.id, page_size: 100 })
+      const table = (kids.results as any[]).find(k => k.type === 'table')
+      if (table) return { id: table.id, width: table.table?.table_width ?? 2 }
+    } catch { /* 讀不到就當作沒有 */ }
   }
   return null
+}
+
+// 只數「項目清單」有幾列真資料。要一次掃七十幾個案件，所以不呼叫 getProjectDetails——
+// 那會連進度、出貨、請款四張表一起讀，等於多花三倍的額度。
+export async function countProjectItems(pageId: string): Promise<number> {
+  const res: any = await notion.blocks.children.list({ block_id: pageId, page_size: 100 })
+  const blocks = res.results as any[]
+
+  let tableId = ''
+  let inSection = false
+  for (const b of blocks) {
+    if (HEADING_TYPES.indexOf(b.type) >= 0) { inSection = headingText(b).indexOf('項目清單') >= 0; continue }
+    if (inSection && b.type === 'table') { tableId = b.id; break }
+  }
+  if (!tableId) {
+    // 收合起來的標題：表格在標題裡面
+    const head = blocks.find(b => HEADING_TYPES.indexOf(b.type) >= 0 && b.has_children
+      && headingText(b).indexOf('項目清單') >= 0)
+    if (head) {
+      const kids: any = await notion.blocks.children.list({ block_id: head.id, page_size: 100 })
+      tableId = ((kids.results as any[]).find(k => k.type === 'table') ?? {}).id ?? ''
+    }
+  }
+  if (!tableId) return 0
+
+  const rows = await readTableRows(tableId)   // readTableRows 已經濾掉整列空白的
+  // 首欄沒有數字＝那是標題列（品項／規格／數量），不算一筆資料
+  const hasHeader = rows.length > 0 && !/[0-9]/.test(rows[0].cells[0])
+  return Math.max(0, hasHeader ? rows.length - 1 : rows.length)
 }
 
 // 在案件本身標記「最新進度」＋回報時間（供總覽即時顯示，兩天後前端自動隱藏）
@@ -383,6 +445,8 @@ export async function getProjectDetails(pageId: string) {
       currentSection = null
     }
   }
+  // 收合標題底下的表格在第一層看不到，補掃一輪（多半是「項目清單」）
+  await tablesInsideToggleHeadings(blocks, sectionTables)
 
   // Read all tables in parallel
   const [progressAllRows, itemAllRows, shippingAllRows, paymentAllRows] = await Promise.all([

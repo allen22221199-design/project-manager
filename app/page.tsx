@@ -4,6 +4,7 @@ import Tour, { type TourStep } from './tour'
 import RichText, { MediaGroup } from './richtext'
 import MeetingFlow from '@/components/MeetingFlow'
 import { catOf, buildingsOf, monthKey, monthLabel, shortDate, sortKey } from '@/lib/progressTags'
+import { missingOf } from '@/lib/projectChecks'
 
 // 進度紀錄的類別顏色。Tailwind 是編譯期掃字串的，不能用 `bg-${x}-50` 這種拼法，
 // 所以整串 class 要原封不動寫在這裡。
@@ -256,6 +257,11 @@ export default function Page() {
   const [buildErr, setBuildErr] = useState('')
   // 箱體數量是用打字的，每按一個鍵就送一次會打爆 API——先存在這裡，離開欄位才寫回去
   const [boxQtyDraft, setBoxQtyDraft] = useState<Record<string, string>>({})
+  // 案件資料完整度。聯絡人在案件屬性上，一拿到清單就知道；
+  // 品項藏在頁面內文的表格裡，要另外掃，掃完才填進來（掃不到的留 null，不當作沒填）
+  const [itemCounts, setItemCounts] = useState<Record<string, number | null>>({})
+  const [scanState, setScanState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [onlyIncomplete, setOnlyIncomplete] = useState(false)
   // 進度紀錄的篩選與展開狀態
   const [progCat, setProgCat] = useState('')          // 類別篩選，空字串＝全部
   const [progBldg, setProgBldg] = useState('')        // 棟別篩選
@@ -623,6 +629,17 @@ export default function Page() {
     document.addEventListener('click', handler)
     return () => document.removeEventListener('click', handler)
   }, [colorPickerOpenId])
+
+  // 進到案件清單才去掃品項：要讀七十幾個案件的內文，大約一分鐘。
+  // 放背景跑，畫面照常用，標記掃完自己浮出來；一次工作階段只掃一次。
+  useEffect(() => {
+    if (view !== 'list' || scanState !== 'idle') return
+    setScanState('loading')
+    fetch('/api/projects/missing')
+      .then(readJson)
+      .then(d => { setItemCounts(d.items ?? {}); setScanState('done') })
+      .catch(() => setScanState('error'))
+  }, [view, scanState])
 
   // 開站檢查是否已登入管理者（並檢查 Google 日曆連結狀態）
   useEffect(() => {
@@ -2665,7 +2682,7 @@ export default function Page() {
                   </button>
                 )
               })}
-              <button onClick={fetchProjects} className="ml-auto text-xs text-gray-400 hover:text-gray-700 px-2">↻ 重新整理</button>
+              <button onClick={() => { fetchProjects(); setScanState('idle') }} className="ml-auto text-xs text-gray-400 hover:text-gray-700 px-2">↻ 重新整理</button>
             </div>
 
             {loading ? (
@@ -2678,14 +2695,32 @@ export default function Page() {
                 const matchSearch = !q || p.name.toLowerCase().includes(q) || p.contact.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
                 return matchStatus && matchSearch
               })
+              // 沒填的欄位當場算：聯絡人是現成的，品項等背景掃完才有（還沒掃到的不算缺）
+              const withMiss = filtered.map(p => ({ p, miss: missingOf(p, itemCounts[p.id] ?? undefined) }))
+              const incomplete = withMiss.filter(x => x.miss.length > 0).length
+              const shown = onlyIncomplete ? withMiss.filter(x => x.miss.length > 0) : withMiss
               return (
                 <div className="space-y-2">
-                  {filtered.length === 0 && (
+                  {(incomplete > 0 || scanState === 'loading') && (
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      {incomplete > 0 && (
+                        <button onClick={() => setOnlyIncomplete(v => !v)}
+                          className={`text-xs rounded-lg border px-2.5 py-1 font-medium ${onlyIncomplete
+                            ? 'bg-amber-100 border-amber-300 text-amber-800'
+                            : 'bg-white border-amber-200 text-amber-700 hover:bg-amber-50'}`}>
+                          ⚠ {incomplete} 件資料不全{onlyIncomplete ? '（只看這些）' : '　點我只看這些'}
+                        </button>
+                      )}
+                      {scanState === 'loading' && <span className="text-xs text-gray-400">品項掃描中…</span>}
+                      {scanState === 'error' && <span className="text-xs text-gray-400">品項掃描失敗，重新整理再試</span>}
+                    </div>
+                  )}
+                  {shown.length === 0 && (
                     <p className="text-gray-400 text-sm text-center py-8">
-                      {searchText ? `找不到「${searchText}」相關案件` : '此分類無案件'}
+                      {onlyIncomplete ? '這個分類的資料都齊全 👍' : searchText ? `找不到「${searchText}」相關案件` : '此分類無案件'}
                     </p>
                   )}
-                  {filtered.map(p => (
+                  {shown.map(({ p, miss }) => (
                     <div key={p.id}
                       className="glass-card p-4 hover:border-gray-400 transition-colors flex items-center gap-3"
                       style={p.color ? { borderLeftWidth: 4, borderLeftColor: p.color } : {}}>
@@ -2714,7 +2749,17 @@ export default function Page() {
                       </div>
                       <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { setColorPickerOpenId(null); selectProject(p) }}>
                         <p className="font-medium text-gray-900 truncate">{p.name}</p>
-                        <p className="text-sm text-gray-500 mt-0.5 truncate">{p.contact}{p.address ? ` · ${p.address}` : ''}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                          {/* 沒填什麼就直接寫在名字底下，不用點進去才知道 */}
+                          {miss.length > 0 && (
+                            <span title="點進案件補填" className="shrink-0 text-[11px] rounded border border-amber-300 bg-amber-50 text-amber-800 px-1.5 py-0.5 font-medium">
+                              ⚠ 缺{miss.join('、')}
+                            </span>
+                          )}
+                          <p className="text-sm text-gray-500 truncate">
+                            {p.contact || <span className="text-amber-700/70">未填聯絡人</span>}{p.address ? ` · ${p.address}` : ''}
+                          </p>
+                        </div>
                       </div>
                       {/* 負責人下拉（點擊不觸發進入案件） */}
                       <select
