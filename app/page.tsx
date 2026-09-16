@@ -3924,7 +3924,7 @@ export default function Page() {
                               <div draggable={editingId !== t.id}
                                 onDragStart={() => setDraggingId(t.id)}
                                 onDragEnd={() => { setDraggingId(null); setDragOverPerson(null) }}
-                                className={`flex items-start gap-2 text-sm border rounded-lg px-1.5 py-1 group ${effectiveFlagged(t) && t.status !== '完成' ? 'border-red-200 bg-red-50 hover:bg-red-100' : 'border-transparent hover:border-gray-200 hover:bg-gray-50'} ${editingId === t.id ? '' : 'cursor-grab active:cursor-grabbing'}`}>
+                                className={`flex flex-wrap md:flex-nowrap items-start gap-x-2 gap-y-1 text-sm border rounded-lg px-1.5 py-1 group ${effectiveFlagged(t) && t.status !== '完成' ? 'border-red-200 bg-red-50 hover:bg-red-100' : 'border-transparent hover:border-gray-200 hover:bg-gray-50'} ${editingId === t.id ? '' : 'cursor-grab active:cursor-grabbing'}`}>
                                 <button onClick={() => toggleFlag(t)} title={effectiveFlagged(t) ? '取消紅標' : '標為急件（紅標）'}
                                   className={`shrink-0 mt-0.5 text-xs leading-none ${effectiveFlagged(t) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 grayscale'}`}>🚩</button>
                                 {isUrgentTask(t.task) && t.status !== '完成' && <span className="shrink-0 mt-0.5" title="急件">🔥</span>}
@@ -3952,9 +3952,11 @@ export default function Page() {
                                   <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
                                     onBlur={() => saveEdit(t.id)}
                                     onKeyDown={e => { if (e.key === 'Enter') saveEdit(t.id); if (e.key === 'Escape') { setEditingId(null); setEditText('') } }}
-                                    className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+                                    className="order-first w-full md:order-none md:w-auto md:flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
                                 ) : (
-                                  <span className="text-gray-700 flex-1 cursor-text" onClick={() => { setEditingId(t.id); setEditText(t.task) }}>{t.task}</span>
+                                  /* 手機：任務內容自己佔滿第一行，其餘小按鈕掉到第二行。
+                                     擠在同一行的話只剩四十幾像素，中文會變成一行一個字。 */
+                                  <span className="text-gray-700 order-first w-full md:order-none md:w-auto md:flex-1 cursor-text" onClick={() => { setEditingId(t.id); setEditText(t.task) }}>{t.task}</span>
                                 )}
                                 {/* 改負責人：電腦可以直接拖曳，但手機不支援拖曳，用這個選單一樣能轉派 */}
                                 <select value="" title="把這項任務交給別人"
