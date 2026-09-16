@@ -3,6 +3,21 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Tour, { type TourStep } from './tour'
 import RichText, { MediaGroup } from './richtext'
 import MeetingFlow from '@/components/MeetingFlow'
+import { catOf, buildingsOf, monthKey, monthLabel, shortDate, sortKey } from '@/lib/progressTags'
+
+// 進度紀錄的類別顏色。Tailwind 是編譯期掃字串的，不能用 `bg-${x}-50` 這種拼法，
+// 所以整串 class 要原封不動寫在這裡。
+const CAT_ORDER = ['施工', '噴印', '加工', '量測', '打樣', '進料', '溝通', '其他'] as const
+const CAT_STYLE: Record<string, string> = {
+  施工: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  噴印: 'bg-amber-50 text-amber-700 border-amber-200',
+  加工: 'bg-orange-50 text-orange-700 border-orange-200',
+  量測: 'bg-sky-50 text-sky-700 border-sky-200',
+  打樣: 'bg-rose-50 text-rose-700 border-rose-200',
+  進料: 'bg-violet-50 text-violet-700 border-violet-200',
+  溝通: 'bg-slate-100 text-slate-600 border-slate-200',
+  其他: 'bg-gray-50 text-gray-500 border-gray-200',
+}
 
 // 新手教學引導步驟。順序照「一天會用到的先後」排：先看今天要做什麼，
 // 再往下是查東西、記東西、開會追蹤。管理者限定的頁面不放進來——
@@ -234,10 +249,18 @@ export default function Page() {
   const [editSub, setEditSub] = useState<string | null>(null)   // 正在編輯的支線任務：`${itemId}:${行號}`
   // 施工進度（案場 × 棟別 × 五道工序）
   const BUILD_STEPS = ['門片', '門框', '裝鎖', '貼邊角料', '自主巡查'] as const
-  type BuildingRow = { id: string; site: string; building: string; note: string; steps: Record<string, boolean>; stepDates: Record<string, string> }
+  type BoxInfo = { qty: number | null; arrive: string; produce: string }
+  type BuildingRow = { id: string; site: string; building: string; note: string; steps: Record<string, boolean>; stepDates: Record<string, string>; box: BoxInfo }
   const [buildRows, setBuildRows] = useState<BuildingRow[]>([])
   const [buildAdding, setBuildAdding] = useState(false)
   const [buildErr, setBuildErr] = useState('')
+  // 箱體數量是用打字的，每按一個鍵就送一次會打爆 API——先存在這裡，離開欄位才寫回去
+  const [boxQtyDraft, setBoxQtyDraft] = useState<Record<string, string>>({})
+  // 進度紀錄的篩選與展開狀態
+  const [progCat, setProgCat] = useState('')          // 類別篩選，空字串＝全部
+  const [progBldg, setProgBldg] = useState('')        // 棟別篩選
+  const [progOpen, setProgOpen] = useState<Record<string, boolean>>({})   // 哪幾個月展開了
+  const [progEditDate, setProgEditDate] = useState<number | null>(null)   // 正在改日期的那一列
   const [issueCatFilter, setIssueCatFilter] = useState('')
   const [issueOwnerFilter, setIssueOwnerFilter] = useState('')
   const [issueExpanded, setIssueExpanded] = useState<Record<string, string[]>>({})
@@ -828,6 +851,8 @@ export default function Page() {
     setProjectDetailLoading(true)
     setView('report')
     setBuildErr('')
+    // 換案件就把進度紀錄的篩選和展開狀態歸零，不然會帶著上一個案件的條件
+    setProgCat(''); setProgBldg(''); setProgOpen({}); setProgEditDate(null)
     fetchBuildings(p.name)   // 施工進度另一支 API，跟明細平行抓，不要互相等
     try {
       const r = await fetch('/api/search', {
@@ -880,10 +905,49 @@ export default function Page() {
   function deleteProgressRow(ri: number) {
     const rowId = projectDetail?.progressRowIds?.[ri]
     if (!rowId || !window.confirm('確定刪除這一筆進度嗎？')) return
+    setProgEditDate(null)   // 索引會往前遞補，留著會指到別人
     setProjectDetail((pd: any) => ({ ...pd, progressRows: pd.progressRows.filter((_: any, i: number) => i !== ri), progressRowIds: pd.progressRowIds.filter((_: any, i: number) => i !== ri) }))
     fetch('/api/project-row', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rowId, pageId: selected?.id, kind: 'progress' }) })
       .then(() => fetchProjects())
   }
+
+  // 進度紀錄：整理成「最近的月份攤開、舊的收起來」，並替每一筆自動貼上類別與棟別。
+  // 分類是當場算的，所以之後不管從 App 回報、AI 助理寫入、還是有人直接在 Notion 打字，
+  // 標籤都會自己跟上，沒有需要另外維護的地方。
+  const progressView = useMemo(() => {
+    const rows = (projectDetail?.progressRows ?? []) as { date: string; desc: string }[]
+    const tagged = rows
+      .map((r, ri) => ({ ...r, ri, cat: catOf(r.desc), bldgs: buildingsOf(r.desc), mk: monthKey(r.date) }))
+      // 整列空白的不顯示——Notion 表格底下常留幾列空的，那不是進度
+      .filter(r => r.date.trim() || r.desc.trim())
+
+    // 篩選鈕上的數字要算「全部」而不是「篩完剩下的」，不然按一下數字就全變了
+    const catCount: Record<string, number> = {}
+    const bldgSet = new Set<string>()
+    tagged.forEach(r => {
+      catCount[r.cat] = (catCount[r.cat] ?? 0) + 1
+      r.bldgs.forEach(b => bldgSet.add(b))
+    })
+
+    const shown = tagged.filter(r =>
+      (!progCat || r.cat === progCat) && (!progBldg || r.bldgs.indexOf(progBldg) >= 0))
+
+    // 新的排前面：看進度是往回看，最近做了什麼才是重點
+    const byMonth = new Map<string, typeof shown>()
+    shown.slice().sort((a, b) => sortKey(b.date) - sortKey(a.date))
+      .forEach(r => {
+        const list = byMonth.get(r.mk)
+        if (list) list.push(r); else byMonth.set(r.mk, [r])
+      })
+
+    return {
+      total: tagged.length,
+      catCount,
+      buildings: Array.from(bldgSet).sort(),
+      months: Array.from(byMonth.entries()).map(([key, items]) => ({ key, items })),
+      filtered: !!(progCat || progBldg),
+    }
+  }, [projectDetail?.progressRows, progCat, progBldg])
 
   // 從「最新進度回報」移除某案件（重算其最新進度標記；沒有紀錄就清空）
   async function dismissProgress(p: Project) {
@@ -1409,6 +1473,27 @@ export default function Page() {
       if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
     } catch (e: any) {
       apply(!next)   // 失敗就連日期一起退回
+      setBuildErr(e.message)
+    }
+  }
+  // 箱體的三個欄位：改一個就存一個。跟打勾一樣先動畫面再送出，失敗才退回。
+  async function saveBox(row: BuildingRow, patch: Partial<BoxInfo>) {
+    const before = row.box
+    const apply = (b: BoxInfo) => setBuildRows(prev => prev.map(x => x.id === row.id ? { ...x, box: b } : x))
+    apply({ ...before, ...patch })
+    setBuildErr('')
+    try {
+      const body: any = { id: row.id }
+      if (patch.qty !== undefined) body.boxQty = patch.qty
+      if (patch.arrive !== undefined) body.boxArrive = patch.arrive
+      if (patch.produce !== undefined) body.boxProduce = patch.produce
+      const r = await fetch('/api/building-progress', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
+    } catch (e: any) {
+      apply(before)
       setBuildErr(e.message)
     }
   }
@@ -2738,7 +2823,7 @@ export default function Page() {
                 {/* 🏗️ 施工進度：一棟一列，五道工序各打一次勾 */}
                 <div className="glass-card p-4 mb-3">
                   <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
-                    <p className="text-xs font-medium text-gray-500">🏗️ 施工進度（點一下打勾）</p>
+                    <p className="text-xs font-medium text-gray-500">🏗️ 施工進度（門扇點一下打勾，箱體直接填）</p>
                     <button onClick={() => selected && addBuildingRow(selected.name)} disabled={buildAdding}
                       className="text-xs bg-white border border-indigo-300 text-indigo-700 rounded-lg px-2.5 py-1 font-medium hover:bg-indigo-50 disabled:opacity-40">
                       ＋ 新增棟別
@@ -2763,6 +2848,7 @@ export default function Page() {
                                 className="ml-auto text-gray-300 hover:text-red-500 px-1 leading-none opacity-40 group-hover:opacity-100">✕</button>
                             </div>
                             {/* 工序橫向排、會自動換行——窄螢幕不會被擠成直行 */}
+                            <p className="text-[11px] font-medium text-gray-400 mb-1">🚪 門扇</p>
                             <div className="flex flex-wrap gap-1.5">
                               {BUILD_STEPS.map(step => {
                                 const on = !!row.steps[step]
@@ -2786,6 +2872,35 @@ export default function Page() {
                                 )
                               })}
                             </div>
+                            {/* 📦 箱體：跟門扇同一棟，但記的是數量和兩個日期，不是打勾 */}
+                            <p className="text-[11px] font-medium text-gray-400 mt-2.5 mb-1">📦 箱體</p>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                              <label className="flex items-center gap-1.5">
+                                <span className="text-xs text-gray-500 shrink-0">進場</span>
+                                <input type="date" value={row.box?.arrive ?? ''}
+                                  onChange={e => saveBox(row, { arrive: e.target.value })}
+                                  className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-sm text-gray-700 focus:bg-white focus:border-indigo-300 focus:outline-none" />
+                                <input type="number" min={0} inputMode="numeric" placeholder="數量"
+                                  value={boxQtyDraft[row.id] ?? (row.box?.qty ?? '')}
+                                  onChange={e => setBoxQtyDraft(d => ({ ...d, [row.id]: e.target.value }))}
+                                  onBlur={() => {
+                                    const raw = boxQtyDraft[row.id]
+                                    if (raw === undefined) return
+                                    setBoxQtyDraft(d => { const n = { ...d }; delete n[row.id]; return n })
+                                    const next = raw.trim() === '' ? null : Math.round(Number(raw))
+                                    if (next !== null && !Number.isFinite(next)) return
+                                    if (next !== (row.box?.qty ?? null)) saveBox(row, { qty: next })
+                                  }}
+                                  className="w-16 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-sm text-gray-700 focus:bg-white focus:border-indigo-300 focus:outline-none" />
+                                <span className="text-xs text-gray-400 shrink-0">個</span>
+                              </label>
+                              <label className="flex items-center gap-1.5">
+                                <span className="text-xs text-gray-500 shrink-0">生產</span>
+                                <input type="date" value={row.box?.produce ?? ''}
+                                  onChange={e => saveBox(row, { produce: e.target.value })}
+                                  className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-sm text-gray-700 focus:bg-white focus:border-indigo-300 focus:outline-none" />
+                              </label>
+                            </div>
                           </div>
                         )
                       })}
@@ -2793,20 +2908,97 @@ export default function Page() {
                   )}
                 </div>
 
-                {(projectDetail.progressRows ?? []).length > 0 && (
+                {progressView.total > 0 && (
                   <div className="glass-card p-4">
-                    <p className="text-xs font-medium text-gray-500 mb-3">📑 進度紀錄（可直接修改／✕ 刪除；最新在最下）</p>
-                    <div className="space-y-1">
-                      {projectDetail.progressRows.map((r: any, ri: number) => (
-                        <div key={projectDetail.progressRowIds?.[ri] ?? ri} className="flex items-center gap-2 text-sm border-b border-gray-50 py-0.5 last:border-0 group">
-                          <input value={r.date} onChange={e => setProgressField(ri, 'date', e.target.value)} onBlur={() => saveProgressRow(ri)}
-                            className="shrink-0 w-24 border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 text-xs text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
-                          <input value={r.desc} onChange={e => setProgressField(ri, 'desc', e.target.value)} onBlur={() => saveProgressRow(ri)}
-                            className="flex-1 border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
-                          <button onClick={() => deleteProgressRow(ri)} title="刪除此筆" className="shrink-0 text-gray-300 hover:text-red-500 px-1 leading-none opacity-0 group-hover:opacity-100">✕</button>
-                        </div>
+                    <p className="text-xs font-medium text-gray-500 mb-3">
+                      📑 進度紀錄 · 共 {progressView.total} 筆（點月份展開／文字可直接改／✕ 刪除）
+                    </p>
+                    {/* 類別是從描述文字自動判斷的，不用另外填 */}
+                    <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                      <span className="text-xs text-gray-400 shrink-0">類別</span>
+                      <button onClick={() => setProgCat('')}
+                        className={`text-xs rounded-lg border px-2 py-0.5 font-medium ${progCat === '' ? 'bg-gray-800 border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'}`}>
+                        全部 {progressView.total}
+                      </button>
+                      {CAT_ORDER.filter(c => progressView.catCount[c]).map(c => (
+                        <button key={c} onClick={() => setProgCat(progCat === c ? '' : c)}
+                          className={`text-xs rounded-lg border px-2 py-0.5 font-medium ${progCat === c ? CAT_STYLE[c] + ' ring-2 ring-indigo-100' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'}`}>
+                          {c} {progressView.catCount[c]}
+                        </button>
                       ))}
                     </div>
+                    {progressView.buildings.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                        <span className="text-xs text-gray-400 shrink-0">棟別</span>
+                        {progressView.buildings.map(b => (
+                          <button key={b} onClick={() => setProgBldg(progBldg === b ? '' : b)}
+                            className={`text-xs rounded-lg border px-2 py-0.5 font-medium ${progBldg === b ? 'bg-indigo-50 border-indigo-300 text-indigo-700 ring-2 ring-indigo-100' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'}`}>
+                            {b}棟
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {progressView.months.length === 0 ? (
+                      <p className="text-sm text-gray-400">這個條件底下沒有紀錄。</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {progressView.months.map((mo, mi) => {
+                          // 預設只攤開最新的一個月；篩選中就全部攤開，不然要一個月一個月點。
+                          // 使用者自己點過的以他為準——不然篩選時按收合會沒反應。
+                          const open = progOpen[mo.key] ?? (progressView.filtered || mi === 0)
+                          return (
+                            <div key={mo.key || 'unknown'}>
+                              <button onClick={() => setProgOpen(s => ({ ...s, [mo.key]: !open }))}
+                                className={`w-full flex items-center gap-2 text-left rounded-xl px-2.5 py-1.5 ${open ? '' : 'border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30'}`}>
+                                <span className={`text-gray-400 text-xs leading-none transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+                                <span className={`font-medium ${open ? 'text-gray-900' : 'text-gray-600'}`}>{monthLabel(mo.key)}</span>
+                                <span className="text-xs text-gray-400">{mo.items.length} 筆</span>
+                                {!open && (
+                                  <span className="ml-auto text-xs text-gray-400 truncate max-w-[45%]">
+                                    {Array.from(new Set(mo.items.map(r => r.cat))).join('、')}
+                                  </span>
+                                )}
+                              </button>
+                              {open && (
+                                <div className="mt-1 rounded-xl border border-gray-200 bg-white divide-y divide-gray-100">
+                                  {mo.items.map(r => (
+                                    <div key={projectDetail.progressRowIds?.[r.ri] ?? r.ri} className="flex items-start gap-2 px-2 py-1.5 group">
+                                      {progEditDate === r.ri ? (
+                                        <input value={r.date} autoFocus
+                                          onChange={e => setProgressField(r.ri, 'date', e.target.value)}
+                                          onBlur={() => { setProgEditDate(null); saveProgressRow(r.ri) }}
+                                          className="shrink-0 w-24 mt-0.5 border border-indigo-400 rounded px-1 py-0.5 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                                      ) : (
+                                        <button onClick={() => setProgEditDate(r.ri)} title={r.date || '點一下填日期'}
+                                          className="shrink-0 w-11 mt-1 text-xs text-gray-400 text-left hover:text-indigo-600">
+                                          {shortDate(r.date)}
+                                        </button>
+                                      )}
+                                      <span className={`shrink-0 mt-0.5 text-[11px] rounded border px-1.5 py-0.5 font-medium ${CAT_STYLE[r.cat]}`}>{r.cat}</span>
+                                      {r.bldgs.length > 0 && (
+                                        <span className="shrink-0 mt-0.5 text-[11px] rounded border border-indigo-200 bg-indigo-50 text-indigo-700 px-1.5 py-0.5 font-medium">
+                                          {r.bldgs.join('‧')}棟
+                                        </span>
+                                      )}
+                                      {/* 隱形的同步文字撐開格子高度，textarea 疊在上面，長內容就自己往下長 */}
+                                      <div className="flex-1 grid min-w-0 text-sm">
+                                        <span aria-hidden className="col-start-1 row-start-1 invisible whitespace-pre-wrap break-words border border-transparent px-1.5 py-0.5 leading-relaxed">{r.desc + ' '}</span>
+                                        <textarea value={r.desc} rows={1}
+                                          onChange={e => setProgressField(r.ri, 'desc', e.target.value)}
+                                          onBlur={() => saveProgressRow(r.ri)}
+                                          className="col-start-1 row-start-1 resize-none overflow-hidden bg-transparent whitespace-pre-wrap break-words border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-0.5 leading-relaxed text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                                      </div>
+                                      <button onClick={() => deleteProgressRow(r.ri)} title="刪除此筆"
+                                        className="shrink-0 mt-0.5 text-gray-300 hover:text-red-500 px-1 leading-none opacity-0 group-hover:opacity-100">✕</button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
                 {(projectDetail.shippingRows ?? []).length > 0 && (

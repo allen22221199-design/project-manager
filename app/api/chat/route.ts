@@ -303,7 +303,7 @@ export async function POST(req: NextRequest) {
     try {
       const q = retrievalQuery
       const asksBuild = BUILD_STEPS.some(k => q.includes(k))
-        || /棟|施工進度|做到哪|完成了嗎|巡查|進度到/.test(q)
+        || /棟|施工進度|做到哪|完成了嗎|巡查|進度到|箱體|進場|生產/.test(q)
       if (asksBuild) {
         const rows = await getBuildingProgress()
         if (rows.length > 0) {
@@ -312,12 +312,22 @@ export async function POST(req: NextRequest) {
             const done = BUILD_STEPS.filter(k => r.steps[k])
               .map(k => r.stepDates?.[k] ? `${k}(${r.stepDates[k]})` : k)
             const todo = BUILD_STEPS.filter(k => !r.steps[k])
-            return `・${r.site} ${r.building}：已完成 ${done.length ? done.join('、') : '（無）'}`
-              + `；未完成 ${todo.length ? todo.join('、') : '（無，全部做完）'}`
+            // 箱體是另一種東西，沒填就別提，免得 AI 拿空值去編
+            const b = r.box ?? { qty: null, arrive: '', produce: '' }
+            const box: string[] = []
+            if (b.arrive || b.qty !== null) {
+              box.push('進場 ' + (b.arrive || '日期未填') + (b.qty !== null ? ` ${b.qty} 個` : ''))
+            }
+            if (b.produce) box.push('生產 ' + b.produce)
+            return `・${r.site} ${r.building}：門扇已完成 ${done.length ? done.join('、') : '（無）'}`
+              + `；門扇未完成 ${todo.length ? todo.join('、') : '（無，全部做完）'}`
+              + `；箱體 ${box.length ? box.join('、') : '（尚未填寫）'}`
           })
           knowledge = (knowledge ? knowledge + '\n\n---\n\n' : '')
-            + '以下是各案場「施工進度」的最新狀態（門扇五道工序，打勾＝已完成）。'
-            + '回答進度相關問題時以這份為準，這是現場人員自己勾的：\n\n' + lines.join('\n')
+            + '以下是各案場「施工進度」的最新狀態。一棟底下分兩種：'
+            + '「門扇」是五道工序，打勾＝已完成，括號裡是完成日期；'
+            + '「箱體」記的是進場日期＋數量、生產日期，沒填就是還沒有資料（不要自己推測）。'
+            + '回答進度相關問題時以這份為準，這是現場人員自己填的：\n\n' + lines.join('\n')
         }
       }
     } catch { /* 施工進度讀取失敗不影響對話 */ }

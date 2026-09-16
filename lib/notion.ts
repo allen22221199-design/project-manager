@@ -1357,6 +1357,14 @@ export async function getMeetingHistory(id: string): Promise<string[]> {
 const BUILDING_DB_ID = 'd3aca70ec9904f1db6dd6a3ad17d3fe1'
 export const BUILD_STEPS = ['門片', '門框', '裝鎖', '貼邊角料', '自主巡查'] as const
 export type BuildStep = typeof BUILD_STEPS[number]
+// 箱體跟門扇是同一棟底下的兩種東西，但記法不一樣：
+// 門扇是「做完打勾」，箱體是「幾個、什麼時候進場、什麼時候生產」——沒辦法用打勾表示，
+// 所以另外三個欄位，數量空著就是還沒進場。
+export type BoxInfo = {
+  qty: number | null    // 進場數量；null = 還沒填
+  arrive: string        // 進場日期 YYYY-MM-DD
+  produce: string       // 生產日期 YYYY-MM-DD
+}
 export type BuildingRow = {
   id: string
   site: string
@@ -1364,6 +1372,7 @@ export type BuildingRow = {
   note: string
   steps: Record<string, boolean>
   stepDates: Record<string, string>   // 打勾當天的日期，取消打勾就清掉
+  box: BoxInfo
   updatedAt: string
 }
 
@@ -1381,6 +1390,11 @@ function toBuildingRow(p: any): BuildingRow {
     note: mText(p.properties, '備註'),
     steps,
     stepDates,
+    box: {
+      qty: typeof p.properties['箱體數量']?.number === 'number' ? p.properties['箱體數量'].number : null,
+      arrive: p.properties['箱體進場日期']?.date?.start ?? '',
+      produce: p.properties['箱體生產日期']?.date?.start ?? '',
+    },
     updatedAt: p.properties['更新時間']?.last_edited_time ?? '',
   }
 }
@@ -1410,7 +1424,10 @@ export async function addBuilding(site: string, building: string) {
   return { id: page.id }
 }
 
-export async function updateBuilding(id: string, f: { step?: string; done?: boolean; note?: string; building?: string; today?: string }) {
+export async function updateBuilding(id: string, f: {
+  step?: string; done?: boolean; note?: string; building?: string; today?: string
+  boxQty?: number | null; boxArrive?: string; boxProduce?: string
+}) {
   const properties: any = {}
   if (f.step && BUILD_STEPS.indexOf(f.step as BuildStep) >= 0) {
     const done = f.done === true
@@ -1418,6 +1435,10 @@ export async function updateBuilding(id: string, f: { step?: string; done?: bool
     // 打勾就記下當天；取消打勾連日期一起清掉，不然會留下一個沒有意義的日期
     properties[`${f.step}日期`] = done && f.today ? { date: { start: f.today } } : { date: null }
   }
+  // 箱體：三個欄位各自獨立，改哪個送哪個。清空（null／空字串）就把欄位清掉。
+  if (f.boxQty !== undefined) properties['箱體數量'] = { number: f.boxQty }
+  if (f.boxArrive !== undefined) properties['箱體進場日期'] = f.boxArrive ? { date: { start: f.boxArrive } } : { date: null }
+  if (f.boxProduce !== undefined) properties['箱體生產日期'] = f.boxProduce ? { date: { start: f.boxProduce } } : { date: null }
   if (f.note !== undefined) properties['備註'] = { rich_text: toRichText(f.note) }
   if (f.building !== undefined) properties['棟別'] = { rich_text: toRichText(f.building) }
   if (Object.keys(properties).length === 0) return

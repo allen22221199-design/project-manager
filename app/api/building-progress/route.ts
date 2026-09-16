@@ -34,7 +34,17 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH 打勾／取消打勾、改備註、改棟別名稱
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+// 日期欄位：空字串＝清掉，格式不對就當作沒送（不要把壞資料寫進 Notion）
+function asDate(v: any): string | undefined {
+  if (v === undefined) return undefined
+  const s = String(v).trim()
+  if (!s) return ''
+  return DATE_RE.test(s) ? s : undefined
+}
+
+// PATCH 打勾／取消打勾、改備註、改棟別名稱、填箱體數量與日期
 export async function PATCH(req: NextRequest) {
   try {
     const b = await req.json()
@@ -43,12 +53,25 @@ export async function PATCH(req: NextRequest) {
     if (b.step !== undefined && BUILD_STEPS.indexOf(b.step) < 0) {
       return NextResponse.json({ error: '不認得這個工序' }, { status: 400 })
     }
+    // 數量：空字串／null 代表清掉；負數和非數字擋掉
+    let boxQty: number | null | undefined
+    if (b.boxQty !== undefined) {
+      if (b.boxQty === null || String(b.boxQty).trim() === '') boxQty = null
+      else {
+        const n = Number(b.boxQty)
+        if (!Number.isFinite(n) || n < 0) return NextResponse.json({ error: '箱體數量要填數字' }, { status: 400 })
+        boxQty = Math.round(n)
+      }
+    }
     await updateBuilding(id, {
       step: b.step,
       done: b.done,
       today: new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10),   // 台北時區的今天
       note: b.note === undefined ? undefined : String(b.note),
       building: b.building === undefined ? undefined : String(b.building).trim(),
+      boxQty,
+      boxArrive: asDate(b.boxArrive),
+      boxProduce: asDate(b.boxProduce),
     })
     return NextResponse.json({ ok: true })
   } catch (e: any) {
