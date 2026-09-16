@@ -4,7 +4,7 @@ import Tour, { type TourStep } from './tour'
 import RichText, { MediaGroup } from './richtext'
 import MeetingFlow from '@/components/MeetingFlow'
 import { catOf, buildingsOf, monthKey, monthLabel, shortDate, sortKey } from '@/lib/progressTags'
-import { missingOf } from '@/lib/projectChecks'
+import { missingOf, hasPhone } from '@/lib/projectChecks'
 
 // 進度紀錄的類別顏色。Tailwind 是編譯期掃字串的，不能用 `bg-${x}-50` 這種拼法，
 // 所以整串 class 要原封不動寫在這裡。
@@ -262,6 +262,9 @@ export default function Page() {
   const [itemCounts, setItemCounts] = useState<Record<string, number | null>>({})
   const [scanState, setScanState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [onlyIncomplete, setOnlyIncomplete] = useState(false)
+  // 案件抬頭（名稱／聯絡人／地址）打字中的草稿，離開欄位才寫回 Notion
+  const [projEdit, setProjEdit] = useState<Record<string, string>>({})
+  const [projErr, setProjErr] = useState('')
   // 進度紀錄的篩選與展開狀態
   const [progCat, setProgCat] = useState('')          // 類別篩選，空字串＝全部
   const [progBldg, setProgBldg] = useState('')        // 棟別篩選
@@ -897,8 +900,9 @@ export default function Page() {
     setBuildErr('')
     // 換案件就把進度紀錄的篩選和展開狀態歸零，不然會帶著上一個案件的條件
     setProgCat(''); setProgBldg(''); setProgOpen({}); setProgEditDate(null)
-    // 進了案件就可能補資料，回到清單時一定要重掃（不受 20 秒的節流擋住）
+    // 進了案件就可能補資料，回到清單時一定要重掃（不受節流擋住）
     lastScanRef.current = 0
+    setProjEdit({}); setProjErr('')   // 別把上一個案件打到一半的字帶過來
     fetchBuildings(p.name)   // 施工進度另一支 API，跟明細平行抓，不要互相等
     try {
       const r = await fetch('/api/search', {
@@ -1015,6 +1019,43 @@ export default function Page() {
         body: JSON.stringify({ id: selected.id, status }),
       })
     } finally { fetchProjects() }
+  }
+
+  // 案件抬頭的三個欄位。跟其他地方一樣：先動畫面、再寫 Notion、失敗退回。
+  // 改名這件事比較重：施工進度是靠案場「名稱」對回案件的，後端會連那些棟別一起改，
+  // 所以改完要用新名字重新抓一次，不然畫面上的棟別會空掉。
+  async function saveProjectField(field: 'name' | 'contact' | 'address', raw: string) {
+    if (!selected) return
+    const id = selected.id
+    const v = raw.trim()
+    const before = String((selected as any)[field] ?? '')
+    setProjEdit(d => { const n = { ...d }; delete n[field]; return n })
+    if (v === before) { setProjErr(''); return }
+    if (field === 'name' && !v) { setProjErr('專案名稱不能空白'); return }
+
+    const write = (val: string) => {
+      setSelected(s => (s && s.id === id ? { ...s, [field]: val } : s))
+      setProjects(prev => prev.map(p => (p.id === id ? { ...p, [field]: val } : p)))
+    }
+    write(v)
+    setProjErr('')
+    try {
+      const r = await fetch('/api/projects', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, [field]: v }),
+      })
+      const d = await readJson(r)
+      if (!r.ok) throw new Error(d.error ?? '存檔失敗')
+      if (field === 'name') {
+        if (d.movedBuildings) setProjErr(`已改名，順便把 ${d.movedBuildings} 筆施工進度的案場名一起換掉了`)
+        await fetchBuildings(v)
+      }
+      // 補完聯絡人後「資料不全」要跟著更新，不要等節流時間到
+      if (field === 'contact') lastScanRef.current = 0
+    } catch (e: any) {
+      write(before)
+      setProjErr(e.message)
+    }
   }
 
   // 刪除（封存）專案
@@ -2857,9 +2898,40 @@ export default function Page() {
 
             <div className="glass-card p-4 mb-4">
               <div className="flex items-start gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900">{selected.name}</p>
-                  <p className="text-sm text-gray-500 mt-0.5">{selected.contact}{selected.address ? ` · ${selected.address}` : ''}</p>
+                {/* 名稱／聯絡人／地址都可以直接改：看到「缺電話」就在這裡補，不用再開 Notion。
+                    平常長得像純文字，滑過去或點進去才有框。 */}
+                <div className="flex-1 min-w-0 space-y-1">
+                  <input value={projEdit.name ?? selected.name}
+                    onChange={e => setProjEdit(d => ({ ...d, name: e.target.value }))}
+                    onBlur={e => saveProjectField('name', e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                    placeholder="專案名稱"
+                    className="w-full font-medium text-gray-900 bg-transparent border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 -ml-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs text-gray-400 shrink-0 w-11">聯絡人</span>
+                    <input value={projEdit.contact ?? selected.contact ?? ''}
+                      onChange={e => setProjEdit(d => ({ ...d, contact: e.target.value }))}
+                      onBlur={e => saveProjectField('contact', e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                      placeholder="姓名＋電話，例：邱朝溫 副理 0932929777"
+                      className="flex-1 min-w-[14rem] text-sm text-gray-600 bg-transparent border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                    {/* 沒有號碼就等於找不到人，直接在欄位旁邊講清楚 */}
+                    {!hasPhone(projEdit.contact ?? selected.contact ?? '') && (
+                      <span className="shrink-0 text-[11px] rounded border border-amber-300 bg-amber-50 text-amber-800 px-1.5 py-0.5 font-medium">
+                        ⚠ {(projEdit.contact ?? selected.contact ?? '').trim() ? '缺電話' : '缺聯絡人'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-gray-400 shrink-0 w-11">地址</span>
+                    <input value={projEdit.address ?? selected.address ?? ''}
+                      onChange={e => setProjEdit(d => ({ ...d, address: e.target.value }))}
+                      onBlur={e => saveProjectField('address', e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                      placeholder="工地地址"
+                      className="flex-1 min-w-0 text-sm text-gray-600 bg-transparent border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                  </div>
+                  {projErr && <p className="text-xs text-amber-700 px-1.5">{projErr}</p>}
                 </div>
                 <button onClick={removeProject} title="刪除專案"
                   className="shrink-0 text-xs text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 rounded-lg px-2 py-1">🗑 刪除</button>

@@ -418,6 +418,36 @@ export async function updateProjectSchedule(pageId: string, schedule: string) {
   await updateProjectProps(pageId, { 排程: { rich_text: toRichText(schedule) } })
 }
 
+// 案件抬頭的三個欄位：名稱、聯絡人、地址。只送有帶的欄位，沒帶的不動。
+export async function updateProjectBasics(
+  pageId: string, f: { name?: string; contact?: string; address?: string },
+) {
+  const properties: any = {}
+  if (f.name !== undefined) properties['專案名稱'] = { title: toRichText(f.name) }
+  if (f.contact !== undefined) properties['聯絡人'] = { rich_text: toRichText(f.contact) }
+  if (f.address !== undefined) properties['地址'] = { rich_text: toRichText(f.address) }
+  if (Object.keys(properties).length === 0) return
+  await updateProjectProps(pageId, properties)
+}
+
+// 施工進度是用「案場名稱」這個文字欄位對回案件的，不是用 page id。
+// 所以案件一改名，那些棟別就會變成孤兒——查不到、AI 也答不出來。
+// 改名時要順手把它們的案場名一起換掉。
+export async function renameBuildingSite(oldName: string, newName: string) {
+  if (!oldName || !newName || oldName === newName) return 0
+  const rows = await getBuildingProgress(oldName)
+  for (const r of rows) {
+    await notion.pages.update({
+      page_id: r.id,
+      properties: {
+        案場: { rich_text: toRichText(newName) },
+        項目: { title: toRichText(`${newName} ${r.building}`) },
+      },
+    })
+  }
+  return rows.length
+}
+
 export async function deleteProject(pageId: string) {
   await notion.pages.update({ page_id: pageId, archived: true })
 }
