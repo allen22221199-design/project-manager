@@ -637,8 +637,9 @@ export default function Page() {
   const lastScanRef = useRef(0)
   async function refreshCompleteness(force = false) {
     if (scanningRef.current) return
-    // 在分頁之間來回切不必一直重掃；去 Notion 改完資料再回來一定超過這個時間
-    if (!force && Date.now() - lastScanRef.current < 20_000) return
+    // 在分頁之間來回切不必一直重掃；去 Notion 改完資料再回來一定超過這個時間。
+    // 這個秒數要比整趟掃描本身長，否則一掃完馬上又符合條件，等於一直在掃。
+    if (!force && Date.now() - lastScanRef.current < 30_000) return
     scanningRef.current = true
     setScanState('loading')
     try {

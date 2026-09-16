@@ -14,7 +14,10 @@ export const maxDuration = 300
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-const CONCURRENCY = 4
+// 78 個案件 × 每個 2~3 次 Notion 呼叫 ≈ 180 次。同時跑 4 個要 25 秒，
+// 慢到使用者以為標記壞了。拉到 12 個；真的被擋（429）下面有退讓重試，
+// 重試還是失敗就回 null，那個案件寧可不標也不要誤標成「沒填」。
+const CONCURRENCY = 12
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)) }
 
