@@ -1033,9 +1033,13 @@ export default function Page() {
     if (v === before) { setProjErr(''); return }
     if (field === 'name' && !v) { setProjErr('專案名稱不能空白'); return }
 
+    // 同一個案件的名稱／聯絡人在好幾份 state 裡各有一份，彼此不會互相同步。
+    // 只改 selected 的話，退回清單或切到任務查詢會看到舊資料，所以四份一起改。
     const write = (val: string) => {
       setSelected(s => (s && s.id === id ? { ...s, [field]: val } : s))
       setProjects(prev => prev.map(p => (p.id === id ? { ...p, [field]: val } : p)))
+      setSearchProjectResults(prev => prev.map(p => (p.id === id ? { ...p, [field]: val } : p)))
+      setSearchDetail((d: any) => (d && d.id === id ? { ...d, [field]: val } : d))
     }
     write(v)
     setProjErr('')
