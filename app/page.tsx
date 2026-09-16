@@ -2826,6 +2826,9 @@ export default function Page() {
                     <div key={p.id}
                       className="glass-card p-4 hover:border-gray-400 transition-colors flex flex-wrap items-center gap-x-3 gap-y-2 md:flex-nowrap"
                       style={p.color ? { borderLeftWidth: 4, borderLeftColor: p.color } : {}}>
+                      {/* 圓點＋文字綁成一組，手機上整組佔滿第一行，負責人和狀態才會被擠到第二行。
+                          （只靠 flex-wrap 不會換行——中間那塊是 flex-1 min-w-0，會一直縮而不是換行） */}
+                      <div className="flex items-center gap-3 w-full min-w-0 md:w-auto md:flex-1">
                       {/* 顏色圓點 + picker */}
                       <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
                         <button
@@ -2864,6 +2867,7 @@ export default function Page() {
                           </p>
                         </div>
                       </div>
+                      </div>
                       {/* 負責人下拉（點擊不觸發進入案件） */}
                       <select
                         value={p.assignee ?? ''}
@@ -2886,7 +2890,7 @@ export default function Page() {
                             alert(`負責人沒有存成功：${err?.message ?? '寫入失敗'}`)
                           }
                         }}
-                        className={`shrink-0 text-xs border rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400 cursor-pointer ${p.assignee ? 'border-indigo-200 text-indigo-700 font-medium' : 'border-gray-200 text-gray-400'}`}>
+                        className={`flex-1 min-w-0 md:flex-none md:shrink-0 text-xs border rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400 cursor-pointer ${p.assignee ? 'border-indigo-200 text-indigo-700 font-medium' : 'border-gray-200 text-gray-400'}`}>
                         <option value="">負責人</option>
                         {assigneeOptions(p.assignee).map(a => <option key={a} value={a}>{a}</option>)}
                       </select>
