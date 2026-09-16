@@ -81,6 +81,15 @@ body {
   .orb3 { width: 260px; height: 260px; bottom: 90px; left: 8%; }
   .orb4 { width: 240px; height: 240px; bottom: -70px; right: -70px; }
   .glass-card { backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+
+  /* iPhone 的 Safari 只要看到字級小於 16px 的輸入欄位，一點進去就會把整頁放大，
+     而且不會自己縮回來——你得手動雙指縮小才能繼續用。這是手機上最惱人的一個問題。
+     手機一律把輸入元件拉到 16px（桌機不受影響，維持原本的小字）。 */
+  input, textarea, select { font-size: 16px !important; }
+
+  /* 手指不像滑鼠那麼準。把可點的東西撐到 36px 以上，
+     但排除純圖示的小按鈕（那些用 leading-none，撐高會破版）。 */
+  select, input[type="date"], input[type="number"] { min-height: 38px; }
 }
 
 /* 主色漸層背景（按鈕 / logo）— 用 !important 覆蓋原 Tailwind 底色 */

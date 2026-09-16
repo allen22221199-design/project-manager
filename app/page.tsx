@@ -2618,14 +2618,16 @@ export default function Page() {
 
                 return (
                   <div className="order-first glass-card p-4" data-tour="schedule">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
+                    {/* 手機：月份切換自己一行。跟說明文字並排的話，
+                        說明會被壓成五行的窄長條，完全讀不下去。 */}
+                    <div className="flex flex-col gap-2 mb-3 md:flex-row md:items-center md:justify-between md:gap-3">
+                      <div className="min-w-0 md:order-1">
                         <p className="text-base font-semibold text-gray-800">流程排程表</p>
                         <p className={`text-sm mt-0.5 ${ganttActiveProject ? 'text-gray-400' : 'text-amber-600 font-medium'}`}>
                           {ganttActiveProject ? '在日期格子上「點一下」標記單格，或「按住拖過去」標記多天；點已標記的同案件格子可清除' : '① 先點一下下面的「案件」色塊　②再到日期格子上「點一下」或「按住拖曳」即可標記'}
                         </p>
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 shrink-0 md:order-2">
                         <button onClick={() => setGanttMonth(prevMon())}
                           className="w-9 h-9 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 text-base flex items-center justify-center">‹</button>
                         <span className="text-base font-semibold text-gray-700 w-24 text-center">{gy}年{gm}月</span>
@@ -2817,9 +2819,12 @@ export default function Page() {
                       {onlyIncomplete ? '這個分類的資料都齊全 👍' : searchText ? `找不到「${searchText}」相關案件` : '此分類無案件'}
                     </p>
                   )}
+                  {/* 手機：名稱獨佔第一行，負責人和狀態自動換到第二行。擠在同一行的話
+                      下拉選單會吃掉一半寬度，案名全被截成「新家坡 -桃大真…」。
+                      md 以上 flex-nowrap，維持原本的一整行。 */}
                   {shown.map(({ p, miss }) => (
                     <div key={p.id}
-                      className="glass-card p-4 hover:border-gray-400 transition-colors flex items-center gap-3"
+                      className="glass-card p-4 hover:border-gray-400 transition-colors flex flex-wrap items-center gap-x-3 gap-y-2 md:flex-nowrap"
                       style={p.color ? { borderLeftWidth: 4, borderLeftColor: p.color } : {}}>
                       {/* 顏色圓點 + picker */}
                       <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
@@ -2846,14 +2851,15 @@ export default function Page() {
                       </div>
                       <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { setColorPickerOpenId(null); selectProject(p) }}>
                         <p className="font-medium text-gray-900 truncate">{p.name}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5 min-w-0">
                           {/* 沒填什麼就直接寫在名字底下，不用點進去才知道 */}
                           {miss.length > 0 && (
                             <span title="點進案件補填" className="shrink-0 text-[11px] rounded border border-amber-300 bg-amber-50 text-amber-800 px-1.5 py-0.5 font-medium">
                               ⚠ 缺{miss.join('、')}
                             </span>
                           )}
-                          <p className="text-sm text-gray-500 truncate">
+                          {/* 手機上聯絡人自己佔一行——跟警告標籤擠在一起只剩「楊雅惠 …」 */}
+                          <p className="text-sm text-gray-500 truncate w-full min-w-0 md:w-auto md:flex-1">
                             {p.contact || <span className="text-amber-700/70">未填聯絡人</span>}{p.address ? ` · ${p.address}` : ''}
                           </p>
                         </div>
@@ -2884,7 +2890,9 @@ export default function Page() {
                         <option value="">負責人</option>
                         {assigneeOptions(p.assignee).map(a => <option key={a} value={a}>{a}</option>)}
                       </select>
-                      <span onClick={() => selectProject(p)} className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 cursor-pointer ${STATUS_COLORS[p.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                      {/* 手機換行後這顆會跟下拉選單同一行，ml-auto 把它推到右邊；
+                          桌機不換行、中間那塊是 flex-1，沒有剩餘空間，所以 ml-auto 不影響 */}
+                      <span onClick={() => selectProject(p)} className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ml-auto cursor-pointer ${STATUS_COLORS[p.status] ?? 'bg-gray-100 text-gray-600'}`}>
                         {p.status}
                       </span>
                     </div>
@@ -2911,47 +2919,52 @@ export default function Page() {
                     onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                     placeholder="專案名稱"
                     className="w-full font-medium text-gray-900 bg-transparent border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 -ml-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-xs text-gray-400 shrink-0 w-11">聯絡人</span>
+                  {/* 手機：標籤放上面、欄位自己一行。原本標籤和欄位同一行，
+                      375px 下欄位被擠到第二行、警告標籤再掉到第三行，一個欄位吃掉三行。 */}
+                  <div className="flex flex-col md:flex-row md:items-center gap-x-1.5 gap-y-0.5">
+                    <span className="text-xs text-gray-400 shrink-0 md:w-11">聯絡人</span>
                     <input value={projEdit.contact ?? selected.contact ?? ''}
                       onChange={e => setProjEdit(d => ({ ...d, contact: e.target.value }))}
                       onBlur={e => saveProjectField('contact', e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                      placeholder="姓名＋電話，例：邱朝溫 副理 0932929777"
-                      className="flex-1 min-w-[14rem] text-sm text-gray-600 bg-transparent border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                      placeholder="姓名＋電話"
+                      className="w-full md:flex-1 md:min-w-[14rem] text-sm text-gray-600 bg-transparent border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
                     {/* 沒有號碼就等於找不到人，直接在欄位旁邊講清楚 */}
                     {!hasPhone(projEdit.contact ?? selected.contact ?? '') && (
-                      <span className="shrink-0 text-[11px] rounded border border-amber-300 bg-amber-50 text-amber-800 px-1.5 py-0.5 font-medium">
+                      <span className="self-start shrink-0 text-[11px] rounded border border-amber-300 bg-amber-50 text-amber-800 px-1.5 py-0.5 font-medium">
                         ⚠ {(projEdit.contact ?? selected.contact ?? '').trim() ? '缺電話' : '缺聯絡人'}
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-gray-400 shrink-0 w-11">地址</span>
+                  <div className="flex flex-col md:flex-row md:items-center gap-x-1.5 gap-y-0.5">
+                    <span className="text-xs text-gray-400 shrink-0 md:w-11">地址</span>
                     <input value={projEdit.address ?? selected.address ?? ''}
                       onChange={e => setProjEdit(d => ({ ...d, address: e.target.value }))}
                       onBlur={e => saveProjectField('address', e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                       placeholder="工地地址"
-                      className="flex-1 min-w-0 text-sm text-gray-600 bg-transparent border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                      className="w-full md:flex-1 min-w-0 text-sm text-gray-600 bg-transparent border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
                   </div>
                   {projErr && <p className="text-xs text-amber-700 px-1.5">{projErr}</p>}
                 </div>
                 <button onClick={removeProject} title="刪除專案"
                   className="shrink-0 text-xs text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 rounded-lg px-2 py-1">🗑 刪除</button>
               </div>
-              <div className="flex items-center gap-2 mt-3 flex-wrap">
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[selected.status] ?? 'bg-gray-100 text-gray-600'}`}>
+              {/* 手機：兩個下拉各自一格、標籤在上面。原本全部擠一行，
+                  「負責人：」留在上一行、選單掉到下一行，看起來像壞掉。 */}
+              <div className="grid grid-cols-2 gap-2 mt-3 md:flex md:items-center md:flex-wrap">
+                <span className={`col-span-2 justify-self-start text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[selected.status] ?? 'bg-gray-100 text-gray-600'}`}>
                   {selected.status}
                 </span>
-                <span className="text-xs text-gray-400">改狀態：</span>
+                <span className="text-xs text-gray-400 self-end md:self-auto">改狀態：</span>
+                <span className="text-xs text-gray-400 self-end md:hidden">負責人：</span>
                 <select value={selected.status} onChange={e => changeProjectStatus(e.target.value)}
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400">
+                  className="w-full md:w-auto text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400">
                   {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
-                <span className="text-xs text-gray-400 ml-2">負責人：</span>
+                <span className="hidden md:inline text-xs text-gray-400 ml-2">負責人：</span>
                 <select value={selected.assignee ?? ''} onChange={e => changeProjectAssignee(e.target.value)}
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400">
+                  className="w-full md:w-auto text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-indigo-400">
                   <option value="">（未設定）</option>
                   {assigneeOptions(selected.assignee).map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
