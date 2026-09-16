@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getActiveProjects, createProject, updateProjectStatus, updateProjectAssignee, updateProjectColor, updateProjectGantt, updateProjectSchedule, recomputeLatestProgress, deleteProject } from '@/lib/notion'
 
+// 案件清單（含聯絡人）也不能被快取，否則剛在 Notion 改完的資料看不到
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET() {
   try {
     const projects = await getActiveProjects()

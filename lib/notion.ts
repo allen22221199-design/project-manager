@@ -1436,6 +1436,7 @@ export type BuildingRow = {
   note: string
   steps: Record<string, boolean>
   stepDates: Record<string, string>   // 打勾當天的日期，取消打勾就清掉
+  hasBox: boolean                     // 這一棟有沒有箱體；沒有就整區不顯示
   box: BoxInfo
   updatedAt: string
 }
@@ -1454,6 +1455,7 @@ function toBuildingRow(p: any): BuildingRow {
     note: mText(p.properties, '備註'),
     steps,
     stepDates,
+    hasBox: p.properties['有箱體']?.checkbox === true,
     box: {
       qty: typeof p.properties['箱體數量']?.number === 'number' ? p.properties['箱體數量'].number : null,
       arrive: p.properties['箱體進場日期']?.date?.start ?? '',
@@ -1490,9 +1492,19 @@ export async function addBuilding(site: string, building: string) {
 
 export async function updateBuilding(id: string, f: {
   step?: string; done?: boolean; note?: string; building?: string; today?: string
-  boxQty?: number | null; boxArrive?: string; boxProduce?: string
+  boxQty?: number | null; boxArrive?: string; boxProduce?: string; hasBox?: boolean
 }) {
   const properties: any = {}
+  // 關掉箱體＝這一棟根本沒有箱體，連帶把三個欄位清乾淨。
+  // 留著舊數字的話，之後又打開會看到不知道哪來的資料。
+  if (f.hasBox !== undefined) {
+    properties['有箱體'] = { checkbox: f.hasBox }
+    if (!f.hasBox) {
+      properties['箱體數量'] = { number: null }
+      properties['箱體進場日期'] = { date: null }
+      properties['箱體生產日期'] = { date: null }
+    }
+  }
   if (f.step && BUILD_STEPS.indexOf(f.step as BuildStep) >= 0) {
     const done = f.done === true
     properties[f.step] = { checkbox: done }

@@ -8,6 +8,11 @@ import { getActiveProjects, countProjectItems } from '@/lib/notion'
 // 乘下去就是兩百多次，Notion 每秒只讓過三次左右，所以限制同時只跑四個、
 // 撞到 429 就退一步再試，整趟大約一分鐘。前端是背景呼叫，不擋畫面。
 export const maxDuration = 300
+// 這支一定要每次真的重跑。沒有這一行的話 Next/Vercel 會把它當成靜態內容快取起來
+// （實測回來是 X-Vercel-Cache: HIT、Age: 365），於是你在 Notion 補好或刪掉資料，
+// 畫面上的「資料不全」還是舊的——整個標記就失去意義了。
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 const CONCURRENCY = 4
 

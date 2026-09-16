@@ -312,7 +312,8 @@ export async function POST(req: NextRequest) {
             const done = BUILD_STEPS.filter(k => r.steps[k])
               .map(k => r.stepDates?.[k] ? `${k}(${r.stepDates[k]})` : k)
             const todo = BUILD_STEPS.filter(k => !r.steps[k])
-            // 箱體是另一種東西，沒填就別提，免得 AI 拿空值去編
+            // 箱體不是每一棟都有。沒有的那幾棟完全不要提，
+            // 不然 AI 會把「沒有這個東西」講成「還沒做」。
             const b = r.box ?? { qty: null, arrive: '', produce: '' }
             const box: string[] = []
             if (b.arrive || b.qty !== null) {
@@ -321,12 +322,13 @@ export async function POST(req: NextRequest) {
             if (b.produce) box.push('生產 ' + b.produce)
             return `・${r.site} ${r.building}：門扇已完成 ${done.length ? done.join('、') : '（無）'}`
               + `；門扇未完成 ${todo.length ? todo.join('、') : '（無，全部做完）'}`
-              + `；箱體 ${box.length ? box.join('、') : '（尚未填寫）'}`
+              + (r.hasBox ? `；箱體 ${box.length ? box.join('、') : '（尚未填寫）'}` : '')
           })
           knowledge = (knowledge ? knowledge + '\n\n---\n\n' : '')
             + '以下是各案場「施工進度」的最新狀態。一棟底下分兩種：'
             + '「門扇」是五道工序，打勾＝已完成，括號裡是完成日期；'
-            + '「箱體」記的是進場日期＋數量、生產日期，沒填就是還沒有資料（不要自己推測）。'
+            + '「箱體」記的是進場日期＋數量、生產日期，沒填就是還沒有資料（不要自己推測）；'
+            + '沒有出現「箱體」兩個字的那幾棟就是根本沒有箱體這項工作，不要說它還沒做。'
             + '回答進度相關問題時以這份為準，這是現場人員自己填的：\n\n' + lines.join('\n')
         }
       }

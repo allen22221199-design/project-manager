@@ -72,6 +72,7 @@ export async function PATCH(req: NextRequest) {
       boxQty,
       boxArrive: asDate(b.boxArrive),
       boxProduce: asDate(b.boxProduce),
+      hasBox: b.hasBox === undefined ? undefined : b.hasBox === true,
     })
     return NextResponse.json({ ok: true })
   } catch (e: any) {
