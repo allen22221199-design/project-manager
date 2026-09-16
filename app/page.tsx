@@ -630,16 +630,41 @@ export default function Page() {
     return () => document.removeEventListener('click', handler)
   }, [colorPickerOpenId])
 
-  // 進到案件清單才去掃品項：要讀七十幾個案件的內文，大約一分鐘。
-  // 放背景跑，畫面照常用，標記掃完自己浮出來；一次工作階段只掃一次。
-  useEffect(() => {
-    if (view !== 'list' || scanState !== 'idle') return
+  // 每次進到案件清單就重查一次：案件屬性（聯絡人）和內文品項都重讀。
+  // 補完資料回來標記一定要消失，不然會一直提醒你去補一個已經補好的東西。
+  // 實測掃 78 個案件約 1 秒，所以每次重來的成本可以接受。
+  const scanningRef = useRef(false)
+  const lastScanRef = useRef(0)
+  async function refreshCompleteness(force = false) {
+    if (scanningRef.current) return
+    // 在分頁之間來回切不必一直重掃；去 Notion 改完資料再回來一定超過這個時間
+    if (!force && Date.now() - lastScanRef.current < 20_000) return
+    scanningRef.current = true
     setScanState('loading')
-    fetch('/api/projects/missing')
-      .then(readJson)
-      .then(d => { setItemCounts(d.items ?? {}); setScanState('done') })
-      .catch(() => setScanState('error'))
-  }, [view, scanState])
+    try {
+      // 聯絡人在案件屬性上，要一起重抓才看得到剛補的電話
+      const [, d] = await Promise.all([
+        fetchProjects(),
+        fetch('/api/projects/missing').then(readJson),
+      ])
+      setItemCounts(d.items ?? {})
+      setScanState('done')
+    } catch { setScanState('error') }
+    finally { scanningRef.current = false; lastScanRef.current = Date.now() }
+  }
+  useEffect(() => { if (view === 'list') refreshCompleteness() }, [view])
+  // 聯絡人多半是切到 Notion 去補的，補完切回來時畫面根本沒換過頁，
+  // 上面那個 effect 不會觸發。所以回到這個分頁時也重查一次。
+  useEffect(() => {
+    if (view !== 'list') return
+    const recheck = () => { if (!document.hidden) refreshCompleteness() }
+    window.addEventListener('focus', recheck)
+    document.addEventListener('visibilitychange', recheck)
+    return () => {
+      window.removeEventListener('focus', recheck)
+      document.removeEventListener('visibilitychange', recheck)
+    }
+  }, [view])
 
   // 開站檢查是否已登入管理者（並檢查 Google 日曆連結狀態）
   useEffect(() => {
@@ -870,6 +895,8 @@ export default function Page() {
     setBuildErr('')
     // 換案件就把進度紀錄的篩選和展開狀態歸零，不然會帶著上一個案件的條件
     setProgCat(''); setProgBldg(''); setProgOpen({}); setProgEditDate(null)
+    // 進了案件就可能補資料，回到清單時一定要重掃（不受 20 秒的節流擋住）
+    lastScanRef.current = 0
     fetchBuildings(p.name)   // 施工進度另一支 API，跟明細平行抓，不要互相等
     try {
       const r = await fetch('/api/search', {
@@ -1191,6 +1218,9 @@ export default function Page() {
         setSubmitOk(true)
         setItemList([])
         refreshProjectDetail()
+        // 這個案件不再缺品項了，馬上把標記拿掉，不用等下次重掃
+        const n = data.written ?? items.length
+        setItemCounts(prev => ({ ...prev, [selected.id]: (prev[selected.id] ?? 0) + n }))
       } else {
         setSubmitMsg('錯誤：' + (data.error ?? '寫入失敗'))
         setSubmitOk(false)
@@ -2682,7 +2712,7 @@ export default function Page() {
                   </button>
                 )
               })}
-              <button onClick={() => { fetchProjects(); setScanState('idle') }} className="ml-auto text-xs text-gray-400 hover:text-gray-700 px-2">↻ 重新整理</button>
+              <button onClick={() => refreshCompleteness(true)} className="ml-auto text-xs text-gray-400 hover:text-gray-700 px-2">↻ 重新整理</button>
             </div>
 
             {loading ? (
