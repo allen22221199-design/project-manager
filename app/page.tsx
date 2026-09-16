@@ -230,6 +230,7 @@ export default function Page() {
   const [selectedDate, setSelectedDate] = useState('')
   const [dailyLoading, setDailyLoading] = useState(false)
   const [plaudText, setPlaudText] = useState('')
+  const [plaudOpen, setPlaudOpen] = useState(false)   // 手機預設收合
   const [organizing, setOrganizing] = useState(false)
   const [organizeMsg, setOrganizeMsg] = useState('')
   const [organizeOk, setOrganizeOk] = useState(false)
@@ -3781,9 +3782,18 @@ export default function Page() {
             )}
 
             {/* 貼上 Plaud 內容 → Gemini 整理 */}
-            <div className="glass-card p-4 mb-4 space-y-3" data-tour="plaud">
-              <p className="text-sm font-medium text-gray-700">📥 貼上 Plaud 逐字稿自動整理</p>
-              <p className="text-xs text-gray-400 -mt-2">AI 會自動修正錯字、判斷負責人、拆解成可勾選的執行步驟；無法判斷負責人的項目會列在「待確認」欄，可拖曳指派</p>
+            <div className="glass-card p-4 mb-4" data-tour="plaud">
+              {/* 手機上這張卡整個蓋住第一屏，看不到任何一筆今天的工作。
+                  手機預設收合、點了才展開；桌機維持一直開著。 */}
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-gray-700">📥 貼上 Plaud 逐字稿自動整理</p>
+                <button onClick={() => setPlaudOpen(v => !v)}
+                  className="md:hidden ml-auto shrink-0 text-xs text-indigo-600 border border-indigo-200 rounded-lg px-2.5 min-h-[32px]">
+                  {plaudOpen ? '收起' : '展開貼上'}
+                </button>
+              </div>
+              <div className={`${plaudOpen ? '' : 'hidden'} md:block space-y-3 mt-3`}>
+              <p className="text-xs text-gray-400">AI 會自動修正錯字、判斷負責人、拆解成可勾選的執行步驟；無法判斷負責人的項目會列在「待確認」欄，可拖曳指派</p>
               <textarea value={plaudText} onChange={e => setPlaudText(e.target.value)} rows={5}
                 placeholder="把 Plaud 產生的逐字稿或摘要貼到這裡..."
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
@@ -3796,6 +3806,7 @@ export default function Page() {
                 {organizing ? '整理中...' : '✦ 整理並寫入今日工作'}
               </button>
               {organizeMsg && <p className={`text-sm text-center font-medium ${organizeOk ? 'text-green-600' : 'text-red-500'}`}>{organizeMsg}</p>}
+              </div>
             </div>
 
             {/* 日期標籤（含週導覽） */}
