@@ -1363,18 +1363,24 @@ export type BuildingRow = {
   building: string
   note: string
   steps: Record<string, boolean>
+  stepDates: Record<string, string>   // 打勾當天的日期，取消打勾就清掉
   updatedAt: string
 }
 
 function toBuildingRow(p: any): BuildingRow {
   const steps: Record<string, boolean> = {}
-  for (const s of BUILD_STEPS) steps[s] = p.properties[s]?.checkbox === true
+  const stepDates: Record<string, string> = {}
+  for (const s of BUILD_STEPS) {
+    steps[s] = p.properties[s]?.checkbox === true
+    stepDates[s] = p.properties[`${s}日期`]?.date?.start ?? ''
+  }
   return {
     id: p.id,
     site: mText(p.properties, '案場'),
     building: mText(p.properties, '棟別'),
     note: mText(p.properties, '備註'),
     steps,
+    stepDates,
     updatedAt: p.properties['更新時間']?.last_edited_time ?? '',
   }
 }
@@ -1404,9 +1410,14 @@ export async function addBuilding(site: string, building: string) {
   return { id: page.id }
 }
 
-export async function updateBuilding(id: string, f: { step?: string; done?: boolean; note?: string; building?: string }) {
+export async function updateBuilding(id: string, f: { step?: string; done?: boolean; note?: string; building?: string; today?: string }) {
   const properties: any = {}
-  if (f.step && BUILD_STEPS.indexOf(f.step as BuildStep) >= 0) properties[f.step] = { checkbox: f.done === true }
+  if (f.step && BUILD_STEPS.indexOf(f.step as BuildStep) >= 0) {
+    const done = f.done === true
+    properties[f.step] = { checkbox: done }
+    // 打勾就記下當天；取消打勾連日期一起清掉，不然會留下一個沒有意義的日期
+    properties[`${f.step}日期`] = done && f.today ? { date: { start: f.today } } : { date: null }
+  }
   if (f.note !== undefined) properties['備註'] = { rich_text: toRichText(f.note) }
   if (f.building !== undefined) properties['棟別'] = { rich_text: toRichText(f.building) }
   if (Object.keys(properties).length === 0) return

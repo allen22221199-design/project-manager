@@ -308,7 +308,9 @@ export async function POST(req: NextRequest) {
         const rows = await getBuildingProgress()
         if (rows.length > 0) {
           const lines = rows.map(r => {
+            // 帶上完成日期，才答得出「什麼時候做的」
             const done = BUILD_STEPS.filter(k => r.steps[k])
+              .map(k => r.stepDates?.[k] ? `${k}(${r.stepDates[k]})` : k)
             const todo = BUILD_STEPS.filter(k => !r.steps[k])
             return `・${r.site} ${r.building}：已完成 ${done.length ? done.join('、') : '（無）'}`
               + `；未完成 ${todo.length ? todo.join('、') : '（無，全部做完）'}`

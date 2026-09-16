@@ -46,6 +46,7 @@ export async function PATCH(req: NextRequest) {
     await updateBuilding(id, {
       step: b.step,
       done: b.done,
+      today: new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10),   // 台北時區的今天
       note: b.note === undefined ? undefined : String(b.note),
       building: b.building === undefined ? undefined : String(b.building).trim(),
     })

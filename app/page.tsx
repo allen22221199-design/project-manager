@@ -234,7 +234,7 @@ export default function Page() {
   const [editSub, setEditSub] = useState<string | null>(null)   // 正在編輯的支線任務：`${itemId}:${行號}`
   // 施工進度（案場 × 棟別 × 五道工序）
   const BUILD_STEPS = ['門片', '門框', '裝鎖', '貼邊角料', '自主巡查'] as const
-  type BuildingRow = { id: string; site: string; building: string; note: string; steps: Record<string, boolean> }
+  type BuildingRow = { id: string; site: string; building: string; note: string; steps: Record<string, boolean>; stepDates: Record<string, string> }
   const [buildRows, setBuildRows] = useState<BuildingRow[]>([])
   const [buildAdding, setBuildAdding] = useState(false)
   const [buildErr, setBuildErr] = useState('')
@@ -1395,7 +1395,11 @@ export default function Page() {
   // 打勾先動畫面再送出，失敗就退回——現場網路不穩時不要讓人以為沒點到
   async function toggleBuildStep(row: BuildingRow, step: string) {
     const next = !row.steps[step]
-    setBuildRows(prev => prev.map(x => x.id === row.id ? { ...x, steps: { ...x.steps, [step]: next } } : x))
+    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
+    const apply = (on: boolean) => setBuildRows(prev => prev.map(x => x.id === row.id
+      ? { ...x, steps: { ...x.steps, [step]: on }, stepDates: { ...x.stepDates, [step]: on ? today : '' } }
+      : x))
+    apply(next)
     setBuildErr('')
     try {
       const r = await fetch('/api/building-progress', {
@@ -1404,7 +1408,7 @@ export default function Page() {
       })
       if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
     } catch (e: any) {
-      setBuildRows(prev => prev.map(x => x.id === row.id ? { ...x, steps: { ...x.steps, [step]: !next } } : x))
+      apply(!next)   // 失敗就連日期一起退回
       setBuildErr(e.message)
     }
   }
@@ -2764,11 +2768,20 @@ export default function Page() {
                                 const on = !!row.steps[step]
                                 return (
                                   <button key={step} onClick={() => toggleBuildStep(row, step)}
-                                    className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors ${
+                                    title={on && row.stepDates?.[step] ? `${row.stepDates[step]} 完成` : '點一下標記完成'}
+                                    className={`rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors text-left ${
                                       on ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
                                          : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-white hover:border-indigo-300'}`}>
-                                    <span className="text-base leading-none">{on ? '☑' : '☐'}</span>
-                                    {step}
+                                    <span className="flex items-center gap-1.5">
+                                      <span className="text-base leading-none">{on ? '☑' : '☐'}</span>
+                                      {step}
+                                    </span>
+                                    {/* 完成日期用小字掛在工序底下，沒完成的留空，高度才不會跳動 */}
+                                    {on && row.stepDates?.[step] && (
+                                      <span className="block text-[10px] font-normal text-emerald-600/80 leading-tight mt-0.5">
+                                        {row.stepDates[step].slice(5).replace('-', '/')}
+                                      </span>
+                                    )}
                                   </button>
                                 )
                               })}
