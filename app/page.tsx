@@ -2403,13 +2403,13 @@ export default function Page() {
           <div className="text-base font-semibold tracking-tight" style={{ color: 'var(--text)' }}>專案進度管理</div>
         </div>
         <button onClick={() => setTourStep(0)} title="新手教學"
-          className="ml-auto text-xs rounded-lg px-2 py-1.5 font-semibold" style={{ color: '#4a7fd6', background: 'rgba(110,168,254,0.12)' }}>🎓 教學</button>
+          className="ml-auto text-xs rounded-lg px-3 min-h-[36px] font-semibold" style={{ color: '#4a7fd6', background: 'rgba(110,168,254,0.12)' }}>🎓 教學</button>
         {isAdmin ? (
           <button onClick={doLogout} title="登出管理者"
-            className="text-xs border rounded-lg px-2 py-1.5" style={{ color: 'var(--text-3)', borderColor: 'var(--hairline)' }}>登出</button>
+            className="text-xs border rounded-lg px-3 min-h-[36px]" style={{ color: 'var(--text-3)', borderColor: 'var(--hairline)' }}>登出</button>
         ) : (
           <button onClick={() => { setShowLogin(true); setLoginErr('') }} title="管理者登入"
-            className="text-xs border rounded-lg px-2 py-1.5" style={{ color: 'var(--text-2)', borderColor: 'var(--hairline)' }}>🔒 登入</button>
+            className="text-xs border rounded-lg px-3 min-h-[36px]" style={{ color: 'var(--text-2)', borderColor: 'var(--hairline)' }}>🔒 登入</button>
         )}
       </header>
 
@@ -2775,7 +2775,7 @@ export default function Page() {
                 const count = tab === '全部' ? projects.filter(p => !INACTIVE_STATUSES.includes(p.status)).length : projects.filter(p => p.status === tab).length
                 return (
                   <button key={tab} onClick={() => setFilterStatus(tab)}
-                    className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${filterStatus === tab ? 'aurora-grad text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                    className={`text-xs px-3 py-2 md:py-1.5 rounded-full font-medium transition-colors ${filterStatus === tab ? 'aurora-grad text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
                     {tab}
                     <span className={`ml-1 ${filterStatus === tab ? 'text-gray-300' : 'text-gray-400'}`}>{count}</span>
                   </button>
@@ -3293,7 +3293,10 @@ export default function Page() {
                                           </span>
                                         )}
                                         {/* 隱形的同步文字撐開格子高度，textarea 疊在上面，長內容就自己往下長 */}
-                                        <div className="flex-1 grid min-w-0 text-sm">
+                                        {/* 字級要跟 textarea 一致：手機上 globals.css 把輸入元件強制成 16px，
+                                            撐高度的那段隱形文字若還停在 14px，算出來的高度比實際內容矮，
+                                            長的進度紀錄會被無聲裁掉。 */}
+                                        <div className="flex-1 grid min-w-0 text-base md:text-sm">
                                           <span aria-hidden className="col-start-1 row-start-1 invisible whitespace-pre-wrap break-words border border-transparent px-1.5 py-0.5 leading-relaxed">{r.desc + ' '}</span>
                                           <textarea value={r.desc} rows={1}
                                             onChange={e => setProgressField(r.ri, 'desc', e.target.value)}

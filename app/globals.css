@@ -90,6 +90,11 @@ body {
   /* 手指不像滑鼠那麼準。把可點的東西撐到 36px 以上，
      但排除純圖示的小按鈕（那些用 leading-none，撐高會破版）。 */
   select, input[type="date"], input[type="number"] { min-height: 38px; }
+
+  /* 手機沒有「滑鼠移上去」這件事。靠 hover 才浮出來的刪除 ✕、旗標、編輯鈕
+     在手機上等於看不見，只能盲按——所以一律讓它們露出來（淡一點，不搶畫面）。
+     這個選擇器只打中同時掛了 group-hover:opacity-100 的元素，剛好就是那一組。 */
+  [class*="group-hover:opacity-100"] { opacity: .55 !important; }
 }
 
 /* 主色漸層背景（按鈕 / logo）— 用 !important 覆蓋原 Tailwind 底色 */
