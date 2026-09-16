@@ -232,6 +232,12 @@ export default function Page() {
   const [issuesLoading, setIssuesLoading] = useState(false)
   const [issueSearch, setIssueSearch] = useState('')
   const [editSub, setEditSub] = useState<string | null>(null)   // 正在編輯的支線任務：`${itemId}:${行號}`
+  // 施工進度（案場 × 棟別 × 五道工序）
+  const BUILD_STEPS = ['門片', '門框', '裝鎖', '貼邊角料', '自主巡查'] as const
+  type BuildingRow = { id: string; site: string; building: string; note: string; steps: Record<string, boolean> }
+  const [buildRows, setBuildRows] = useState<BuildingRow[]>([])
+  const [buildAdding, setBuildAdding] = useState(false)
+  const [buildErr, setBuildErr] = useState('')
   const [issueCatFilter, setIssueCatFilter] = useState('')
   const [issueOwnerFilter, setIssueOwnerFilter] = useState('')
   const [issueExpanded, setIssueExpanded] = useState<Record<string, string[]>>({})
@@ -821,6 +827,8 @@ export default function Page() {
     setProjectDetail(null)
     setProjectDetailLoading(true)
     setView('report')
+    setBuildErr('')
+    fetchBuildings(p.name)   // 施工進度另一支 API，跟明細平行抓，不要互相等
     try {
       const r = await fetch('/api/search', {
         method: 'POST',
@@ -1373,6 +1381,54 @@ export default function Page() {
     } catch (e: any) {
       setChatMessages([...next, { role: 'assistant', content: '錯誤：' + e.message }])
     } finally { setChatLoading(false) }
+  }
+
+  // ── 施工進度 ──
+  async function fetchBuildings(site: string) {
+    if (!site) { setBuildRows([]); return }
+    try {
+      const r = await fetch('/api/building-progress?site=' + encodeURIComponent(site))
+      const d = await readJson(r)
+      setBuildRows(r.ok ? (d.rows ?? []) : [])
+    } catch { setBuildRows([]) }
+  }
+  // 打勾先動畫面再送出，失敗就退回——現場網路不穩時不要讓人以為沒點到
+  async function toggleBuildStep(row: BuildingRow, step: string) {
+    const next = !row.steps[step]
+    setBuildRows(prev => prev.map(x => x.id === row.id ? { ...x, steps: { ...x.steps, [step]: next } } : x))
+    setBuildErr('')
+    try {
+      const r = await fetch('/api/building-progress', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: row.id, step, done: next }),
+      })
+      if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
+    } catch (e: any) {
+      setBuildRows(prev => prev.map(x => x.id === row.id ? { ...x, steps: { ...x.steps, [step]: !next } } : x))
+      setBuildErr(e.message)
+    }
+  }
+  async function addBuildingRow(site: string) {
+    const name = (prompt('新增棟別（例如 C棟）')  ?? '').trim()
+    if (!name) return
+    setBuildAdding(true); setBuildErr('')
+    try {
+      const r = await fetch('/api/building-progress', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site, building: name }),
+      })
+      const d = await readJson(r)
+      if (!r.ok) { setBuildErr(d.error ?? '新增失敗'); return }
+      await fetchBuildings(site)
+    } catch (e: any) { setBuildErr(e.message) }
+    finally { setBuildAdding(false) }
+  }
+  async function deleteBuildingRow(row: BuildingRow) {
+    if (!confirm(`確定刪除「${row.building}」這一列？`)) return
+    try {
+      await fetch('/api/building-progress?id=' + row.id, { method: 'DELETE' })
+      await fetchBuildings(row.site)
+    } catch (e: any) { setBuildErr(e.message) }
   }
 
   // 聊天室裡確認新增進度：把草稿寫入指定專案的 Notion 進度紀錄
@@ -2675,6 +2731,55 @@ export default function Page() {
                     </table>
                   </div>
                 )}
+                {/* 🏗️ 施工進度：一棟一列，五道工序各打一次勾 */}
+                <div className="glass-card p-4 mb-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                    <p className="text-xs font-medium text-gray-500">🏗️ 施工進度（點一下打勾）</p>
+                    <button onClick={() => selected && addBuildingRow(selected.name)} disabled={buildAdding}
+                      className="text-xs bg-white border border-indigo-300 text-indigo-700 rounded-lg px-2.5 py-1 font-medium hover:bg-indigo-50 disabled:opacity-40">
+                      ＋ 新增棟別
+                    </button>
+                  </div>
+                  {buildErr && <p className="text-xs text-red-500 mb-2">{buildErr}</p>}
+                  {buildRows.length === 0 ? (
+                    <p className="text-sm text-gray-400">還沒有棟別。按「＋ 新增棟別」建立 A棟、B棟…</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {buildRows.map(row => {
+                        const done = BUILD_STEPS.filter(k => row.steps[k]).length
+                        const all = done === BUILD_STEPS.length
+                        return (
+                          <div key={row.id} className={`group rounded-xl border p-2.5 ${all ? 'border-emerald-200 bg-emerald-50/50' : 'border-gray-200 bg-white'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="font-bold text-gray-900">{row.building}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${all ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                                {done} / {BUILD_STEPS.length}{all && ' 完成'}
+                              </span>
+                              <button onClick={() => deleteBuildingRow(row)} title="刪除這一棟"
+                                className="ml-auto text-gray-300 hover:text-red-500 px-1 leading-none opacity-40 group-hover:opacity-100">✕</button>
+                            </div>
+                            {/* 工序橫向排、會自動換行——窄螢幕不會被擠成直行 */}
+                            <div className="flex flex-wrap gap-1.5">
+                              {BUILD_STEPS.map(step => {
+                                const on = !!row.steps[step]
+                                return (
+                                  <button key={step} onClick={() => toggleBuildStep(row, step)}
+                                    className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors ${
+                                      on ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
+                                         : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-white hover:border-indigo-300'}`}>
+                                    <span className="text-base leading-none">{on ? '☑' : '☐'}</span>
+                                    {step}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {(projectDetail.progressRows ?? []).length > 0 && (
                   <div className="glass-card p-4">
                     <p className="text-xs font-medium text-gray-500 mb-3">📑 進度紀錄（可直接修改／✕ 刪除；最新在最下）</p>

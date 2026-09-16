@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getKnowledgeBase, readPagePlainText, getPageMedia, getImageLibrary, classifyMedia, type MediaKind } from '@/lib/notion'
+import { getKnowledgeBase, readPagePlainText, getPageMedia, getImageLibrary, classifyMedia, getBuildingProgress, BUILD_STEPS, type MediaKind } from '@/lib/notion'
 import { chatWithAssistant, routeChatIntent, suggestFollowups } from '@/lib/gemini'
 import { rankKnowledge, rankChunks, type Chunk } from '@/lib/kbsearch'
 
@@ -296,6 +296,29 @@ export async function POST(req: NextRequest) {
         imageResults.push(...dedup.slice(0, 3))  // 自動抓的圖最多 3 張，避免洗版（圖庫的精準圖之後會排前面）
       } catch { /* 抓圖失敗不影響對話 */ }
     } catch { /* 知識庫讀取失敗不影響對話 */ }
+
+    // 施工進度（案場 × 棟別 × 五道工序）也是知識來源。
+    // 只有問題確實提到工序或棟別時才撈——這張表跟每一題都沾得上邊（到處都有案場名），
+    // 不設條件的話會變成每個問題都塞一份施工進度進去。
+    try {
+      const q = retrievalQuery
+      const asksBuild = BUILD_STEPS.some(k => q.includes(k))
+        || /棟|施工進度|做到哪|完成了嗎|巡查|進度到/.test(q)
+      if (asksBuild) {
+        const rows = await getBuildingProgress()
+        if (rows.length > 0) {
+          const lines = rows.map(r => {
+            const done = BUILD_STEPS.filter(k => r.steps[k])
+            const todo = BUILD_STEPS.filter(k => !r.steps[k])
+            return `・${r.site} ${r.building}：已完成 ${done.length ? done.join('、') : '（無）'}`
+              + `；未完成 ${todo.length ? todo.join('、') : '（無，全部做完）'}`
+          })
+          knowledge = (knowledge ? knowledge + '\n\n---\n\n' : '')
+            + '以下是各案場「施工進度」的最新狀態（門扇五道工序，打勾＝已完成）。'
+            + '回答進度相關問題時以這份為準，這是現場人員自己勾的：\n\n' + lines.join('\n')
+        }
+      }
+    } catch { /* 施工進度讀取失敗不影響對話 */ }
 
     // 圖庫也是知識來源：問題命中關鍵字時，把該列的「名稱＋說明」一起給 AI，
     // 這樣像「防火標章是什麼」這種問題，AI 能用你寫的說明回答（再配上你指定的圖）
