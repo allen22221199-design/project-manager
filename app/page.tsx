@@ -3172,6 +3172,106 @@ export default function Page() {
                 {submitMsg && <p className={`text-sm text-center font-medium ${submitOk ? 'text-green-600' : 'text-red-500'}`}>{submitMsg}</p>}
               </div>
             )}
+            {/* 進度紀錄放在回報表單底下：左欄填完進度，往下就看得到剛剛記的那一筆。
+                右欄只留施工進度。 */}
+            <div className="mb-4">
+            {progressView.total > 0 && (
+              <div className="glass-card p-4">
+                <p className="text-xs font-medium text-gray-500 mb-3">
+                  📑 進度紀錄 · 共 {progressView.total} 筆（點月份展開／文字可直接改／✕ 刪除）
+                </p>
+                {/* 類別是從描述文字自動判斷的，不用另外填 */}
+                <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                  <span className="text-xs text-gray-400 shrink-0">類別</span>
+                  <button onClick={() => setProgCat('')}
+                    className={`text-xs rounded-lg border px-2 py-0.5 font-medium ${progCat === '' ? 'bg-gray-800 border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'}`}>
+                    全部 {progressView.total}
+                  </button>
+                  {CAT_ORDER.filter(c => progressView.catCount[c]).map(c => (
+                    <button key={c} onClick={() => setProgCat(progCat === c ? '' : c)}
+                      className={`text-xs rounded-lg border px-2 py-0.5 font-medium ${progCat === c ? CAT_STYLE[c] + ' ring-2 ring-indigo-100' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'}`}>
+                      {c} {progressView.catCount[c]}
+                    </button>
+                  ))}
+                </div>
+                {progressView.buildings.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                    <span className="text-xs text-gray-400 shrink-0">棟別</span>
+                    {progressView.buildings.map(b => (
+                      <button key={b} onClick={() => setProgBldg(progBldg === b ? '' : b)}
+                        className={`text-xs rounded-lg border px-2 py-0.5 font-medium ${progBldg === b ? 'bg-indigo-50 border-indigo-300 text-indigo-700 ring-2 ring-indigo-100' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'}`}>
+                        {b}棟
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {progressView.months.length === 0 ? (
+                  <p className="text-sm text-gray-400">這個條件底下沒有紀錄。</p>
+                ) : (
+                  <div className="space-y-2">
+                    {progressView.months.map((mo, mi) => {
+                      // 預設只攤開最新的一個月；篩選中就全部攤開，不然要一個月一個月點。
+                      // 使用者自己點過的以他為準——不然篩選時按收合會沒反應。
+                      const open = progOpen[mo.key] ?? (progressView.filtered || mi === 0)
+                      return (
+                        <div key={mo.key || 'unknown'}>
+                          <button onClick={() => setProgOpen(s => ({ ...s, [mo.key]: !open }))}
+                            className={`w-full flex items-center gap-2 text-left rounded-xl px-2.5 py-1.5 ${open ? '' : 'border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30'}`}>
+                            <span className={`text-gray-400 text-xs leading-none transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+                            <span className={`font-medium ${open ? 'text-gray-900' : 'text-gray-600'}`}>{monthLabel(mo.key)}</span>
+                            <span className="text-xs text-gray-400">{mo.items.length} 筆</span>
+                            {!open && (
+                              <span className="ml-auto text-xs text-gray-400 truncate max-w-[45%]">
+                                {Array.from(new Set(mo.items.map(r => r.cat))).join('、')}
+                              </span>
+                            )}
+                          </button>
+                          {open && (
+                            <div className="mt-1 rounded-xl border border-gray-200 bg-white divide-y divide-gray-100">
+                              {mo.items.map(r => (
+                                <div key={projectDetail.progressRowIds?.[r.ri] ?? r.ri} className="flex items-start gap-2 px-2 py-1.5 group">
+                                  {progEditDate === r.ri ? (
+                                    <input value={r.date} autoFocus
+                                      onChange={e => setProgressField(r.ri, 'date', e.target.value)}
+                                      onBlur={() => { setProgEditDate(null); saveProgressRow(r.ri) }}
+                                      className="shrink-0 w-24 mt-0.5 border border-indigo-400 rounded px-1 py-0.5 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                                  ) : (
+                                    <button onClick={() => setProgEditDate(r.ri)} title={r.date || '點一下填日期'}
+                                      className="shrink-0 w-11 mt-1 text-xs text-gray-400 text-left hover:text-indigo-600">
+                                      {shortDate(r.date)}
+                                    </button>
+                                  )}
+                                  <span className={`shrink-0 mt-0.5 text-[11px] rounded border px-1.5 py-0.5 font-medium ${CAT_STYLE[r.cat]}`}>{r.cat}</span>
+                                  {r.bldgs.length > 0 && (
+                                    <span className="shrink-0 mt-0.5 text-[11px] rounded border border-indigo-200 bg-indigo-50 text-indigo-700 px-1.5 py-0.5 font-medium">
+                                      {r.bldgs.join('‧')}棟
+                                    </span>
+                                  )}
+                                  {/* 隱形的同步文字撐開格子高度，textarea 疊在上面，長內容就自己往下長 */}
+                                  {/* 字級要跟 textarea 一致：手機上 globals.css 把輸入元件強制成 16px，
+                                      撐高度的那段隱形文字若還停在 14px，算出來的高度比實際內容矮，
+                                      長的進度紀錄會被無聲裁掉。 */}
+                                  <div className="flex-1 grid min-w-0 text-base md:text-sm">
+                                    <span aria-hidden className="col-start-1 row-start-1 invisible whitespace-pre-wrap break-words border border-transparent px-1.5 py-0.5 leading-relaxed">{r.desc + ' '}</span>
+                                    <textarea value={r.desc} rows={1}
+                                      onChange={e => setProgressField(r.ri, 'desc', e.target.value)}
+                                      onBlur={() => saveProgressRow(r.ri)}
+                                      className="col-start-1 row-start-1 resize-none overflow-hidden bg-transparent whitespace-pre-wrap break-words border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-0.5 leading-relaxed text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                                  </div>
+                                  <button onClick={() => deleteProgressRow(r.ri)} title="刪除此筆"
+                                    className="shrink-0 mt-0.5 text-gray-300 hover:text-red-500 px-1 leading-none opacity-0 group-hover:opacity-100">✕</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+            </div>
             </div>
             <div className="xl:col-span-2 min-w-0">
               {projectDetail && (
@@ -3277,103 +3377,6 @@ export default function Page() {
                       </div>
                     )}
                   </div>
-
-                  {progressView.total > 0 && (
-                    <div className="glass-card p-4">
-                      <p className="text-xs font-medium text-gray-500 mb-3">
-                        📑 進度紀錄 · 共 {progressView.total} 筆（點月份展開／文字可直接改／✕ 刪除）
-                      </p>
-                      {/* 類別是從描述文字自動判斷的，不用另外填 */}
-                      <div className="flex items-center gap-1.5 flex-wrap mb-2">
-                        <span className="text-xs text-gray-400 shrink-0">類別</span>
-                        <button onClick={() => setProgCat('')}
-                          className={`text-xs rounded-lg border px-2 py-0.5 font-medium ${progCat === '' ? 'bg-gray-800 border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'}`}>
-                          全部 {progressView.total}
-                        </button>
-                        {CAT_ORDER.filter(c => progressView.catCount[c]).map(c => (
-                          <button key={c} onClick={() => setProgCat(progCat === c ? '' : c)}
-                            className={`text-xs rounded-lg border px-2 py-0.5 font-medium ${progCat === c ? CAT_STYLE[c] + ' ring-2 ring-indigo-100' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'}`}>
-                            {c} {progressView.catCount[c]}
-                          </button>
-                        ))}
-                      </div>
-                      {progressView.buildings.length > 0 && (
-                        <div className="flex items-center gap-1.5 flex-wrap mb-3">
-                          <span className="text-xs text-gray-400 shrink-0">棟別</span>
-                          {progressView.buildings.map(b => (
-                            <button key={b} onClick={() => setProgBldg(progBldg === b ? '' : b)}
-                              className={`text-xs rounded-lg border px-2 py-0.5 font-medium ${progBldg === b ? 'bg-indigo-50 border-indigo-300 text-indigo-700 ring-2 ring-indigo-100' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'}`}>
-                              {b}棟
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {progressView.months.length === 0 ? (
-                        <p className="text-sm text-gray-400">這個條件底下沒有紀錄。</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {progressView.months.map((mo, mi) => {
-                            // 預設只攤開最新的一個月；篩選中就全部攤開，不然要一個月一個月點。
-                            // 使用者自己點過的以他為準——不然篩選時按收合會沒反應。
-                            const open = progOpen[mo.key] ?? (progressView.filtered || mi === 0)
-                            return (
-                              <div key={mo.key || 'unknown'}>
-                                <button onClick={() => setProgOpen(s => ({ ...s, [mo.key]: !open }))}
-                                  className={`w-full flex items-center gap-2 text-left rounded-xl px-2.5 py-1.5 ${open ? '' : 'border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30'}`}>
-                                  <span className={`text-gray-400 text-xs leading-none transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
-                                  <span className={`font-medium ${open ? 'text-gray-900' : 'text-gray-600'}`}>{monthLabel(mo.key)}</span>
-                                  <span className="text-xs text-gray-400">{mo.items.length} 筆</span>
-                                  {!open && (
-                                    <span className="ml-auto text-xs text-gray-400 truncate max-w-[45%]">
-                                      {Array.from(new Set(mo.items.map(r => r.cat))).join('、')}
-                                    </span>
-                                  )}
-                                </button>
-                                {open && (
-                                  <div className="mt-1 rounded-xl border border-gray-200 bg-white divide-y divide-gray-100">
-                                    {mo.items.map(r => (
-                                      <div key={projectDetail.progressRowIds?.[r.ri] ?? r.ri} className="flex items-start gap-2 px-2 py-1.5 group">
-                                        {progEditDate === r.ri ? (
-                                          <input value={r.date} autoFocus
-                                            onChange={e => setProgressField(r.ri, 'date', e.target.value)}
-                                            onBlur={() => { setProgEditDate(null); saveProgressRow(r.ri) }}
-                                            className="shrink-0 w-24 mt-0.5 border border-indigo-400 rounded px-1 py-0.5 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
-                                        ) : (
-                                          <button onClick={() => setProgEditDate(r.ri)} title={r.date || '點一下填日期'}
-                                            className="shrink-0 w-11 mt-1 text-xs text-gray-400 text-left hover:text-indigo-600">
-                                            {shortDate(r.date)}
-                                          </button>
-                                        )}
-                                        <span className={`shrink-0 mt-0.5 text-[11px] rounded border px-1.5 py-0.5 font-medium ${CAT_STYLE[r.cat]}`}>{r.cat}</span>
-                                        {r.bldgs.length > 0 && (
-                                          <span className="shrink-0 mt-0.5 text-[11px] rounded border border-indigo-200 bg-indigo-50 text-indigo-700 px-1.5 py-0.5 font-medium">
-                                            {r.bldgs.join('‧')}棟
-                                          </span>
-                                        )}
-                                        {/* 隱形的同步文字撐開格子高度，textarea 疊在上面，長內容就自己往下長 */}
-                                        {/* 字級要跟 textarea 一致：手機上 globals.css 把輸入元件強制成 16px，
-                                            撐高度的那段隱形文字若還停在 14px，算出來的高度比實際內容矮，
-                                            長的進度紀錄會被無聲裁掉。 */}
-                                        <div className="flex-1 grid min-w-0 text-base md:text-sm">
-                                          <span aria-hidden className="col-start-1 row-start-1 invisible whitespace-pre-wrap break-words border border-transparent px-1.5 py-0.5 leading-relaxed">{r.desc + ' '}</span>
-                                          <textarea value={r.desc} rows={1}
-                                            onChange={e => setProgressField(r.ri, 'desc', e.target.value)}
-                                            onBlur={() => saveProgressRow(r.ri)}
-                                            className="col-start-1 row-start-1 resize-none overflow-hidden bg-transparent whitespace-pre-wrap break-words border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-0.5 leading-relaxed text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
-                                        </div>
-                                        <button onClick={() => deleteProgressRow(r.ri)} title="刪除此筆"
-                                          className="shrink-0 mt-0.5 text-gray-300 hover:text-red-500 px-1 leading-none opacity-0 group-hover:opacity-100">✕</button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
