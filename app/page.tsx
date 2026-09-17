@@ -5244,11 +5244,14 @@ function SectionTable({ title, headers, rows }: { title: string; headers: string
   return (
     <div className="glass-card p-4 mb-3 overflow-x-auto">
       <p className="text-xs font-medium text-gray-500 mb-3">{title}</p>
-      <table className="w-full text-sm border-collapse">
+      {/* 出貨／請款：原本每一格都 whitespace-nowrap，欄位一多整張表就比卡片寬，
+          要左右拉，最後幾欄等於被蓋住。改成 table-fixed ＋ 允許換行，一眼看得到全部。 */}
+      <table className="w-full table-fixed text-sm border-collapse">
         <thead>
           <tr className="border-b border-gray-200">
             {headers.map((h, i) => (
-              <th key={i} className="text-left text-xs text-gray-400 font-medium pb-2 pr-4 whitespace-nowrap">{h}</th>
+              <th key={i} style={{ width: itemColWidth(h) }}
+                className="text-left text-xs text-gray-400 font-medium pb-2 pr-3 break-words">{h}</th>
             ))}
           </tr>
         </thead>
@@ -5256,7 +5259,7 @@ function SectionTable({ title, headers, rows }: { title: string; headers: string
           {rows.map((row, ri) => (
             <tr key={ri} className="border-b border-gray-50 last:border-0">
               {row.map((cell, ci) => (
-                <td key={ci} className="py-1.5 pr-4 text-gray-700 align-top whitespace-nowrap">{cell}</td>
+                <td key={ci} className="py-1.5 pr-3 text-gray-700 align-top break-words">{cell}</td>
               ))}
             </tr>
           ))}
