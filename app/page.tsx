@@ -173,6 +173,12 @@ type ChatTaskDraft = TaskDraft & {
   state?: 'pending' | 'saving' | 'done' | 'error'
   note?: string
 }
+// 施工進度打勾草稿：跟 AI 說「A棟門片好了」，一樣要按確認才會真的動到進度
+type BuildDraft = { rowId: string; site: string; building: string; step: string; done: boolean; already: boolean }
+type ChatBuildDraft = BuildDraft & {
+  state?: 'pending' | 'saving' | 'done' | 'error'
+  note?: string
+}
 // 待辦清單 PDF 匯入：AI 讀出「掛在【自己】底下」的項目，一樣要勾選＋按確認才會寫進 Notion
 type PdfTaskDraft = { task: string; date: string | null; dueFrom: string; duplicate: boolean }
 type ChatPdfDraft = PdfTaskDraft & {
@@ -180,7 +186,7 @@ type ChatPdfDraft = PdfTaskDraft & {
   state?: 'pending' | 'saving' | 'done' | 'error'
   note?: string
 }
-type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; images?: ImageResult[]; drafts?: ChatDraft[]; tasks?: ChatTaskDraft[]; pdfs?: ChatPdfDraft[]; pdfFallbackDate?: string; draftDone?: boolean; suggestions?: string[] }
+type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; images?: ImageResult[]; drafts?: ChatDraft[]; tasks?: ChatTaskDraft[]; builds?: ChatBuildDraft[]; pdfs?: ChatPdfDraft[]; pdfFallbackDate?: string; draftDone?: boolean; suggestions?: string[] }
 type TaskAttachment = { name: string; url: string }
 type TaskStep = { step: string; done: boolean }
 type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[]; flag?: string; steps?: TaskStep[] }
@@ -1536,8 +1542,12 @@ export default function Page() {
       const tasks: ChatTaskDraft[] | undefined = rawTasks.length
         ? rawTasks.map(t => ({ ...t, chosenPerson: t.owner, state: 'pending' as const }))
         : undefined
-      const suggestions: string[] = r.ok && !drafts && !tasks ? (data.suggestions ?? []) : []
-      setChatMessages([...next, { role: 'assistant', content: reply, files, images, drafts, tasks, suggestions }])
+      const rawBuilds: BuildDraft[] = r.ok ? (data.buildDrafts ?? []) : []
+      const builds: ChatBuildDraft[] | undefined = rawBuilds.length
+        ? rawBuilds.map(b => ({ ...b, state: 'pending' as const }))
+        : undefined
+      const suggestions: string[] = r.ok && !drafts && !tasks && !builds ? (data.suggestions ?? []) : []
+      setChatMessages([...next, { role: 'assistant', content: reply, files, images, drafts, tasks, builds, suggestions }])
     } catch (e: any) {
       setChatMessages([...next, { role: 'assistant', content: '錯誤：' + e.message }])
     } finally { setChatLoading(false) }
@@ -1717,6 +1727,41 @@ export default function Page() {
   function cancelChatTasks(msgIndex: number) {
     setChatMessages(prev => prev.map((m, i) => i === msgIndex
       ? { ...m, tasks: undefined, draftDone: true, content: '好的，這些沒有派下去。有需要再跟我說 🙂' } : m))
+  }
+
+  // ── 施工進度打勾（聊天室確認後才寫入）──
+  function patchBuild(msgIndex: number, bi: number, patch: Partial<ChatBuildDraft>) {
+    setChatMessages(prev => prev.map((m, i) => i !== msgIndex ? m : {
+      ...m,
+      builds: (m.builds ?? []).map((b, j) => j === bi ? { ...b, ...patch } : b),
+    }))
+  }
+  async function confirmAllBuilds(msgIndex: number) {
+    const list = chatMessages[msgIndex]?.builds ?? []
+    const targets = list.map((b, bi) => ({ b, bi })).filter(x => x.b.state !== 'done')
+    if (targets.length === 0) return
+    const sites = new Set<string>()
+    for (const { b, bi } of targets) {
+      patchBuild(msgIndex, bi, { state: 'saving' })
+      try {
+        const r = await fetch('/api/building-progress', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: b.rowId, step: b.step, done: b.done }),
+        })
+        const d = await readJson(r)
+        if (r.ok) { patchBuild(msgIndex, bi, { state: 'done' }); sites.add(b.site) }
+        else patchBuild(msgIndex, bi, { state: 'error', note: d.error ?? '未知錯誤' })
+      } catch (e: any) {
+        patchBuild(msgIndex, bi, { state: 'error', note: e.message })
+      }
+    }
+    setChatMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, draftDone: true } : m))
+    // 正在看的案件如果剛好被改到，畫面上的勾要跟著更新
+    if (selected && sites.has(selected.name)) fetchBuildings(selected.name)
+  }
+  function cancelChatBuilds(msgIndex: number) {
+    setChatMessages(prev => prev.map((m, i) => i === msgIndex
+      ? { ...m, builds: undefined, draftDone: true, content: '好的，進度沒有動到。有需要再跟我說 🙂' } : m))
   }
 
   function cancelChatProgress(msgIndex: number) {
@@ -4111,6 +4156,43 @@ export default function Page() {
                           })()}
                         </div>
                       </div>
+                      )
+                    })()}
+                    {m.builds && m.builds.length > 0 && (() => {
+                      const builds = m.builds!
+                      const pending = builds.filter(b => b.state !== 'done').length
+                      const verb = builds[0].done ? '打勾' : '取消打勾'
+                      return (
+                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                          {builds.map((b, bi) => (
+                            <div key={bi} className={`rounded-lg border p-2.5 ${b.state === 'done' ? 'border-emerald-200 bg-emerald-50' : b.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
+                              <p className="text-sm text-gray-700">
+                                🏗️ <span className="font-medium">{b.site}</span> · {b.building}
+                              </p>
+                              <p className="text-sm mt-0.5">
+                                <span className="font-medium text-gray-900">{b.step}</span>
+                                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded font-medium ${b.done ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'}`}>
+                                  {b.done ? '☑ 標成完成' : '☐ 取消完成'}
+                                </span>
+                                {/* 本來就是這個狀態時先講，免得按了以為沒反應 */}
+                                {b.already && b.state !== 'done' && <span className="ml-1.5 text-[11px] text-gray-400">本來就是這樣</span>}
+                              </p>
+                              {b.state === 'done' && <p className="text-xs text-emerald-700 font-medium mt-1">✅ 已更新</p>}
+                              {b.state === 'saving' && <p className="text-xs text-gray-500 mt-1">⏳ 更新中…</p>}
+                              {b.state === 'error' && <p className="text-xs text-red-600 mt-1">❌ 失敗：{b.note}</p>}
+                            </div>
+                          ))}
+                          {!m.draftDone && pending > 0 && (
+                            <div className="flex gap-2 pt-0.5">
+                              <button onClick={() => confirmAllBuilds(i)}
+                                className="flex-1 aurora-grad text-white rounded-lg py-2 text-sm font-medium shadow-sm hover:brightness-105">
+                                ✓ 確認{verb}{builds.length > 1 ? `（${pending} 項）` : ''}
+                              </button>
+                              <button onClick={() => cancelChatBuilds(i)}
+                                className="px-3 rounded-lg border border-gray-200 text-sm text-gray-500 hover:bg-gray-50">取消</button>
+                            </div>
+                          )}
+                        </div>
                       )
                     })()}
                     {m.tasks && m.tasks.length > 0 && (() => {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getKnowledgeBase, readPagePlainText, getPageMedia, getImageLibrary, classifyMedia, getBuildingProgress, BUILD_STEPS, type MediaKind } from '@/lib/notion'
 import { chatWithAssistant, routeChatIntent, suggestFollowups } from '@/lib/gemini'
+import { detectBuildTick } from '@/lib/buildIntent'
 import { rankKnowledge, rankChunks, type Chunk } from '@/lib/kbsearch'
 
 // 進度回報草稿：聊天室偵測到「要記進度」時回傳給前端，讓使用者確認後才真正寫入
@@ -12,6 +13,16 @@ export type ProgressDraft = {
   candidates: { id: string; name: string }[]
 }
 
+// 施工進度打勾草稿：講「A棟門片好了」時回傳，按確認才真的打勾
+export type BuildDraft = {
+  rowId: string            // 施工進度那一列的 page id
+  site: string
+  building: string
+  step: string
+  done: boolean            // true = 打勾，false = 取消
+  already: boolean         // 現在就已經是這個狀態了（按下去等於沒事發生）
+}
+
 // 隨手記任務草稿：偵測到「要交辦一件事」時回傳給前端，一律要按確認才寫入
 export type TaskDraft = {
   task: string
@@ -20,6 +31,25 @@ export type TaskDraft = {
   ownerReason: string      // 為什麼是他：'明確指定' / '你自己' / '依專長建議'
   suggested: string | null // 依專長建議、還需要確認的人選
   why: string
+}
+
+// 案名比對：師傅講的名稱通常很簡略（「冠德」「桃大」），用「最長共同片段」幫忙猜。
+// 原本寫在記進度那一段裡面，施工進度打勾也要用同一套，所以搬出來共用。
+const normName = (s: string) => s.replace(/[\s\-－_（）()]/g, '').toLowerCase()
+function longestCommon(a: string, b: string) {
+  for (let len = Math.min(a.length, b.length); len >= 2; len--) {
+    for (let i = 0; i + len <= a.length; i++) if (b.includes(a.slice(i, i + len))) return len
+  }
+  return 0
+}
+function commonFragment(a: string, b: string) {
+  for (let len = Math.min(a.length, b.length); len >= 2; len--) {
+    for (let i = 0; i + len <= a.length; i++) {
+      const frag = a.slice(i, i + len)
+      if (b.includes(frag)) return frag
+    }
+  }
+  return ''
 }
 
 // 台北時區今天 YYYY/MM/DD
@@ -78,6 +108,68 @@ export async function POST(req: NextRequest) {
     const roster: { name: string; skill: string }[] = Array.isArray(people)
       ? people.filter((p: any) => p?.name).map((p: any) => ({ name: String(p.name), skill: String(p.skill ?? '') }))
       : []
+    // ── 施工進度打勾 ──────────────────────────────────────────
+    // 這段要排在意圖分類「前面」。「A棟門片好了」本來會被歸成「記一筆進度紀錄」，
+    // 系統回「已新增」，但那五個勾一個都沒動——看起來成功了，其實沒有。
+    // 詞彙是封閉的（五道工序 × A~D 棟 × 完成/取消），所以用規則判斷不問 AI：打錯勾使用者不會發現。
+    const tick = detectBuildTick(lastUser)
+    if (tick) {
+      const rows = await getBuildingProgress()
+      const sites = Array.from(new Set(rows.map(r => r.site))).filter(Boolean)
+      if (sites.length === 0) {
+        return NextResponse.json({ reply: '目前還沒有任何案件建立棟別。請先到案件頁的「🏗️ 施工進度」按「＋ 新增棟別」，之後就可以直接跟我說打勾了。' })
+      }
+
+      // 只跟「真的有棟別的案場」比對，範圍小很多，誤判機會也小很多
+      const userNorm = normName(lastUser)
+      const scored = sites
+        .map(site => ({ site, s: longestCommon(userNorm, normName(site)) }))
+        .sort((a, b) => b.s - a.s)
+      const best = scored.filter(x => x.s >= 2)
+      let site = ''
+      if (best.length === 1) site = best[0].site
+      else if (best.length > 1 && best[0].s > best[1].s) site = best[0].site
+      else if (sites.length === 1) site = sites[0]   // 全公司只有一個案場有棟別，沒有別的可能
+      if (!site) {
+        return NextResponse.json({ reply: `這是哪一個案場的「${tick.steps.join('、')}」？我這邊有棟別資料的是：${sites.join('、')}。請把案場名稱一起講。` })
+      }
+
+      const siteRows = rows.filter(r => r.site === site)
+      const buildings = tick.buildings.length > 0
+        ? tick.buildings.map(b => `${b}棟`)
+        : (siteRows.length === 1 ? [siteRows[0].building] : [])
+      if (buildings.length === 0) {
+        return NextResponse.json({ reply: `【${site}】的「${tick.steps.join('、')}」是哪一棟？目前有：${siteRows.map(r => r.building).join('、')}。` })
+      }
+
+      const drafts: BuildDraft[] = []
+      const missing: string[] = []
+      for (const b of buildings) {
+        const row = siteRows.find(r => r.building === b)
+        if (!row) { missing.push(b); continue }
+        for (const step of tick.steps) {
+          drafts.push({
+            rowId: row.id, site, building: row.building, step,
+            done: tick.done,
+            already: !!row.steps[step] === tick.done,
+          })
+        }
+      }
+      if (drafts.length === 0) {
+        return NextResponse.json({ reply: `【${site}】底下找不到 ${missing.join('、')}。請先到案件頁按「＋ 新增棟別」建立，再跟我說一次。` })
+      }
+
+      const verb = tick.done ? '標成完成' : '取消完成'
+      const tail = missing.length ? `（${missing.join('、')}還沒建立，先跳過）` : ''
+      const dup = drafts.filter(d => d.already).length
+      const note = dup === drafts.length ? '這些本來就已經是這個狀態了，按下去不會有變化。'
+        : dup ? `其中 ${dup} 項本來就是這個狀態。` : ''
+      const reply = drafts.length === 1
+        ? `要把【${site}】${drafts[0].building}的「${drafts[0].step}」${verb}嗎？${note}確認後才會真的動到進度👇${tail}`
+        : `要把【${site}】以下 ${drafts.length} 項${verb}嗎？${note}確認後才會真的動到進度👇${tail}`
+      return NextResponse.json({ reply, buildDrafts: drafts })
+    }
+
     if (lastUser.trim() && (projList.length > 0 || roster.length > 0)) {
       const intent = await routeChatIntent(lastUser, projList.map(p => p.name), taipeiToday(), roster)
 
@@ -115,25 +207,7 @@ export async function POST(req: NextRequest) {
 
       if (intent.intent === 'progress' && intent.items.length > 0 && projList.length > 0) {
         // 把 AI 對應到的專案名稱，比對回實際專案（完全相符 → 包含關係 → 都沒有就列候選）
-        const norm = (s: string) => s.replace(/[\s\-－_（）()]/g, '').toLowerCase()
-        // 師傅講的名稱通常很簡略（「冠德」「桃大」），用「最長共同片段」幫忙猜，
-        // 猜不準也要把最可能的排在前面，讓他從短清單挑，而不是從 20 個裡面找。
-        const longestCommon = (a: string, b: string) => {
-          for (let len = Math.min(a.length, b.length); len >= 2; len--) {
-            for (let i = 0; i + len <= a.length; i++) if (b.includes(a.slice(i, i + len))) return len
-          }
-          return 0
-        }
-        // 回傳兩字串最長的共同片段本身（用來判斷師傅講的字是不是只對應到一個案場）
-        const commonFragment = (a: string, b: string) => {
-          for (let len = Math.min(a.length, b.length); len >= 2; len--) {
-            for (let i = 0; i + len <= a.length; i++) {
-              const frag = a.slice(i, i + len)
-              if (b.includes(frag)) return frag
-            }
-          }
-          return ''
-        }
+        const norm = normName
         const userNorm = norm(lastUser)
         const drafts: ProgressDraft[] = intent.items.map(item => {
           const hint = item.project ? norm(item.project) : ''
