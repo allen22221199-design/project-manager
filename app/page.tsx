@@ -8,6 +8,18 @@ import { missingOf, hasPhone } from '@/lib/projectChecks'
 
 // 進度紀錄的類別顏色。Tailwind 是編譯期掃字串的，不能用 `bg-${x}-50` 這種拼法，
 // 所以整串 class 要原封不動寫在這裡。
+// 項目清單的欄寬。欄位是從 Notion 表頭讀來的，不是寫死的，所以依名稱判斷：
+// 「數量」「單位」本來就只有一兩個字，給它們跟「規格」一樣寬只是浪費。
+// 回傳 undefined 的欄位由 table-fixed 平分剩下的寬度。
+function itemColWidth(h: string): string | undefined {
+  const t = String(h ?? '')
+  if (/數量|個數|樘數|片數/.test(t)) return '10%'
+  if (/單位/.test(t)) return '10%'
+  if (/項目|品項/.test(t)) return '16%'
+  if (/規格|尺寸/.test(t)) return '22%'
+  return undefined
+}
+
 const CAT_ORDER = ['施工', '噴印', '加工', '量測', '打樣', '進料', '溝通', '其他'] as const
 const CAT_STYLE: Record<string, string> = {
   施工: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -3045,26 +3057,36 @@ export default function Page() {
                 {(projectDetail.itemRows ?? []).length > 0 && (
                   <div className="glass-card p-4 overflow-x-auto">
                     <p className="text-xs font-medium text-gray-500 mb-3">📋 項目清單（可直接修改／✕ 刪除）</p>
-                    <table className="w-full text-sm border-collapse">
+                    {/* 原本每一格都寫死 8em 寬，六欄加起來 810px 塞進 698px 的卡片，
+                        於是要左右拉，最後面的「備註」等於被蓋住看不到。
+                        改成 table-fixed：整張表剛好等於卡片寬度，欄寬依內容性質分配
+                        （數量、單位本來就只有一兩個字，不需要跟規格一樣寬）。 */}
+                    <table className="w-full table-fixed text-sm border-collapse">
                       <thead>
                         <tr className="border-b border-gray-200">
                           {(projectDetail.itemHeaders ?? []).map((h: string, i: number) => (
-                            <th key={i} className="text-left text-xs text-gray-400 font-medium pb-2 pr-2 whitespace-nowrap">{h}</th>
+                            <th key={i} style={{ width: itemColWidth(h) }}
+                              className="text-left text-xs text-gray-400 font-medium pb-2 pr-2">{h}</th>
                           ))}
                           <th className="w-6"></th>
                         </tr>
                       </thead>
                       <tbody>
                         {projectDetail.itemRows.map((row: string[], ri: number) => (
-                          <tr key={projectDetail.itemRowIds?.[ri] ?? ri} className="border-b border-gray-50 last:border-0 group">
+                          <tr key={projectDetail.itemRowIds?.[ri] ?? ri} className="border-b border-gray-50 last:border-0 group align-top">
                             {row.map((cell: string, ci: number) => (
-                              <td key={ci} className="py-0.5 pr-2 align-middle">
-                                <input value={cell} onChange={e => setItemCell(ri, ci, e.target.value)} onBlur={() => saveItemRow(ri)}
-                                  style={{ width: ci === 0 ? 'auto' : '8em', minWidth: ci === 0 ? '10em' : '5em' }}
-                                  className="border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                              <td key={ci} className="py-0.5 pr-2">
+                                {/* 欄位變窄了，長的規格或備註要能換行顯示，不能被切掉。
+                                    隱形的同步文字把格子撐高，textarea 疊在上面跟著長。 */}
+                                <div className="grid min-w-0 text-sm">
+                                  <span aria-hidden className="col-start-1 row-start-1 invisible whitespace-pre-wrap break-words border border-transparent px-1.5 py-1 leading-snug">{cell + ' '}</span>
+                                  <textarea value={cell} rows={1}
+                                    onChange={e => setItemCell(ri, ci, e.target.value)} onBlur={() => saveItemRow(ri)}
+                                    className="col-start-1 row-start-1 resize-none overflow-hidden bg-transparent whitespace-pre-wrap break-words border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 leading-snug focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                                </div>
                               </td>
                             ))}
-                            <td className="align-middle">
+                            <td className="pt-1">
                               <button onClick={() => deleteItemRow(ri)} title="刪除此列" className="text-gray-300 hover:text-red-500 px-1 leading-none opacity-0 group-hover:opacity-100">✕</button>
                             </td>
                           </tr>
