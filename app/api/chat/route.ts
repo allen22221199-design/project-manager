@@ -135,9 +135,19 @@ export async function POST(req: NextRequest) {
       }
 
       const siteRows = rows.filter(r => r.site === site)
-      const buildings = tick.buildings.length > 0
-        ? tick.buildings.map(b => `${b}棟`)
-        : (siteRows.length === 1 ? [siteRows[0].building] : [])
+      // 棟別名稱是自己取的，不一定是「A棟」——實際看到的還有「地下室B1-5」「A-D棟R樓」。
+      // 所以先拿真正存在的棟名去句子裡對，比純靠 A~D 字母準得多。
+      let direct = siteRows.filter(r => r.building && normName(lastUser).includes(normName(r.building)))
+      // 短的名字會被長的包住（「A-D棟R樓」裡面就含有「D棟」），只留最長的那個，
+      // 不然講一個棟會同時勾到兩個。
+      direct = direct.filter(r => !direct.some(o => o !== r
+        && normName(o.building).length > normName(r.building).length
+        && normName(o.building).includes(normName(r.building))))
+      const buildings = direct.length > 0
+        ? direct.map(r => r.building)
+        : tick.buildings.length > 0
+          ? tick.buildings.map(b => `${b}棟`)
+          : (siteRows.length === 1 ? [siteRows[0].building] : [])
       if (buildings.length === 0) {
         return NextResponse.json({ reply: `【${site}】的「${tick.steps.join('、')}」是哪一棟？目前有：${siteRows.map(r => r.building).join('、')}。` })
       }
