@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Tour, { type TourStep } from './tour'
 import RichText, { MediaGroup } from './richtext'
 import MeetingFlow from '@/components/MeetingFlow'
-import { catOf, buildingsOf, monthKey, monthLabel, shortDate, sortKey } from '@/lib/progressTags'
+import { catOf, buildingsOf, monthKey, monthLabel, shortDate, sortKey, itemVocabulary, itemsOf } from '@/lib/progressTags'
 import { missingOf, hasPhone } from '@/lib/projectChecks'
 
 // 進度紀錄的類別顏色。Tailwind 是編譯期掃字串的，不能用 `bg-${x}-50` 這種拼法，
@@ -301,6 +301,7 @@ export default function Page() {
   // 進度紀錄的篩選與展開狀態
   const [progCat, setProgCat] = useState('')          // 類別篩選，空字串＝全部
   const [progBldg, setProgBldg] = useState('')        // 棟別篩選
+  const [progItem, setProgItem] = useState('')        // 品項篩選（標籤從資料自己長出來）
   const [progOpen, setProgOpen] = useState<Record<string, boolean>>({})   // 哪幾個月展開了
   const [progEditDate, setProgEditDate] = useState<number | null>(null)   // 正在改日期的那一列
   const [issueCatFilter, setIssueCatFilter] = useState('')
@@ -933,7 +934,7 @@ export default function Page() {
     setView('report')
     setBuildErr('')
     // 換案件就把進度紀錄的篩選和展開狀態歸零，不然會帶著上一個案件的條件
-    setProgCat(''); setProgBldg(''); setProgOpen({}); setProgEditDate(null)
+    setProgCat(''); setProgBldg(''); setProgItem(''); setProgOpen({}); setProgEditDate(null)
     // 進了案件就可能補資料，回到清單時一定要重掃（不受節流擋住）
     lastScanRef.current = 0
     setProjEdit({}); setProjErr('')   // 別把上一個案件打到一半的字帶過來
@@ -1000,21 +1001,32 @@ export default function Page() {
   // 標籤都會自己跟上，沒有需要另外維護的地方。
   const progressView = useMemo(() => {
     const rows = (projectDetail?.progressRows ?? []) as { date: string; desc: string }[]
+    // 「項目」標籤的詞彙表 = 這個案子的品項名稱 ＋ 施工進度的工序 ＋ 箱體。
+    // 全部都是使用者自己在系統裡建立的東西，所以他新增一個品項，
+    // 進度紀錄提到它的那幾筆馬上就被標出來，不必回頭改程式。
+    const itemNames = ((projectDetail?.itemRows ?? []) as string[][])
+      .map(r => (r ?? [])[0] ?? '')
+      .concat(BUILD_STEPS as unknown as string[], ['箱體'])
+    const vocab = itemVocabulary(itemNames)
     const tagged = rows
-      .map((r, ri) => ({ ...r, ri, cat: catOf(r.desc), bldgs: buildingsOf(r.desc), mk: monthKey(r.date) }))
+      .map((r, ri) => ({ ...r, ri, cat: catOf(r.desc), bldgs: buildingsOf(r.desc), items: itemsOf(r.desc, vocab), mk: monthKey(r.date) }))
       // 整列空白的不顯示——Notion 表格底下常留幾列空的，那不是進度
       .filter(r => r.date.trim() || r.desc.trim())
 
     // 篩選鈕上的數字要算「全部」而不是「篩完剩下的」，不然按一下數字就全變了
     const catCount: Record<string, number> = {}
     const bldgSet = new Set<string>()
+    const itemCount: Record<string, number> = {}
     tagged.forEach(r => {
       catCount[r.cat] = (catCount[r.cat] ?? 0) + 1
       r.bldgs.forEach(b => bldgSet.add(b))
+      r.items.forEach(it => { itemCount[it] = (itemCount[it] ?? 0) + 1 })
     })
 
     const shown = tagged.filter(r =>
-      (!progCat || r.cat === progCat) && (!progBldg || r.bldgs.indexOf(progBldg) >= 0))
+      (!progCat || r.cat === progCat)
+      && (!progBldg || r.bldgs.indexOf(progBldg) >= 0)
+      && (!progItem || r.items.indexOf(progItem) >= 0))
 
     // 新的排前面：看進度是往回看，最近做了什麼才是重點
     const byMonth = new Map<string, typeof shown>()
@@ -1027,11 +1039,14 @@ export default function Page() {
     return {
       total: tagged.length,
       catCount,
+      itemCount,
+      // 只列真的有出現在進度紀錄裡的品項，多的照筆數排前面
+      items: Object.keys(itemCount).sort((a, b) => itemCount[b] - itemCount[a] || a.localeCompare(b)),
       buildings: Array.from(bldgSet).sort(),
       months: Array.from(byMonth.entries()).map(([key, items]) => ({ key, items })),
-      filtered: !!(progCat || progBldg),
+      filtered: !!(progCat || progBldg || progItem),
     }
-  }, [projectDetail?.progressRows, progCat, progBldg])
+  }, [projectDetail?.progressRows, projectDetail?.itemRows, progCat, progBldg, progItem])
 
   // 從「最新進度回報」移除某案件（重算其最新進度標記；沒有紀錄就清空）
   async function dismissProgress(p: Project) {
@@ -3245,12 +3260,25 @@ export default function Page() {
                   ))}
                 </div>
                 {progressView.buildings.length > 0 && (
-                  <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                  <div className="flex items-center gap-1.5 flex-wrap mb-2">
                     <span className="text-xs text-gray-400 shrink-0">棟別</span>
                     {progressView.buildings.map(b => (
                       <button key={b} onClick={() => setProgBldg(progBldg === b ? '' : b)}
                         className={`text-xs rounded-lg border px-2 py-0.5 font-medium ${progBldg === b ? 'bg-indigo-50 border-indigo-300 text-indigo-700 ring-2 ring-indigo-100' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'}`}>
                         {b}棟
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* 項目標籤不是寫死的，是從你建立的品項與工序長出來的：
+                    在項目清單新增一個品項，這裡就多一個可篩選的標籤。 */}
+                {progressView.items.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                    <span className="text-xs text-gray-400 shrink-0">項目</span>
+                    {progressView.items.map(it => (
+                      <button key={it} onClick={() => setProgItem(progItem === it ? '' : it)}
+                        className={`text-xs rounded-lg border px-2 py-0.5 font-medium ${progItem === it ? 'bg-teal-50 border-teal-300 text-teal-800 ring-2 ring-teal-100' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'}`}>
+                        {it} {progressView.itemCount[it]}
                       </button>
                     ))}
                   </div>
@@ -3297,6 +3325,11 @@ export default function Page() {
                                       {r.bldgs.join('‧')}棟
                                     </span>
                                   )}
+                                  {r.items.slice(0, 2).map(it => (
+                                    <span key={it} className="shrink-0 mt-0.5 text-[11px] rounded border border-teal-200 bg-teal-50 text-teal-800 px-1.5 py-0.5 font-medium">
+                                      {it}
+                                    </span>
+                                  ))}
                                   {/* 隱形的同步文字撐開格子高度，textarea 疊在上面，長內容就自己往下長 */}
                                   {/* 字級要跟 textarea 一致：手機上 globals.css 把輸入元件強制成 16px，
                                       撐高度的那段隱形文字若還停在 14px，算出來的高度比實際內容矮，

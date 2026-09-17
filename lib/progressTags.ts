@@ -72,3 +72,39 @@ export function sortKey(s: string): number {
   const p = parseDate(s)
   return p ? p.y * 10000 + p.m * 100 + p.d : 0
 }
+
+// ── 自動長出來的「項目」標籤 ───────────────────────────────
+// 類別那七種是寫死的規則，涵蓋得了現在的講法，但公司開始做新東西時就會掉進「其他」。
+// 所以另外一組標籤直接從「你自己在系統裡建立的東西」長出來：
+//   ・項目清單裡的品項名稱（門片、箱體、防火門…）
+//   ・施工進度的工序名稱
+// 你在項目清單新增一個品項，進度紀錄裡提到它的那幾筆就自動被標出來、也能篩，
+// 不需要我再回來改一次程式碼。
+
+// 太短的詞會亂命中（「門」會命中「門片」「門框」「開門」），至少兩個字才算數。
+// 數字、純符號也不能當標籤（品項欄有人會填「1F」）。
+export function itemVocabulary(names: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of names) {
+    const t = String(raw ?? '').trim()
+    if (t.length < 2 || t.length > 12) continue
+    if (!/[一-龥a-zA-Z]{2,}/.test(t)) continue   // 至少要有兩個字/字母
+    if (seen.has(t)) continue
+    seen.add(t); out.push(t)
+  }
+  // 長的排前面：先比對「貼邊角料」再比對「邊角料」，短的被長的包住時不會兩個都中
+  return out.sort((a, b) => b.length - a.length)
+}
+
+export function itemsOf(desc: string, vocab: string[]): string[] {
+  const d = String(desc ?? '')
+  const hit: string[] = []
+  for (const v of vocab) {
+    if (!d.includes(v)) continue
+    // 已經命中的較長詞若包含這個詞，就不重複標（命中「貼邊角料」就不再標「邊角料」）
+    if (hit.some(h => h.includes(v))) continue
+    hit.push(v)
+  }
+  return hit
+}
