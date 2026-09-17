@@ -329,6 +329,7 @@ export default function Page() {
     return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}`
   })
   const [ganttActiveProject, setGanttActiveProject] = useState<string | null>(null)
+  const [ganttChipsOpen, setGanttChipsOpen] = useState(false)   // 手機上案件色塊先收起來
   // 流程排程表：按住拖曳塗色用（像 Excel 拖曳選取一樣直覺）
   const [ganttDragStart, setGanttDragStart] = useState<{ proc: string; ampm: string; date: string } | null>(null)
   const [ganttDragOver, setGanttDragOver] = useState<string | null>(null)
@@ -2642,19 +2643,29 @@ export default function Page() {
                     ) : (
                       <>
                         {/* 案件色塊選取列 */}
+                        {/* 手機上案子一多，光這排色塊就要滑好幾屏才看得到排程格，
+                            所以先露 6 個、其餘點開才出現；桌機一律全部顯示。
+                            已選取的那個一定看得到，不然會不知道自己選了誰。 */}
                         <div className="flex flex-wrap gap-2 mb-3">
-                          {activeProj.map(p => {
+                          {activeProj.map((p, pi) => {
                             const sel = ganttActiveProject === p.id
+                            const hideOnPhone = !ganttChipsOpen && pi >= 6 && !sel
                             return (
                               <button key={p.id}
                                 onClick={() => setGanttActiveProject(sel ? null : p.id)}
-                                className={`text-base px-4 py-2 rounded-full font-medium border transition-all ${sel ? 'ring-2 ring-offset-1 ring-indigo-400 border-transparent' : 'border-gray-200 hover:border-gray-400'}`}
+                                className={`text-base px-4 py-2 rounded-full font-medium border transition-all ${hideOnPhone ? 'hidden md:inline-block' : ''} ${sel ? 'ring-2 ring-offset-1 ring-indigo-400 border-transparent' : 'border-gray-200 hover:border-gray-400'}`}
                                 style={{ background: sel ? (p.color || '#AEC6E8') : `${p.color || '#AEC6E8'}33`, color: sel ? '#1a1a1a' : '#555' }}>
                                 <span className="inline-block w-3 h-3 rounded-full mr-2 align-middle" style={{ background: p.color || '#AEC6E8' }} />
                                 {p.name}
                               </button>
                             )
                           })}
+                          {activeProj.length > 6 && (
+                            <button onClick={() => setGanttChipsOpen(v => !v)}
+                              className="md:hidden text-sm px-4 py-2 rounded-full font-medium border border-dashed border-gray-300 text-gray-500">
+                              {ganttChipsOpen ? '收起案件' : `還有 ${activeProj.length - 6} 個…`}
+                            </button>
+                          )}
                         </div>
 
                         <div className="overflow-x-auto -mx-1 px-1 select-none">
@@ -3149,13 +3160,14 @@ export default function Page() {
                               </div>
                               {/* 工序橫向排、會自動換行——窄螢幕不會被擠成直行 */}
                               <p className="text-[11px] font-medium text-gray-400 mb-1">🚪 門扇</p>
-                              <div className="flex flex-wrap gap-1.5">
+                              {/* 手機排兩欄、最後一顆佔滿整行，比 flex-wrap 的參差不齊好按也好看 */}
+                              <div className="grid grid-cols-2 gap-1.5 md:flex md:flex-wrap">
                                 {BUILD_STEPS.map(step => {
                                   const on = !!row.steps[step]
                                   return (
                                     <button key={step} onClick={() => toggleBuildStep(row, step)}
                                       title={on && row.stepDates?.[step] ? `${row.stepDates[step]} 完成` : '點一下標記完成'}
-                                      className={`rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors text-left ${
+                                      className={`rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors text-left last:col-span-2 md:last:col-span-1 ${
                                         on ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
                                            : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-white hover:border-indigo-300'}`}>
                                       <span className="flex items-center gap-1.5">
@@ -3404,7 +3416,7 @@ export default function Page() {
                       }
                       const renderTaskRow = (t: DailyTask) => (
                         <div key={t.id} className={`border-b border-blue-100 last:border-0 ${effectiveFlagged(t) && t.status !== '完成' ? 'bg-red-50 -mx-2 px-2 rounded' : ''}`}>
-                          <div className="flex items-center gap-3 text-base py-2.5 group">
+                          <div className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1 text-base py-2.5 group">
                             <button onClick={() => toggleFlag(t)} title={effectiveFlagged(t) ? '取消紅標' : '標為急件（紅標）'}
                               className={`shrink-0 leading-none ${effectiveFlagged(t) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 grayscale'}`}>🚩</button>
                             {isUrgentTask(t.task) && t.status !== '完成' && <span className="shrink-0" title="急件">🔥</span>}
@@ -3419,9 +3431,9 @@ export default function Page() {
                               <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
                                 onBlur={() => saveEdit(t.id)}
                                 onKeyDown={e => { if (e.key === 'Enter') saveEdit(t.id); if (e.key === 'Escape') { setEditingId(null); setEditText('') } }}
-                                className="flex-1 border border-gray-300 rounded px-2 py-1 text-base focus:outline-none focus:border-indigo-400" />
+                                className="order-first w-full md:order-none md:w-auto md:flex-1 border border-gray-300 rounded px-2 py-1 text-base focus:outline-none focus:border-indigo-400" />
                             ) : (
-                              <span className={`flex-1 cursor-text ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-700'}`}
+                              <span className={`order-first w-full md:order-none md:w-auto md:flex-1 cursor-text ${t.status === '完成' ? 'line-through text-gray-400' : 'text-gray-700'}`}
                                 onClick={() => { setEditingId(t.id); setEditText(t.task) }}>{t.task}</span>
                             )}
                             {/* 改負責人（手機也能用，不需拖曳）*/}
