@@ -11,6 +11,20 @@ import { missingOf, hasPhone } from '@/lib/projectChecks'
 // 項目清單的欄寬。欄位是從 Notion 表頭讀來的，不是寫死的，所以依名稱判斷：
 // 「數量」「單位」本來就只有一兩個字，給它們跟「規格」一樣寬只是浪費。
 // 回傳 undefined 的欄位由 table-fixed 平分剩下的寬度。
+// 會自己長高的輸入格：隱形的同步文字撐開高度，textarea 疊在上面。
+// 字級一定要 text-base md:text-sm——手機上 globals.css 把輸入元件強制成 16px，
+// 撐高度的那段文字若還停在 14px，長內容會被無聲裁掉。
+function GrowCell({ value, onChange, onBlur }: { value: string; onChange: (v: string) => void; onBlur: () => void }) {
+  return (
+    <div className="grid min-w-0 flex-1 text-base md:text-sm">
+      <span aria-hidden className="col-start-1 row-start-1 invisible whitespace-pre-wrap break-words border border-transparent px-1.5 py-1 leading-snug">{value + ' '}</span>
+      <textarea value={value} rows={1}
+        onChange={e => onChange(e.target.value)} onBlur={onBlur}
+        className="col-start-1 row-start-1 resize-none overflow-hidden bg-transparent whitespace-pre-wrap break-words border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 leading-snug focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+    </div>
+  )
+}
+
 function itemColWidth(h: string): string | undefined {
   const t = String(h ?? '')
   if (/數量|個數|樘數|片數/.test(t)) return '10%'
@@ -3061,7 +3075,25 @@ export default function Page() {
                         於是要左右拉，最後面的「備註」等於被蓋住看不到。
                         改成 table-fixed：整張表剛好等於卡片寬度，欄寬依內容性質分配
                         （數量、單位本來就只有一兩個字，不需要跟規格一樣寬）。 */}
-                    <table className="w-full table-fixed text-sm border-collapse">
+                    {/* 手機：一列一張小卡，欄位名稱在左。六欄硬塞進 375px 每欄只剩三四十像素，
+                        規格「88.4x234.9CM」會被折成四五行，等於看不懂。 */}
+                    <div className="md:hidden space-y-2">
+                      {projectDetail.itemRows.map((row: string[], ri: number) => (
+                        <div key={projectDetail.itemRowIds?.[ri] ?? ri} className="rounded-xl border border-gray-200 bg-white p-2 group">
+                          {row.map((cell: string, ci: number) => (
+                            ((projectDetail.itemHeaders ?? [])[ci] || cell) ? (
+                              <div key={ci} className="flex items-start gap-2">
+                                <span className="w-14 shrink-0 text-xs text-gray-400 pt-2">{(projectDetail.itemHeaders ?? [])[ci] ?? ''}</span>
+                                <GrowCell value={cell} onChange={v => setItemCell(ri, ci, v)} onBlur={() => saveItemRow(ri)} />
+                              </div>
+                            ) : null
+                          ))}
+                          <button onClick={() => deleteItemRow(ri)}
+                            className="mt-1 w-full text-xs text-gray-400 border border-gray-200 rounded-lg py-1.5">✕ 刪除這一列</button>
+                        </div>
+                      ))}
+                    </div>
+                    <table className="hidden md:table w-full table-fixed text-sm border-collapse">
                       <thead>
                         <tr className="border-b border-gray-200">
                           {(projectDetail.itemHeaders ?? []).map((h: string, i: number) => (
@@ -3076,13 +3108,9 @@ export default function Page() {
                           <tr key={projectDetail.itemRowIds?.[ri] ?? ri} className="border-b border-gray-50 last:border-0 group align-top">
                             {row.map((cell: string, ci: number) => (
                               <td key={ci} className="py-0.5 pr-2">
-                                {/* 欄位變窄了，長的規格或備註要能換行顯示，不能被切掉。
-                                    隱形的同步文字把格子撐高，textarea 疊在上面跟著長。 */}
-                                <div className="grid min-w-0 text-sm">
-                                  <span aria-hidden className="col-start-1 row-start-1 invisible whitespace-pre-wrap break-words border border-transparent px-1.5 py-1 leading-snug">{cell + ' '}</span>
-                                  <textarea value={cell} rows={1}
-                                    onChange={e => setItemCell(ri, ci, e.target.value)} onBlur={() => saveItemRow(ri)}
-                                    className="col-start-1 row-start-1 resize-none overflow-hidden bg-transparent whitespace-pre-wrap break-words border border-transparent hover:border-gray-200 focus:border-indigo-400 rounded px-1.5 py-1 leading-snug focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                                {/* 欄位變窄了，長的規格或備註要能換行顯示，不能被切掉 */}
+                                <div className="flex">
+                                  <GrowCell value={cell} onChange={v => setItemCell(ri, ci, v)} onBlur={() => saveItemRow(ri)} />
                                 </div>
                               </td>
                             ))}
