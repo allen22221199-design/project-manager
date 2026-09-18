@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getKnowledgeBase, readPagePlainText, getPageMedia, getImageLibrary, classifyMedia, getBuildingProgress, getDailyTasks, BUILD_STEPS, type MediaKind } from '@/lib/notion'
 import { chatWithAssistant, routeChatIntent, suggestFollowups } from '@/lib/gemini'
 import { detectBuildTick } from '@/lib/buildIntent'
-import { rankKnowledge, rankChunks, type Chunk } from '@/lib/kbsearch'
+import { rankKnowledge, rankChunks, extractTerms, type Chunk } from '@/lib/kbsearch'
 
 // 進度回報草稿：聊天室偵測到「要記進度」時回傳給前端，讓使用者確認後才真正寫入
 export type ProgressDraft = {
@@ -272,6 +272,7 @@ export async function POST(req: NextRequest) {
     const fileResults: FileResult[] = []
     const imageResults: ImageResult[] = []
     let topSources: { id: string; title: string }[] = []  // AI 主要引用的來源頁（用來抓相關圖片）
+    let kbAll: any[] = []                                  // 檔案庫＋SOP 全部（底下綁定媒體要用）
     // 只有「最相關的前一兩份」文件的內文——圖庫比對要用這個，不能用整包 knowledge。
     // 整包是 14 份候選拼起來的，問防火標章也會夾帶丈量 SOP 的段落，害不相干的圖跟著跑出來。
     let primaryText = ''
@@ -280,6 +281,7 @@ export async function POST(req: NextRequest) {
     const imageLibPromise = getImageLibrary().catch(() => [])
     try {
       const kb = await getKnowledgeBase()
+      kbAll = kb
 
       // ── 兩階段 RAG 檢索 ──────────────────────────────────────
       // 階段①：先用「摘要」語意排序，挑出最相關的候選文件（便宜、避免每篇都讀全文）
@@ -556,7 +558,47 @@ export async function POST(req: NextRequest) {
         // 圖庫有命中就「只用」圖庫：那是你親手指定的素材，一定對得上。
         // 另一批是從被引用的知識庫頁面自動掃出來的，常常掃到不相干的影片
         // （問鎖孔卻附上拍攝技巧的片段），有精準來源時就不該再混進來。
-        const merged = libImages.length > 0 ? libImages : imageResults
+        // ── 檔案庫綁定 ────────────────────────────────────────
+        // 圖庫沒命中時，用同一套精準比對去找「檔案庫裡有影片／圖片」的那一頁。
+        // 沒有把檔案搬進圖庫：搬了會變成兩份資料，檔案庫的知識檢索也會跟著壞。
+        // 這裡是把檔案庫的附件「接上」精準比對這條路，檔案庫本身照舊當知識用。
+        // 順序固定：圖庫（你親手指定的）→ 檔案庫（自動綁定）→ 才輪到原本那個粗略的後備。
+        let boundImages: ImageResult[] = []
+        if (libImages.length === 0 && kbAll.length > 0) {
+          const withMedia = kbAll
+            .map((it: any) => ({
+              it,
+              media: (it.attachments ?? [])
+                .map((a: any) => ({ url: a.url, name: a.name || '', kind: a.url ? classifyMedia(a.name || a.url) : null }))
+                .filter((m: any) => m.kind),
+            }))
+            .filter((x: any) => x.media.length > 0)
+          if (withMedia.length > 0) {
+            // 用既有的中文斷詞（2 字滑動窗），不要再寫第二套
+            const terms = extractTerms(retrievalQuery)
+            const docs = withMedia.map((x: any) =>
+              `${x.it.title} ${(x.it.tags ?? []).join(' ')} ${x.it.summary ?? ''}`.toLowerCase())
+            const dfk = new Map<string, number>()
+            for (const t of terms) dfk.set(t, docs.filter(d => d.includes(t)).length)
+            const M = docs.length
+            const ranked = withMedia
+              .map((x: any, i: number) => {
+                const hitTerms = terms.filter(t => docs[i].includes(t))
+                const sc = hitTerms.reduce((a, t) => a + Math.log((M + 1) / ((dfk.get(t) ?? 1) + 0.5)), 0)
+                return { x, hits: hitTerms.length, score: sc }
+              })
+              .filter((r: any) => r.hits >= 2 && r.score > 0)
+              .sort((a: any, b: any) => b.score - a.score)
+            // 只取第一名，而且要明顯領先第二名。追不到就不附——附錯比不附糟。
+            const best: any = ranked[0]
+            if (best && (!ranked[1] || best.score >= ranked[1].score * 1.25)) {
+              boundImages = best.x.media.slice(0, 4).map((m: any) => ({
+                source: best.x.it.title, url: m.url, caption: m.name || best.x.it.title, kind: m.kind,
+              }))
+            }
+          }
+        }
+        const merged = libImages.length > 0 ? libImages : (boundImages.length > 0 ? boundImages : imageResults)
         const seen = new Set<string>()
         const dedup = merged.filter(im => { const k = im.url.split('?')[0]; if (seen.has(k)) return false; seen.add(k); return true })
         imageResults.length = 0
