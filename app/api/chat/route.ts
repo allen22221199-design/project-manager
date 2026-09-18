@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '尚未設定 GEMINI_API_KEY' }, { status: 503 })
   }
   try {
-    const { messages, projects, people, isAdmin, selfName, debugMedia } = await req.json()
+    const { messages, projects, people, isAdmin, selfName } = await req.json()
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: '沒有訊息' }, { status: 400 })
     }
@@ -471,8 +471,11 @@ export async function POST(req: NextRequest) {
             // 「鎖的拆裝示範」和「門弓器拆裝完整教學」都只剩「拆裝」命中，分數一模一樣。
             // 再比一次「問句與這一列名稱的最長共同片段」：前者共用「鎖的拆裝」四個字，
             // 後者只有「拆裝」兩個字，這樣才分得出使用者指的是哪一支。
-            const nameScore = longestCommon(normName(q), normName(row.name)) * 1.2
-            return { row, qHits: qHits + (nameScore >= 3.6 ? 1 : 0), score: (qScore + kScore + nameScore) * vBoost }
+            // 用平方：共用 4 個字（鎖的拆裝）跟共用 2 個字（拆裝）的差距要夠大才分得開，
+            // 線性加權時兩者只差 2.4 分，仍然雙雙入選。
+            const lc = Math.min(longestCommon(normName(q), normName(row.name)), 8)
+            const nameScore = lc * lc * 0.8
+            return { row, qHits: qHits + (lc >= 3 ? 1 : 0), score: (qScore + kScore + nameScore) * vBoost }
           })
           .filter(x => x.score > 0)
           .sort((a, b) => b.score - a.score)
@@ -497,26 +500,10 @@ export async function POST(req: NextRequest) {
           cut = pool[0] ? pool[0].score * 0.6 : 0
         }
         const keep = pool.filter(x => x.score >= cut).slice(0, 8)
-        if (debugMedia) {
-          return NextResponse.json({ reply: '(debug)', debug: {
-            wantsVideo, cut,
-            scored: scored.slice(0, 12).map(x => ({
-              name: x.row.name, score: +x.score.toFixed(2), qHits: x.qHits,
-              hit: x.row.keywords.filter(k => q.includes(k)),
-              hasVideo: x.row.images.some(im => im.kind === 'video' || im.kind === 'embed'),
-              kept: keep.indexOf(x) >= 0,
-            })),
-          } })
-        }
-        // 有些列的影片是放在「頁面內文」而不是「圖片／檔案」欄位——資料庫的檔案欄位無法用
-        // API 寫入，內文可以。只對「有命中、而且欄位是空的」那幾列即時去讀內文，
-        // 才不會每次對話都把整個圖庫的頁面掃一遍。
-        const bodyMedia = await Promise.all(
-          keep.map(x => x.row.images.length > 0 ? Promise.resolve([]) : getPageMedia(x.row.id, 4).catch(() => []))
-        )
+        // 內文裡的影片已經在 getImageLibrary 一併補齊了，這裡直接用就好
         const libImages: ImageResult[] = []
-        keep.forEach(({ row }, ri) => {
-          for (const im of (row.images.length > 0 ? row.images : bodyMedia[ri])) {
+        keep.forEach(({ row }) => {
+          for (const im of row.images) {
             libImages.push({ source: row.name, url: im.url, caption: im.caption || row.caption || row.name, kind: im.kind })
           }
         })

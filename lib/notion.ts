@@ -1074,7 +1074,7 @@ export type LibImageRow = { id: string; name: string; keywords: string[]; captio
 export async function getImageLibrary(): Promise<LibImageRow[]> {
   try {
     const res: any = await notion.databases.query({ database_id: IMAGE_LIBRARY_DB_ID, page_size: 100 })
-    return (res.results as any[]).map(p => {
+    const rows: LibImageRow[] = (res.results as any[]).map(p => {
       const name = (p.properties['名稱']?.title ?? []).map((r: any) => r.plain_text).join('').trim()
       const kwRaw = (p.properties['關鍵字']?.rich_text ?? []).map((r: any) => r.plain_text).join('')
       const caption = (p.properties['說明']?.rich_text ?? []).map((r: any) => r.plain_text).join('').trim()
@@ -1099,6 +1099,17 @@ export async function getImageLibrary(): Promise<LibImageRow[]> {
       return { id: p.id, name, keywords, caption, images }
     // 有圖片可顯示，或有說明可當知識，兩者其一就保留（讓圖庫也能當名詞解釋用）
     }).filter(r => (r.images.length > 0 || !!r.caption) && r.keywords.length > 0)
+
+    // 有幾列的影片是放在「頁面內文」而不是圖片／檔案欄位——資料庫的檔案欄位沒辦法用 API 寫入。
+    // 以前是等這一列被選中才去讀內文，代價是「排名的時候還不知道這一列其實有影片」，
+    // 於是「要影片」的加分和篩選全部等於沒作用（實測每一列都被當成沒有影片）。
+    // 這裡先補齊，排名才看得到真相。只讀欄位是空的那幾列，通常不到十列。
+    const needBody = rows.filter(r => r.images.length === 0)
+    if (needBody.length > 0) {
+      const bodies = await Promise.all(needBody.map(r => getPageMedia(r.id, 4).catch(() => [])))
+      needBody.forEach((r, i) => { r.images = bodies[i] })
+    }
+    return rows
   } catch { return [] }  // 圖庫讀不到（未連整合/尚無資料）不影響對話
 }
 
