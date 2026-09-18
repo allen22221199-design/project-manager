@@ -587,11 +587,15 @@ export async function POST(req: NextRequest) {
                 const sc = hitTerms.reduce((a, t) => a + Math.log((M + 1) / ((dfk.get(t) ?? 1) + 0.5)), 0)
                 return { x, hits: hitTerms.length, score: sc }
               })
-              .filter((r: any) => r.hits >= 2 && r.score > 0)
+              // 兩個以上不同的詞命中，而且至少有一個是有鑑別度的（分數門檻），才算數。
+              // 只靠「怎麼」「可以」這種到處都有的字命中不算——那是巧合不是證據。
+              .filter((r: any) => r.hits >= 2 && r.score >= 1.5)
               .sort((a: any, b: any) => b.score - a.score)
-            // 只取第一名，而且要明顯領先第二名。追不到就不附——附錯比不附糟。
+            // 只取第一名。原本還要求「領先第二名 25%」，但同一套課程拆成
+            // 04~07_剪輯 四頁，問「剪映怎麼用」時四頁分數本來就接近，
+            // 結果全部被擋掉、一支都不給。分數接近代表它們都相關，不是代表在猜。
             const best: any = ranked[0]
-            if (best && (!ranked[1] || best.score >= ranked[1].score * 1.25)) {
+            if (best) {
               boundImages = best.x.media.slice(0, 4).map((m: any) => ({
                 source: best.x.it.title, url: m.url, caption: m.name || best.x.it.title, kind: m.kind,
               }))
