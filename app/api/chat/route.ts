@@ -467,7 +467,12 @@ export async function POST(req: NextRequest) {
             const kScore = kk.length >= 2 ? kk.reduce((a, k) => a + idf(k), 0) : 0
             const hasVideo = row.images.some(im => im.kind === 'video' || im.kind === 'embed')
             const vBoost = wantsVideo && hasVideo ? 1.3 : 1
-            return { row, qHits, score: (qScore + kScore) * vBoost }
+            // 關鍵字至少兩個字才算數，所以單字問法（「鎖」的拆裝）會落空——
+            // 「鎖的拆裝示範」和「門弓器拆裝完整教學」都只剩「拆裝」命中，分數一模一樣。
+            // 再比一次「問句與這一列名稱的最長共同片段」：前者共用「鎖的拆裝」四個字，
+            // 後者只有「拆裝」兩個字，這樣才分得出使用者指的是哪一支。
+            const nameScore = longestCommon(normName(q), normName(row.name)) * 1.2
+            return { row, qHits: qHits + (nameScore >= 3.6 ? 1 : 0), score: (qScore + kScore + nameScore) * vBoost }
           })
           .filter(x => x.score > 0)
           .sort((a, b) => b.score - a.score)
@@ -478,10 +483,19 @@ export async function POST(req: NextRequest) {
         // 以前沒命中時會退回用檢索到的內文比對，但那等於在賭——問掃描機驅動安裝，
         // 內文出現「位置」就把丈量的鎖孔照片附上來。寧可不附圖，也不要附錯的。
         // 要讓整份 SOP 的圖一起出現，作法是把該 SOP 的名字加進每一列的關鍵字。
-        const pool = scored.filter(x => x.qHits > 0)
-        // 加權之後分數變得有意義了，門檻可以拉高：只留跟第一名同一個量級的。
-        // 0.4 太鬆——只靠通用字命中的列也還在及格邊緣。
-        const cut = pool[0] ? pool[0].score * 0.6 : 0
+        let pool = scored.filter(x => x.qHits > 0)
+        // 使用者明講「要影片」時，就只從真的有影片的那幾列裡挑，而且只留最像的那一支。
+        // 他要的是一支片子，不是一份參考資料——多附一支不相干的等於答錯。
+        const videoPool = pool.filter(x => x.row.images.some(im => im.kind === 'video' || im.kind === 'embed'))
+        let cut: number
+        if (wantsVideo && videoPool.length > 0) {
+          pool = videoPool
+          cut = pool[0].score * 0.85
+        } else {
+          // 加權之後分數變得有意義了，門檻可以拉高：只留跟第一名同一個量級的。
+          // 0.4 太鬆——只靠通用字命中的列也還在及格邊緣。
+          cut = pool[0] ? pool[0].score * 0.6 : 0
+        }
         const keep = pool.filter(x => x.score >= cut).slice(0, 8)
         // 有些列的影片是放在「頁面內文」而不是「圖片／檔案」欄位——資料庫的檔案欄位無法用
         // API 寫入，內文可以。只對「有命中、而且欄位是空的」那幾列即時去讀內文，
