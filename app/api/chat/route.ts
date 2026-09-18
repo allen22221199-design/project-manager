@@ -441,14 +441,33 @@ export async function POST(req: NextRequest) {
         // 到處都有「位置」「方向」這種通用關鍵字。改成計分後只取前段。
         const q = retrievalQuery.toLowerCase()
         const kbText = (primaryText || knowledge).toLowerCase()
+        // 關鍵字不是每個都一樣有用。「影片」「教學」「拆裝」幾乎每一列都掛，
+        // 命中它們完全不代表問的就是這一列；「門弓器」「平推鎖」只有一列有，
+        // 命中就幾乎確定。所以用「這個字被幾列使用」來決定它的份量：
+        // 越多列共用的字越不算數（資訊檢索的 IDF）。
+        // 沒有這個加權時，問「鎖的拆裝影片」會連門弓器的影片一起附上——
+        // 因為兩列都掛了「拆裝」。
+        const df = new Map<string, number>()
+        for (const row of imageLib) {
+          for (const k of Array.from(new Set(row.keywords))) df.set(k, (df.get(k) ?? 0) + 1)
+        }
+        const N = imageLib.length
+        const idf = (k: string) => Math.log((N + 1) / ((df.get(k) ?? 1) + 0.5))
+        // 使用者明講要影片時，真的有影片的那幾列要排前面
+        const wantsVideo = /影片|錄影|影像|播放|看一下|示範片|教學片/.test(q)
         const scored = imageLib
           .map(row => {
-            const qHits = row.keywords.filter(k => q.includes(k)).length
-            const kHits = row.keywords.filter(k => kbText.includes(k)).length
+            const qk = row.keywords.filter(k => q.includes(k))
+            const kk = row.keywords.filter(k => kbText.includes(k))
+            const qHits = qk.length
             // 檢索到的內容很長，單獨命中一個通用字幾乎一定是巧合
             // （防火標章那列只因為丈量 SOP 提到「防火門」就跟著跑出來）。
             // 要兩個以上不同關鍵字都出現，才算這一列真的跟內容有關。
-            return { row, qHits, score: qHits * 5 + (kHits >= 2 ? kHits : 0) }
+            const qScore = qk.reduce((a, k) => a + idf(k), 0) * 5
+            const kScore = kk.length >= 2 ? kk.reduce((a, k) => a + idf(k), 0) : 0
+            const hasVideo = row.images.some(im => im.kind === 'video' || im.kind === 'embed')
+            const vBoost = wantsVideo && hasVideo ? 1.3 : 1
+            return { row, qHits, score: (qScore + kScore) * vBoost }
           })
           .filter(x => x.score > 0)
           .sort((a, b) => b.score - a.score)
@@ -460,7 +479,9 @@ export async function POST(req: NextRequest) {
         // 內文出現「位置」就把丈量的鎖孔照片附上來。寧可不附圖，也不要附錯的。
         // 要讓整份 SOP 的圖一起出現，作法是把該 SOP 的名字加進每一列的關鍵字。
         const pool = scored.filter(x => x.qHits > 0)
-        const cut = pool[0] ? pool[0].score * 0.4 : 0
+        // 加權之後分數變得有意義了，門檻可以拉高：只留跟第一名同一個量級的。
+        // 0.4 太鬆——只靠通用字命中的列也還在及格邊緣。
+        const cut = pool[0] ? pool[0].score * 0.6 : 0
         const keep = pool.filter(x => x.score >= cut).slice(0, 8)
         // 有些列的影片是放在「頁面內文」而不是「圖片／檔案」欄位——資料庫的檔案欄位無法用
         // API 寫入，內文可以。只對「有命中、而且欄位是空的」那幾列即時去讀內文，
