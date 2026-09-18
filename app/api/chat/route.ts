@@ -52,6 +52,15 @@ function commonFragment(a: string, b: string) {
   return ''
 }
 
+// 中文問句的骨架詞。斷詞是 2 字滑動窗，這些片段幾乎每一句都會出現，
+// 命中它們不代表切題。這是語言層面的固定清單，不會隨公司資料變多而需要維護。
+const STOP_BIGRAMS = new Set([
+  '怎麼', '麼用', '麼做', '麼看', '如何', '什麼', '甚麼', '可以', '要怎', '是什',
+  '這個', '那個', '哪個', '哪些', '一下', '有沒', '沒有', '我們', '你們', '他們',
+  '需要', '應該', '請問', '幫我', '給我', '告訴', '知道', '目前', '現在', '一個',
+  '的話', '的部', '部分', '方式', '方法', '流程', '步驟', '注意', '事項', '問題',
+])
+
 // 台北時區今天 YYYY/MM/DD
 function taipeiToday(): string {
   const d = new Date(Date.now() + 8 * 3600 * 1000)
@@ -574,8 +583,11 @@ export async function POST(req: NextRequest) {
             }))
             .filter((x: any) => x.media.length > 0)
           if (withMedia.length > 0) {
-            // 用既有的中文斷詞（2 字滑動窗），不要再寫第二套
-            const terms = extractTerms(retrievalQuery)
+            // 用既有的中文斷詞（2 字滑動窗），不要再寫第二套。
+            // 但要先把「怎麼」「可以」這種功能詞丟掉：它們不是主題，只是問句的骨架。
+            // 實測「剪映怎麼用」時，「怎麼」的稀有度分數(2.48)竟然高過「剪映」(2.15)，
+            // 因為這 29 篇摘要裡剛好比較少人寫「怎麼」——稀有不等於切題。
+            const terms = extractTerms(retrievalQuery).filter(t => !STOP_BIGRAMS.has(t))
             const docs = withMedia.map((x: any) =>
               `${x.it.title} ${(x.it.tags ?? []).join(' ')} ${x.it.summary ?? ''}`.toLowerCase())
             const dfk = new Map<string, number>()
@@ -584,12 +596,17 @@ export async function POST(req: NextRequest) {
             const ranked = withMedia
               .map((x: any, i: number) => {
                 const hitTerms = terms.filter(t => docs[i].includes(t))
-                const sc = hitTerms.reduce((a, t) => a + Math.log((M + 1) / ((dfk.get(t) ?? 1) + 0.5)), 0)
+                // 再乘上「這一頁提到幾次」。整篇都在講剪映的教學，跟只順口提一次的頁面，
+                // 不該拿到一樣的分數——這是把兩者分開的關鍵。
+                const sc = hitTerms.reduce((a, t) => {
+                  const tf = docs[i].split(t).length - 1
+                  return a + Math.log((M + 1) / ((dfk.get(t) ?? 1) + 0.5)) * Math.log(1 + tf)
+                }, 0)
                 return { x, hits: hitTerms.length, score: sc }
               })
-              // 兩個以上不同的詞命中，而且至少有一個是有鑑別度的（分數門檻），才算數。
-              // 只靠「怎麼」「可以」這種到處都有的字命中不算——那是巧合不是證據。
-              .filter((r: any) => r.hits >= 2 && r.score >= 1.5)
+              // 濾掉功能詞之後，命中一個實詞就算數（「剪映怎麼用」扣掉骨架只剩「剪映」）。
+              // 門檻改看分數：要嘛命中的詞夠獨特，要嘛這一頁反覆在講它。
+              .filter((r: any) => r.hits >= 1 && r.score >= 2.5)
               .sort((a: any, b: any) => b.score - a.score)
             // 只取第一名。原本還要求「領先第二名 25%」，但同一套課程拆成
             // 04~07_剪輯 四頁，問「剪映怎麼用」時四頁分數本來就接近，
