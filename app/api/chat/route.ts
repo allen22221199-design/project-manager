@@ -381,12 +381,14 @@ export async function POST(req: NextRequest) {
       } catch { /* 抓圖失敗不影響對話 */ }
     } catch { /* 知識庫讀取失敗不影響對話 */ }
 
+    // 這句是不是在問「工程做到哪」——底下圖庫比對要用（問進度不該附教學影片）
+    let asksBuild = false
     // 施工進度（案場 × 棟別 × 五道工序）也是知識來源。
     // 只有問題確實提到工序或棟別時才撈——這張表跟每一題都沾得上邊（到處都有案場名），
     // 不設條件的話會變成每個問題都塞一份施工進度進去。
     try {
       const q = retrievalQuery
-      const asksBuild = BUILD_STEPS.some(k => q.includes(k))
+      asksBuild = BUILD_STEPS.some(k => q.includes(k))
         || /棟|施工進度|做到哪|完成了嗎|巡查|進度到|箱體|進場|生產/.test(q)
       if (asksBuild) {
         const rows = await getBuildingProgress()
@@ -435,7 +437,11 @@ export async function POST(req: NextRequest) {
     // 比對範圍用「問題＋檢索到的知識庫內容」（內容就是答案會取材的地方），
     // 效果接近以前用回答比對，但可以提前拿到清單。
     try {
-      if (imageLib.length > 0) {
+      // 問「桃大27現在進度如何」時，圖庫裡那列「專案回報管理APP」只因為共用「進度」兩個字
+      // 就被附上三支教學影片。問進度是在問資料，不是在問怎麼操作——除非他同時明講要看
+      // 影片／圖片／SOP，否則這種題目不附素材。
+      const asksHowTo = /影片|圖片|照片|圖|sop|怎麼做|怎麼用|教學|示範/i.test(retrievalQuery)
+      if (imageLib.length > 0 && !(asksBuild && !asksHowTo)) {
         // 比對要分兩種份量：命中「使用者問題本身」的最準，命中「檢索到的內容」只能當輔助。
         // 早期兩者混在一起比對，結果問「防火標章」也附上鎖孔的圖——因為知識庫內容裡
         // 到處都有「位置」「方向」這種通用關鍵字。改成計分後只取前段。
