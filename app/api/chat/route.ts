@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '尚未設定 GEMINI_API_KEY' }, { status: 503 })
   }
   try {
-    const { messages, projects, people, isAdmin, selfName } = await req.json()
+    const { messages, projects, people, isAdmin, selfName, debugMedia } = await req.json()
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: '沒有訊息' }, { status: 400 })
     }
@@ -497,6 +497,17 @@ export async function POST(req: NextRequest) {
           cut = pool[0] ? pool[0].score * 0.6 : 0
         }
         const keep = pool.filter(x => x.score >= cut).slice(0, 8)
+        if (debugMedia) {
+          return NextResponse.json({ reply: '(debug)', debug: {
+            wantsVideo, cut,
+            scored: scored.slice(0, 12).map(x => ({
+              name: x.row.name, score: +x.score.toFixed(2), qHits: x.qHits,
+              hit: x.row.keywords.filter(k => q.includes(k)),
+              hasVideo: x.row.images.some(im => im.kind === 'video' || im.kind === 'embed'),
+              kept: keep.indexOf(x) >= 0,
+            })),
+          } })
+        }
         // 有些列的影片是放在「頁面內文」而不是「圖片／檔案」欄位——資料庫的檔案欄位無法用
         // API 寫入，內文可以。只對「有命中、而且欄位是空的」那幾列即時去讀內文，
         // 才不會每次對話都把整個圖庫的頁面掃一遍。
