@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '尚未設定 GEMINI_API_KEY' }, { status: 503 })
   }
   try {
-    const { messages, projects, people, isAdmin, selfName } = await req.json()
+    const { messages, projects, people, isAdmin, selfName, debugBind } = await req.json()
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: '沒有訊息' }, { status: 400 })
     }
@@ -594,6 +594,16 @@ export async function POST(req: NextRequest) {
             // 只取第一名。原本還要求「領先第二名 25%」，但同一套課程拆成
             // 04~07_剪輯 四頁，問「剪映怎麼用」時四頁分數本來就接近，
             // 結果全部被擋掉、一支都不給。分數接近代表它們都相關，不是代表在猜。
+            if (debugBind) {
+              return NextResponse.json({ reply: '(debug)', debug: {
+                terms, mediaPages: withMedia.length,
+                top: withMedia.map((x: any, i: number) => {
+                  const ht = terms.filter(t => docs[i].includes(t))
+                  return { title: x.it.title, media: x.media.length, hits: ht.length, terms: ht,
+                    score: +ht.reduce((a, t) => a + Math.log((M + 1) / ((dfk.get(t) ?? 1) + 0.5)), 0).toFixed(2) }
+                }).sort((a: any, b: any) => b.score - a.score).slice(0, 10),
+              } })
+            }
             const best: any = ranked[0]
             if (best) {
               boundImages = best.x.media.slice(0, 4).map((m: any) => ({
