@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getKnowledgeBase, readPagePlainText, getPageMedia, getImageLibrary, classifyMedia, getBuildingProgress, BUILD_STEPS, type MediaKind } from '@/lib/notion'
+import { getKnowledgeBase, readPagePlainText, getPageMedia, getImageLibrary, classifyMedia, getBuildingProgress, getDailyTasks, BUILD_STEPS, type MediaKind } from '@/lib/notion'
 import { chatWithAssistant, routeChatIntent, suggestFollowups } from '@/lib/gemini'
 import { detectBuildTick } from '@/lib/buildIntent'
 import { rankKnowledge, rankChunks, type Chunk } from '@/lib/kbsearch'
@@ -385,6 +385,41 @@ export async function POST(req: NextRequest) {
         imageResults.push(...dedup.slice(0, 3))  // 自動抓的圖最多 3 張，避免洗版（圖庫的精準圖之後會排前面）
       } catch { /* 抓圖失敗不影響對話 */ }
     } catch { /* 知識庫讀取失敗不影響對話 */ }
+
+    // ── 人員目前的工作 ────────────────────────────────────────
+    // 沒有這一段的時候，問「王治先手上有哪些任務」，AI 會從舊備忘錄裡撈出他的
+    // 「職務描述」當成現在的待辦回答你——看起來像答案，其實不是真的。
+    // 寧可它說不知道，也不要拿三個月前的職掌說明冒充今天的工作。
+    try {
+      const q = retrievalQuery
+      const names = roster.map(p => p.name).filter(n => q.includes(n))
+      const asksWorkload = /任務|工作|待辦|要做|沒做|未完成|還有什麼|手上|忙什麼|進度如何|幾件/.test(q)
+      if (asksWorkload && (names.length > 0 || /誰|大家|所有人|每個人/.test(q))) {
+        const all = await getDailyTasks(undefined, { activeOnly: true })
+        const mine = names.length > 0 ? all.filter(t => names.includes(t.person)) : all
+        if (mine.length > 0) {
+          // 逾期的排前面，其次照截止日。一次最多 60 筆，避免把整個看板塞進提示詞。
+          const today = taipeiToday().replace(/\//g, '-')
+          const sorted = mine.slice().sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))
+          const lines = sorted.slice(0, 60).map(t => {
+            const late = t.date && t.date < today ? '【逾期】' : ''
+            const steps = (t.steps ?? []) as { step: string; done: boolean }[]
+            const undone = steps.filter(x => !x.done).length
+            return `・${t.person}｜${late}${t.task}｜截止 ${t.date || '未設'}｜狀態 ${t.status}`
+              + (steps.length ? `｜子項 ${steps.length - undone}/${steps.length} 完成` : '')
+          })
+          const who = names.length > 0 ? names.join('、') : '全體'
+          knowledge = (knowledge ? knowledge + '\n\n---\n\n' : '')
+            + `以下是【${who}】目前「還沒完成」的任務（已排除完成與已封存，共 ${mine.length} 筆`
+            + (mine.length > 60 ? '，只列前 60 筆' : '') + '）。'
+            + '問到某人手上有什麼工作、還剩幾件、有沒有逾期時，一律以這份為準，'
+            + '不要拿職務說明或舊會議記錄當成他現在的工作：\n\n' + lines.join('\n')
+        } else if (names.length > 0) {
+          knowledge = (knowledge ? knowledge + '\n\n---\n\n' : '')
+            + `【${names.join('、')}】目前沒有任何未完成的任務。回答時就直接說沒有，不要改用職務說明來湊答案。`
+        }
+      }
+    } catch { /* 任務讀取失敗不影響對話 */ }
 
     // 這句是不是在問「工程做到哪」——底下圖庫比對要用（問進度不該附教學影片）
     let asksBuild = false
