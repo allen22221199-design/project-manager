@@ -365,7 +365,12 @@ export async function POST(req: NextRequest) {
         // 以前還會掃頁面內文區塊裡的影片(getPageMedia)，但那些區塊常常不是這一題的東西——
         // 問掃描機驅動卻附上一支別人的自拍、問鎖孔卻附上拍攝技巧的片段，都是這樣來的。
         // 附件才是這份資料本體，內文區塊不是。
-        const picks = topSources.slice(0, 1)
+        // 而且「排名第一」不等於「這一題的」。問「有沒有剪輯教學」時排第一的是
+        // 〈03_拍攝技巧-C〉，於是附上一支拍攝的影片——問剪輯給拍攝，比不給還糟。
+        // 所以再要求一個條件：這一頁的標題要跟問題有共同片段，才把它的影片附上去。
+        // 標題對不上就寧可不附；使用者要的素材請放圖庫，那條路是精準比對。
+        const picks = topSources.slice(0, 1).filter(s =>
+          longestCommon(normName(retrievalQuery), normName(s.title)) >= 2)
         picks.forEach((s) => {
           const kbItem = kb.find(k => k.id === s.id) as any
           for (const att of (kbItem?.attachments ?? [])) {
