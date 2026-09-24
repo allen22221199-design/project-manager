@@ -190,10 +190,7 @@ export default function DoorOrderForm() {
     return () => clearTimeout(t)
   }, [justId])
 
-  // 使用者一碰過建案/棟別，初次載入就不准再去蓋它
-  const 碰過 = useRef(false)
   const set = (k: string, v: string) => {
-    if (k === 'f_job' || k === 'f_bldg') 碰過.current = true
     setF(p => {
       const n = { ...p, [k]: v }
       // 一開始填門扇摺段，就把手打的門扇寬/高清掉。不清的話：先打 1130（量完成面）、
@@ -205,7 +202,9 @@ export default function DoorOrderForm() {
   }
 
   // ---------- 載入 ----------
-  const load = useCallback(async (seed = false) => {
+  // 進來一律不預選案場。案場一多，猜錯比不猜更糟——門被存到別的建案去
+  // 是不會有人當場發現的，出圖才發現就來不及了。
+  const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
       const r = await fetch('/api/door-orders')
@@ -213,33 +212,43 @@ export default function DoorOrderForm() {
       if (!r.ok) throw new Error(d.error || '讀取失敗')
       const list: DoorRow[] = Array.isArray(d.rows) ? d.rows : []
       setRows(list)
-      // 只有第一次、而且使用者還沒動過那兩格，才把上次的建案帶進來。
-      // 現場常常是「打開就直接開始打字」，讀取要好幾秒，回來蓋掉他打的東西
-      // 會讓門被存到別的建案去。
-      if (seed && list.length && !碰過.current) {
-        const last = list[list.length - 1].door
-        setJob(String(last.f_job ?? ''))
-        setF(p => ({ ...p, f_job: String(last.f_job ?? ''), f_bldg: String(last.f_bldg ?? '') }))
-      }
       return list
     } catch (e: any) { setErr(e.message); return null }
     finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { load(true) }, [load])
+  useEffect(() => { load() }, [load])
 
   // ---------- 衍生值 ----------
+  // 案場清單照「最後異動時間」由新到舊排，最近在做的排最前面。
+  // 照筆劃排的話，做了三年的舊案子會一直卡在最上面。
   const 工單清單 = useMemo(() => {
-    const s = new Set<string>()
-    rows.forEach(r => { const j = String(r.door.f_job ?? '').trim(); if (j) s.add(j) })
-    return [...s].sort()
+    const 最後: Record<string, string> = {}
+    const 樘數: Record<string, number> = {}
+    rows.forEach(r => {
+      const j = String(r.door.f_job ?? '').trim()
+      if (!j) return
+      樘數[j] = (樘數[j] ?? 0) + 1
+      const t = r.updatedAt || ''
+      if (t > (最後[j] ?? '')) 最後[j] = t
+    })
+    return Object.keys(樘數).sort((a, b) => (最後[b] ?? '').localeCompare(最後[a] ?? '') || a.localeCompare(b))
+  }, [rows])
+
+  const 樘數表 = useMemo(() => {
+    const m: Record<string, number> = {}
+    rows.forEach(r => {
+      const j = String(r.door.f_job ?? '').trim()
+      if (j) m[j] = (m[j] ?? 0) + 1
+    })
+    return m
   }, [rows])
 
   // 剛開的新案場還沒有門，不會出現在 工單清單 裡，但它已經是選中的那個，
   // 頁籤上要看得到，不然使用者不知道自己在哪一個案場底下填。
   const 案場清單 = useMemo(() => {
     const j = job.trim()
-    return j && !工單清單.includes(j) ? [...工單清單, j] : 工單清單
+    return j && !工單清單.includes(j) ? [j, ...工單清單] : 工單清單
   }, [工單清單, job])
 
   // 這張工單的門。分組與排序只影響畫面，不影響存出去的順序。
@@ -406,7 +415,6 @@ export default function DoorOrderForm() {
     set開新案(false)
     set新案名('')
     setJob(j)
-    碰過.current = true
     fillForm(null)
     setF(p => ({ ...p, f_job: j }))
   }
@@ -484,40 +492,35 @@ export default function DoorOrderForm() {
       {err && <div className="glass-card p-3 mb-3 text-sm text-red-600">{err}</div>}
 
       {/* ---- 案場（頁面層級，不是每一樘的欄位）----
-           一個案場一個頁籤。切換只要點一下，不用先清空表單再重打建案名稱。 */}
+           用下拉不用頁籤：案場會一直累積，排成一列遲早爆版。
+           進來預設不選，要接哪一個自己挑——猜錯案場比沒猜更糟。 */}
       <div className={CARD + ' mb-3'}>
         <p className="text-sm font-medium text-gray-700 mb-2">案場</p>
         <div className="flex flex-wrap items-center gap-2">
-          {案場清單.map(j => {
-            const on = j === job.trim()
-            const n = rows.filter(r => String(r.door.f_job ?? '').trim() === j).length
-            return (
-              <button key={j} type="button" onClick={() => 換案場(j)} disabled={busy}
-                className={`text-sm px-3 py-1.5 rounded-full font-medium border transition-colors disabled:opacity-40 ${
-                  on ? 'bg-indigo-600 text-white border-indigo-600'
-                     : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-                {j}
-                <span className={`ml-1.5 ${on ? 'text-white/70' : 'text-gray-400'}`}>{n}</span>
-              </button>
-            )
-          })}
           {開新案 ? (
-            <span className="flex items-center gap-1">
-              <input className="border border-indigo-300 rounded-full px-3 py-1.5 text-sm w-44
-                                focus:outline-none focus:border-indigo-500" autoFocus
-                placeholder="新案場名稱" value={新案名}
-                onChange={e => set新案名(e.target.value)}
+            <>
+              <input className={INPUT + ' w-full sm:w-64'} autoFocus placeholder="新案場名稱"
+                value={新案名} onChange={e => set新案名(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') 建新案(); if (e.key === 'Escape') { set開新案(false); set新案名('') } }} />
               <button type="button" onClick={建新案}
-                className="text-sm px-3 py-1.5 rounded-full font-medium bg-indigo-600 text-white hover:bg-indigo-700">建立</button>
+                className="aurora-grad text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:brightness-105">建立</button>
               <button type="button" onClick={() => { set開新案(false); set新案名('') }}
-                className="text-sm text-gray-400 hover:text-gray-600 px-1">取消</button>
-            </span>
+                className="text-sm text-gray-400 hover:text-gray-600 px-2">取消</button>
+            </>
           ) : (
-            <button type="button" onClick={() => set開新案(true)}
-              className="text-sm px-3 py-1.5 rounded-full border border-dashed border-gray-300 text-gray-500 hover:border-gray-500 hover:text-gray-700">
-              ＋ 新案場
-            </button>
+            <>
+              <select className={SELECT + ' w-full sm:w-72'} value={job} disabled={busy}
+                onChange={e => 換案場(e.target.value)}>
+                <option value="">— 請選擇案場 —</option>
+                {案場清單.map(j => (
+                  <option key={j} value={j}>{`${j}（${樘數表[j] ?? 0} 樘）`}</option>
+                ))}
+              </select>
+              <button type="button" onClick={() => set開新案(true)} disabled={busy}
+                className="bg-white border border-indigo-300 text-indigo-700 rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-50 disabled:opacity-40 shrink-0">
+                ＋ 新案場
+              </button>
+            </>
           )}
         </div>
         {像的 && (
@@ -533,6 +536,15 @@ export default function DoorOrderForm() {
         )}
       </div>
 
+      {/* 沒選案場就先不要把表單攤出來。不然人會先填完二十幾格，
+          按下存檔才被擋說「還缺案場」，等於白打一次。 */}
+      {!job.trim() ? (
+        <div className="glass-card p-6 text-center">
+          <p className="text-sm text-gray-500">上面先選一個案場，或按「＋ 新案場」開一張新的。</p>
+          <p className="text-xs text-gray-400 mt-1">選好之後才會出現填尺寸的欄位。</p>
+        </div>
+      ) : (
+        <>
       {/* ---- 這一樘 ---- */}
       <div className={CARD + ' mb-3'}>
         <p className="text-sm font-medium text-gray-700 mb-3">
@@ -821,6 +833,8 @@ export default function DoorOrderForm() {
         <button type="button" onClick={copyAll} disabled={busy}
           className="text-sm text-gray-500 hover:text-indigo-600 border border-gray-200 rounded-lg px-3 py-1.5 disabled:opacity-40">複製全部</button>
       </div>
+        </>
+      )}
 
       {/* ---- 清單 ---- */}
       <p className="text-sm font-medium text-gray-700 mb-1">
