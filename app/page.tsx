@@ -2875,7 +2875,7 @@ export default function Page() {
                   <button key={tab} onClick={() => setFilterStatus(tab)}
                     className={`text-xs px-3 py-2 md:py-1.5 rounded-full font-medium transition-colors ${filterStatus === tab ? 'aurora-grad text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'}`}>
                     {tab}
-                    <span className={`ml-1 ${filterStatus === tab ? 'text-gray-300' : 'text-gray-400'}`}>{count}</span>
+                    <span className={`ml-1 ${filterStatus === tab ? 'text-white/75' : 'text-gray-400'}`}>{count}</span>
                   </button>
                 )
               })}
@@ -4132,7 +4132,7 @@ export default function Page() {
                                     <label key={si} className="flex items-start gap-1.5 text-xs cursor-pointer">
                                       <input type="checkbox" checked={s.done} onChange={() => toggleTaskStep(t, si)}
                                         className="mt-0.5 rounded shrink-0" />
-                                      <span className={s.done ? 'line-through text-gray-300' : 'text-gray-500'}>{s.step}</span>
+                                      <span className={s.done ? 'line-through text-gray-400' : 'text-gray-700 font-medium'}>{s.step}</span>
                                     </label>
                                   ))}
                                 </div>
