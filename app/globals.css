@@ -209,3 +209,19 @@ button[class*="h-8"], button[class*="h-9"], button[class*="h-10"] { min-height: 
 .ai-fab { transition: transform .22s ease, opacity .22s ease; }
 /* 往下捲時滑開，不要永遠壓在卡片右邊的狀態標籤上面 */
 .ai-fab-away { transform: translateY(96px); opacity: 0; pointer-events: none; }
+
+/* 右下角的 AI 小視窗。手機幾乎整頁（留上方一點點看得到自己還在哪一頁），
+   桌機是右下角的一塊面板。高度用 dvh，才不會被手機瀏覽器的網址列吃掉。 */
+.chat-pop {
+  left: 8px; right: 8px; bottom: 8px;
+  top: 64px;
+  border-radius: 14px;
+  border: 1px solid var(--hairline);
+  box-shadow: 0 10px 40px rgba(20, 30, 60, 0.28);
+}
+@media (min-width: 768px) {
+  .chat-pop {
+    left: auto; right: 24px; bottom: 24px; top: auto;
+    width: 440px; height: min(620px, calc(100dvh - 120px));
+  }
+}

@@ -1566,3 +1566,125 @@ export async function updateBuilding(id: string, f: {
 export async function deleteBuilding(id: string) {
   await notion.pages.update({ page_id: id, archived: true })
 }
+
+// ===== 門單（防火門訂料單：一扇門一列）=====
+// 一扇門的資料是一包扁平的 f_* 欄位（f_lw 門扇寬、f_ts0 上框第一摺段…），
+// 加上 holes / locks 兩個陣列，總共四十幾個鍵，而且大部分的門只填得到其中幾個。
+//
+// 這裡刻意「原封不動」把那一包存成 JSON，不拆成 Notion 欄位。原因是那包 JSON
+// 就是 製圖.exe 吃的格式——拆開再組回去，只要有一個鍵名對不上，圖就會少畫一支料，
+// 而且不會有人發現。另外拉出八個純量做成真正的欄位，純粹是為了在 Notion 裡看得懂、
+// 查得動（尤其是「工單」，讀回來就是靠它過濾）。
+const DOOR_DB_ID = process.env.NOTION_DOOR_DATABASE_ID || '6fc0506ffd33423999deed2a659cd249'
+
+// 明細 JSON 的格式版本。日後欄位有變動時靠這個判斷舊資料怎麼讀。
+const DOOR_DETAIL_VERSION = 1
+
+// 一扇門的原始欄位。鍵名由訂料單決定（f_job、f_lw、holes、locks…），
+// 這一層不認識也不驗證它們——驗證是製圖程式的事。
+export type Door = Record<string, any>
+
+export type DoorRow = {
+  id: string
+  door: Door
+  updatedAt: string
+}
+
+// 明細壞掉（被手動改過、或存進去時被截斷）就回空物件，不要讓整份清單 500。
+function parseDoor(props: any): Door {
+  try {
+    // 一定要用 mText：超過 2000 字會被切成好幾段，只讀第一段會拿到半截 JSON
+    const raw = mText(props, '明細')
+    if (!raw) return {}
+    const obj = JSON.parse(raw)
+    const d = obj && typeof obj === 'object' && obj.door ? obj.door : obj
+    return d && typeof d === 'object' && !Array.isArray(d) ? d : {}
+  } catch { return {} }
+}
+
+function toDoorRow(p: any): DoorRow {
+  const door = parseDoor(p.properties)
+  // 明細讀不出來時，至少讓那八個欄位把門撐起來，使用者才看得到是哪一樘出問題
+  if (!Object.keys(door).length) {
+    const s = (k: string) => mText(p.properties, k)
+    Object.assign(door, {
+      f_job: s('工單'), f_bldg: s('棟別'), f_floor: s('樓層'),
+      f_no: s('圖號'), f_place: s('位置'), f_type: s('門型'),
+    })
+    for (const k of Object.keys(door)) if (!door[k]) delete door[k]
+  }
+  return { id: p.id, door, updatedAt: p.properties['更新時間']?.last_edited_time ?? '' }
+}
+
+// 帶 order 就只取那張工單的，不帶就全部。
+// 一定要跑分頁：一張工單就七十幾樘，不分頁超過 100 筆會被無聲截掉。
+export async function getDoors(order?: string): Promise<DoorRow[]> {
+  const results: any[] = []
+  let cursor: string | undefined = undefined
+  do {
+    const res: any = await notion.databases.query({
+      database_id: DOOR_DB_ID,
+      ...(order ? { filter: { property: '工單', rich_text: { equals: order } } } : {}),
+      // 一定要指定排序。Notion 不給排序時的預設順序沒有保證，而前端的
+      // 「沿用上一樘」和「棟別/樓層沿用上一樘」都是取陣列最後一筆——
+      // 順序一亂，就會沿用到不相干的那一樘。
+      sorts: [{ timestamp: 'created_time', direction: 'ascending' }],
+      page_size: 100,
+      ...(cursor ? { start_cursor: cursor } : {}),
+    })
+    results.push(...res.results)
+    cursor = res.has_more ? res.next_cursor : undefined
+  } while (cursor)
+  // 順序交給前端（要照棟分組再依圖號排），這裡只保證同一張工單的先後穩定
+  return results.filter((p: any) => !p.archived && !p.in_trash).map(toDoorRow)
+}
+
+// 圖上印的名字＝位置－門型，跟 door_draw.py 的算法一致
+function doorLabel(d: Door): string {
+  const n = [String(d.f_place ?? '').trim(), String(d.f_type ?? '').trim()].filter(Boolean).join('-')
+  return n || String(d.f_name ?? '').trim()
+}
+
+function doorProps(d: Door): any {
+  const s = (k: string) => String(d[k] ?? '').trim()
+  const qty = Number(s('f_qty'))
+  return {
+    門編號: { title: toRichText([s('f_job'), s('f_no'), doorLabel(d)].filter(Boolean).join(' ') || '(未命名門)') },
+    工單: { rich_text: toRichText(s('f_job')) },
+    棟別: { rich_text: toRichText(s('f_bldg')) },
+    樓層: { rich_text: toRichText(s('f_floor')) },
+    圖號: { rich_text: toRichText(s('f_no')) },
+    位置: { rich_text: toRichText(s('f_place')) },
+    門型: { rich_text: toRichText(s('f_type')) },
+    份數: { number: Number.isFinite(qty) && s('f_qty') !== '' ? qty : null },
+    明細: { rich_text: toRichText(JSON.stringify({ v: DOOR_DETAIL_VERSION, door: d })) },
+  }
+}
+
+export async function addDoor(d: Door): Promise<{ id: string }> {
+  const page: any = await notion.pages.create({
+    parent: { database_id: DOOR_DB_ID },
+    properties: doorProps(d),
+  })
+  return { id: page.id }
+}
+
+// 整包覆寫，不做逐欄合併——訂料單每次都送完整的一樘，
+// 合併規則一旦有歧義（清空一個欄位算不算「沒送」）就會弄丟資料。
+export async function updateDoor(id: string, d: Door) {
+  try {
+    await notion.pages.update({ page_id: id, properties: doorProps(d) })
+  } catch (e: any) {
+    if (String(e?.message ?? e).includes('archived')) return   // 已刪掉，前端重抓就好
+    throw e
+  }
+}
+
+export async function deleteDoor(id: string) {
+  try {
+    await notion.pages.update({ page_id: id, archived: true })
+  } catch (e: any) {
+    if (String(e?.message ?? e).includes('archived')) return
+    throw e
+  }
+}

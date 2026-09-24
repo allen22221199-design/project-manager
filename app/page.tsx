@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Tour, { type TourStep } from './tour'
 import RichText, { MediaGroup } from './richtext'
 import MeetingFlow from '@/components/MeetingFlow'
+import DoorOrderForm from '@/components/DoorOrderForm'
 import { catOf, buildingsOf, monthKey, monthLabel, shortDate, sortKey, itemVocabulary, itemsOf } from '@/lib/progressTags'
 import { missingOf, hasPhone } from '@/lib/projectChecks'
 
@@ -169,7 +170,7 @@ const PROJECT_COLORS_LIST = [
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string; ganttStart?: string; ganttEnd?: string; schedule?: string; latestProgress?: string; latestProgressDate?: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
-type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private' | 'meeting' | 'issues'
+type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private' | 'meeting' | 'issues' | 'doors'
 // 會議事項（品質會議的問題追蹤）。跟每日工作是兩套獨立資料，欄位也不一樣。
 type MeetingItem = {
   id: string; no: string; meetDate: string; category: string; issue: string
@@ -298,6 +299,7 @@ export default function Page() {
   // 案件抬頭（名稱／聯絡人／地址）打字中的草稿，離開欄位才寫回 Notion
   // AI 按鈕固定在右下角，會一直蓋住卡片右邊的狀態標籤。往下捲就讓開，往上捲或停住就回來。
   const [fabHidden, setFabHidden] = useState(false)
+  const [chatPop, setChatPop] = useState(false)   // 右下角的小視窗開著沒
   const [projEdit, setProjEdit] = useState<Record<string, string>>({})
   const [projErr, setProjErr] = useState('')
   // 進度紀錄的篩選與展開狀態
@@ -641,7 +643,7 @@ export default function Page() {
     // 支援用網址參數 ?v=<view> 直接開啟指定頁面（截圖／分享用）
     try {
       const v = new URLSearchParams(window.location.search).get('v') as View | null
-      const valid: View[] = ['dashboard', 'list', 'daily', 'search', 'chat', 'private']
+      const valid: View[] = ['dashboard', 'list', 'daily', 'search', 'chat', 'private', 'doors', 'issues']
       if (v && valid.includes(v)) {
         setView(v)
         if (v === 'search') fetchInProgress()
@@ -2182,6 +2184,486 @@ export default function Page() {
 
   // 任務詳情面板（今日工作 / 任務查詢 共用）
   function renderTaskDetail(t: DailyTask) {
+  // 聊天室介面只有一份：整頁的 AI 助理和右下角的小視窗共用這一塊。
+  // 複製第二份的話，草稿卡片、影片、建議按鈕都會變成兩套各自壞掉。
+  const chatBody = (
+            <div className="flex flex-col h-full">
+              {chatMessages.length > 0 && (
+                <div className="flex justify-end mb-2">
+                  <button onClick={() => { if (confirm('確定清除所有對話記錄？')) setChatMessages([]) }}
+                    className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">
+                    🗑 清除對話
+                  </button>
+                </div>
+              )}
+              <div className="flex-1 overflow-y-auto space-y-3 pb-4">
+                {chatMessages.length === 0 && (
+                  <div className="glass-card p-5 text-sm text-gray-600">
+                    <p className="font-medium text-gray-800 mb-2">👋 我是公司 AI 助理</p>
+                    <p className="text-gray-500 mb-2">我會優先用「檔案庫」裡的公司資料回答。你可以問我：</p>
+                    <ul className="list-disc pl-5 space-y-1 text-gray-500">
+                      <li>客戶通話的話術建議</li>
+                      <li>公司機具的參數、保養方式</li>
+                      <li>幫忙整理某項作業的 SOP、排除困難</li>
+                    </ul>
+                    <p className="text-gray-500 mt-3 mb-1">也可以<span className="font-medium text-emerald-700">直接記錄專案進度</span>，例如：</p>
+                    <p className="text-gray-400 text-xs bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">「冠德的箱蓋今天噴好了」→ 我會幫你對應專案、確認後寫進進度紀錄</p>
+                    {isAdmin && (
+                      <>
+                        <p className="text-gray-500 mt-3 mb-1">也可以<span className="font-medium text-indigo-700">上傳待辦清單 PDF</span>（下面那顆 📄）：</p>
+                        <p className="text-gray-400 text-xs bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">心智圖匯出的 PDF 也讀得動。我只抽「掛在【自己】底下」的項目，勾選確認後才會加進你的待辦。</p>
+                      </>
+                    )}
+                    <p className="text-xs text-gray-400 mt-3">※ 公司內部資料若查不到，我會直接說不知道、不亂編；若引用網路資料會標註清楚。</p>
+                  </div>
+                )}
+                {chatMessages.map((m, i) => (
+                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`rounded-2xl px-4 py-3 ${m.role === 'user' ? 'text-sm whitespace-pre-wrap' : 'text-base'} ${m.images?.some(x => x.kind === 'video' || x.kind === 'embed') ? 'w-full max-w-[96%]' : 'max-w-[85%]'} ${m.role === 'user' ? 'aurora-grad text-white' : 'bg-white border border-gray-200/70 shadow-sm text-gray-800'}`}>
+                      {/* AI 的回答用輕量排版器處理（粗體、條列、內文插圖），使用者自己打的字保持原樣 */}
+                      {m.role === 'assistant' ? <RichText text={m.content} media={m.images} /> : m.content}
+                      {m.files && m.files.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                          <p className="text-xs text-gray-400 font-medium">📎 相關檔案</p>
+                          {m.files.map((f, fi) => (
+                            <a key={fi} href={f.url} download={f.name} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 transition-colors no-underline group">
+                              <span className="text-lg leading-none">📄</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-indigo-700 truncate">{f.title}</p>
+                                {f.name !== f.title && <p className="text-xs text-indigo-400 truncate">{f.name}</p>}
+                              </div>
+                              <span className="text-xs text-indigo-500 shrink-0 group-hover:underline">下載 ↓</span>
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                      {m.images && m.images.length > 0 && (() => {
+                        // 已經被 AI 插進內文的（[[MEDIA:n]]）就不要在最後重複出現一次
+                        const used = new Set(
+                          Array.from(String(m.content).matchAll(/\[\[MEDIA:(\d{1,2})\]\]/gi))
+                            .map(x => Number(x[1]) - 1)
+                        )
+                        // 內文插了某一張，就代表「那一整組」都已經在內文出現過了（見 richtext 的 MediaGroup），
+                        // 頁尾要把整組排除，否則同一批圖會重複出現兩次。
+                        const usedSources = new Set(
+                          m.images!.filter((im, i) => used.has(i) && im.kind === 'image').map(im => im.source)
+                        )
+                        const rest = m.images!.filter((im, i) =>
+                          !used.has(i) && !(im.kind === 'image' && usedSources.has(im.source)))
+                        if (rest.length === 0) return null
+                        const hasVideo = rest.some(x => x.kind === 'video' || x.kind === 'embed')
+                        return (
+                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                          <p className="text-xs text-gray-400 font-medium">{hasVideo ? '🖼️ 其他相關圖片／影片' : '🖼️ 其他相關圖片'}</p>
+                          <div className="space-y-2">
+                            {/* 同一個來源（Notion 同一列）的圖排成一組一起顯示，不要一張一張堆 */}
+                            {(() => {
+                              const groups: ImageResult[][] = []
+                              for (const img of rest) {
+                                const last = groups[groups.length - 1]
+                                if (last && last[0].source === img.source) last.push(img)
+                                else groups.push([img])
+                              }
+                              return groups.map((g, gi) => <MediaGroup key={gi} items={g} />)
+                            })()}
+                          </div>
+                        </div>
+                        )
+                      })()}
+                      {m.builds && m.builds.length > 0 && (() => {
+                        const builds = m.builds!
+                        const pending = builds.filter(b => b.state !== 'done').length
+                        const verb = builds[0].done ? '打勾' : '取消打勾'
+                        return (
+                          <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                            {builds.map((b, bi) => (
+                              <div key={bi} className={`rounded-lg border p-2.5 ${b.state === 'done' ? 'border-emerald-200 bg-emerald-50' : b.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
+                                <p className="text-sm text-gray-700">
+                                  🏗️ <span className="font-medium">{b.site}</span> · {b.building}
+                                </p>
+                                <p className="text-sm mt-0.5">
+                                  <span className="font-medium text-gray-900">{b.step}</span>
+                                  <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded font-medium ${b.done ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'}`}>
+                                    {b.done ? '☑ 標成完成' : '☐ 取消完成'}
+                                  </span>
+                                  {/* 本來就是這個狀態時先講，免得按了以為沒反應 */}
+                                  {b.already && b.state !== 'done' && <span className="ml-1.5 text-[11px] text-gray-400">本來就是這樣</span>}
+                                </p>
+                                {b.state === 'done' && <p className="text-xs text-emerald-700 font-medium mt-1">✅ 已更新</p>}
+                                {b.state === 'saving' && <p className="text-xs text-gray-500 mt-1">⏳ 更新中…</p>}
+                                {b.state === 'error' && <p className="text-xs text-red-600 mt-1">❌ 失敗：{b.note}</p>}
+                              </div>
+                            ))}
+                            {!m.draftDone && pending > 0 && (
+                              <div className="flex gap-2 pt-0.5">
+                                <button onClick={() => confirmAllBuilds(i)}
+                                  className="flex-1 aurora-grad text-white rounded-lg py-2 text-sm font-medium shadow-sm hover:brightness-105">
+                                  ✓ 確認{verb}{builds.length > 1 ? `（${pending} 項）` : ''}
+                                </button>
+                                <button onClick={() => cancelChatBuilds(i)}
+                                  className="px-3 rounded-lg border border-gray-200 text-sm text-gray-500 hover:bg-gray-50">取消</button>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+                      {m.tasks && m.tasks.length > 0 && (() => {
+                        const tasks = m.tasks!
+                        const ready = tasks.filter(t => t.chosenPerson && t.state !== 'done').length
+                        const allDone = tasks.every(t => t.state === 'done' || t.state === 'error')
+                        return (
+                          <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                            {tasks.length > 1 && <p className="text-xs font-semibold text-gray-500">共 {tasks.length} 件待辦</p>}
+                            {tasks.map((t, ti) => {
+                              // 清單有顯示出來的那一筆，使用者才能直接打數字選人
+                              const isFirstListed = tasks.findIndex(x => !x.chosenPerson && x.state !== 'done' && (!x.suggested || x.picking)) === ti
+                              return (
+                                <div key={ti} className={`rounded-lg border p-2.5 ${t.state === 'done' ? 'border-emerald-200 bg-emerald-50' : t.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
+                                  <div className="text-sm text-gray-700 space-y-0.5">
+                                    <p className="font-medium">📌 {t.task}</p>
+                                    <p className="text-xs text-gray-500">📅 {t.date}</p>
+                                  </div>
+                                  {t.state === 'done' ? (
+                                    <p className="text-xs text-emerald-700 font-medium mt-1.5">✅ 已派給【{personLabel(t.chosenPerson!)}】</p>
+                                  ) : t.state === 'error' ? (
+                                    <p className="text-xs text-red-600 mt-1.5">❌ 寫入失敗：{t.note}</p>
+                                  ) : t.state === 'saving' ? (
+                                    <p className="text-xs text-gray-500 mt-1.5">⏳ 派送中…</p>
+                                  ) : t.chosenPerson ? (
+                                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                      <span className="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-800 font-medium">
+                                        👤 {personLabel(t.chosenPerson)}
+                                      </span>
+                                      {t.ownerReason && <span className="text-[11px] text-gray-400">{t.ownerReason}</span>}
+                                      <button onClick={() => patchTask(i, ti, { chosenPerson: null, picking: true })}
+                                        className="text-xs text-gray-400 hover:text-indigo-600 underline">改派別人</button>
+                                    </div>
+                                  ) : t.suggested && !t.picking ? (
+                                    // 依專長建議的人選：一定要他點過「就派給他」才算數，不會自己送出去
+                                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
+                                      <p className="text-sm text-amber-900">
+                                        我建議派給 <span className="font-bold">{personLabel(t.suggested)}</span>
+                                        {t.why && <span className="font-normal text-amber-800">　（{t.why}）</span>}
+                                      </p>
+                                      <div className="flex gap-2 mt-2 flex-wrap">
+                                        <button onClick={() => patchTask(i, ti, { chosenPerson: t.suggested })}
+                                          className="bg-amber-500 text-white rounded-lg px-3 py-1.5 text-sm font-medium hover:bg-amber-600">
+                                          ✓ 就派給 {personLabel(t.suggested)}
+                                        </button>
+                                        <button onClick={() => patchTask(i, ti, { picking: true })}
+                                          className="text-sm text-gray-500 hover:text-indigo-600 underline px-1">改派別人</button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="mt-2">
+                                      <p className="text-sm text-amber-700 font-medium mb-1.5">
+                                        這件事要派給誰？
+                                        {isFirstListed && <span className="font-normal text-gray-500">（點下面，或直接打數字）</span>}
+                                      </p>
+                                      <div className="flex flex-col gap-1.5">
+                                        {taskPickList.map((n, pi) => (
+                                          <button key={n} onClick={() => patchTask(i, ti, { chosenPerson: n, picking: false })}
+                                            className="w-full flex items-center gap-2.5 bg-white border border-indigo-300 text-indigo-800 rounded-xl px-3 py-2.5 text-base font-medium text-left hover:bg-indigo-50 active:bg-indigo-100">
+                                            <span className="shrink-0 w-7 h-7 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center">{pi + 1}</span>
+                                            <span className="flex-1 leading-tight">
+                                              {n === UNASSIGNED_PERSON ? '先不指定（放待確認）' : personLabel(n)}
+                                              {PERSON_SKILLS[n] && <span className="block text-[11px] text-gray-400 font-normal">{PERSON_SKILLS[n]}</span>}
+                                            </span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                            {!allDone && (
+                              <div className="flex gap-2 items-center flex-wrap">
+                                <button onClick={() => confirmAllTasks(i)} disabled={ready === 0}
+                                  className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                                  ✓ {tasks.length > 1 ? `全部派下去（${ready} 件）` : '確認派下去'}
+                                </button>
+                                <button onClick={() => cancelChatTasks(i)}
+                                  className="text-gray-400 hover:text-gray-600 text-sm px-2">取消</button>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+                      {m.pdfs && m.pdfs.length > 0 && (() => {
+                        const pdfs = m.pdfs!
+                        const picked = pdfs.filter(d => d.picked && d.state !== 'done').length
+                        const written = pdfs.filter(d => d.state === 'done').length
+                        const failedN = pdfs.filter(d => d.state === 'error').length
+                        const saving = pdfs.some(d => d.state === 'saving')
+                        const fallback = m.pdfFallbackDate || todayISO()
+                        // 日期是從哪裡判斷出來的，寫給人看（後端傳「項目／分支／檔名」這幾種）
+                        const dueLabel = (k: string) =>
+                          k === '項目' ? '項目上寫的'
+                          : k === '分支' ? '心智圖上的日期'
+                          : k === '檔案' ? '檔案裡寫的'
+                          : k === '檔名' ? '取自檔名' : k
+                        // 依日期分組（心智圖上一個日期就是一批），沒有日期的排最後
+                        const groups: { key: string; idxs: number[] }[] = []
+                        pdfs.forEach((d, di) => {
+                          const key = d.date || ''
+                          let g = groups.find(x => x.key === key)
+                          if (!g) { g = { key, idxs: [] }; groups.push(g) }
+                          g.idxs.push(di)
+                        })
+                        groups.sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1) || a.key.localeCompare(b.key))
+                        const noDateCount = pdfs.filter(d => !d.date).length
+                        return (
+                          <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <p className="text-xs font-semibold text-gray-500">
+                                共 {pdfs.length} 筆　已勾選 {picked} 筆
+                                {written > 0 && <span className="text-emerald-600">　已寫入 {written}</span>}
+                                {failedN > 0 && <span className="text-red-600">　失敗 {failedN}</span>}
+                              </p>
+                              {!saving && written + failedN < pdfs.length && (
+                                <div className="flex gap-2 text-xs">
+                                  <button onClick={() => pickPdfMany(i, null, true)} className="text-indigo-600 hover:underline">全選</button>
+                                  <span className="text-gray-300">|</span>
+                                  <button onClick={() => pickPdfMany(i, null, false)} className="text-gray-400 hover:underline">全不選</button>
+                                </div>
+                              )}
+                            </div>
+                            {noDateCount > 0 && (
+                              <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-2">
+                                <span>有 {noDateCount} 筆讀不到日期，統一設為</span>
+                                <input type="date" value={fallback}
+                                  onChange={ev => setChatMessages(prev => prev.map((mm, mi) =>
+                                    mi === i ? { ...mm, pdfFallbackDate: ev.target.value } : mm))}
+                                  className="border border-amber-200 rounded px-1.5 py-0.5 text-xs bg-white" />
+                              </div>
+                            )}
+                            {groups.map(g => {
+                              const open = g.idxs.filter(di => pdfs[di].state !== 'done')
+                              const allPicked = open.length > 0 && open.every(di => pdfs[di].picked)
+                              return (
+                                <div key={g.key || 'nodate'} className="rounded-lg border border-gray-200 overflow-hidden">
+                                  <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-gray-50 border-b border-gray-200">
+                                    <p className="text-xs font-semibold text-gray-600">
+                                      📅 {g.key || '未設日期'}　<span className="font-normal text-gray-400">{g.idxs.length} 筆</span>
+                                    </p>
+                                    {open.length > 0 && !saving && (
+                                      <button onClick={() => pickPdfMany(i, open, !allPicked)}
+                                        className="text-xs text-indigo-600 hover:underline shrink-0">
+                                        {allPicked ? '這批不要' : '這批全選'}
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="divide-y divide-gray-100">
+                                    {g.idxs.map(di => {
+                                      const d = pdfs[di]
+                                      const locked = d.state === 'done' || d.state === 'saving'
+                                      return (
+                                        <label key={di}
+                                          className={`flex items-start gap-2.5 px-2.5 py-2 ${locked ? '' : 'cursor-pointer hover:bg-indigo-50/40'} ${
+                                            d.state === 'done' ? 'bg-emerald-50' : d.state === 'error' ? 'bg-red-50' : ''}`}>
+                                          <input type="checkbox" checked={d.picked} disabled={locked}
+                                            onChange={() => patchPdf(i, di, { picked: !d.picked })}
+                                            className="mt-1 w-4 h-4 shrink-0 accent-indigo-600" />
+                                          <div className="min-w-0 flex-1">
+                                            <p className={`text-sm leading-snug ${d.picked ? 'text-gray-800' : 'text-gray-400'}`}>{d.task}</p>
+                                            <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                                              {d.duplicate && (
+                                                <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">已在清單裡</span>
+                                              )}
+                                              {!d.date && (
+                                                <span className="text-[11px] text-gray-400">未設日期 → {fallback}</span>
+                                              )}
+                                              {d.date && d.dueFrom && (
+                                                <span className="text-[11px] text-gray-400">{dueLabel(d.dueFrom)}</span>
+                                              )}
+                                              {d.state === 'done' && <span className="text-[11px] text-emerald-700 font-medium">✅ 已加入</span>}
+                                              {d.state === 'saving' && <span className="text-[11px] text-gray-500">⏳ 寫入中…</span>}
+                                              {d.state === 'error' && <span className="text-[11px] text-red-600">❌ {d.note}</span>}
+                                            </div>
+                                          </div>
+                                        </label>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                            {written + failedN < pdfs.length && (
+                              <div className="flex gap-2 items-center flex-wrap">
+                                <button onClick={() => confirmPdfDrafts(i)} disabled={picked === 0 || saving}
+                                  className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+                                  {saving ? `寫入中… ${written}/${written + picked}` : `✓ 加進我的待辦（${picked} 筆）`}
+                                </button>
+                                {!saving && (
+                                  <button onClick={() => cancelChatPdfs(i)}
+                                    className="text-gray-400 hover:text-gray-600 text-sm px-2">取消</button>
+                                )}
+                                {saving && <span className="text-xs text-gray-400">一筆一筆寫，請不要關掉這頁</span>}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+                      {m.drafts && m.drafts.length > 0 && (() => {
+                        const activeProjs = projects.filter(p => !INACTIVE_STATUSES.includes(p.status))
+                        const drafts = m.drafts!
+                        const ready = drafts.filter(d => d.chosenId && d.state !== 'done').length
+                        const allDone = drafts.every(d => d.state === 'done' || d.state === 'error')
+                        return (
+                          <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                            {drafts.length > 1 && (
+                              <p className="text-xs font-semibold text-gray-500">共 {drafts.length} 筆進度</p>
+                            )}
+                            {drafts.map((d, di) => {
+                              const key = `${i}-${di}`
+                              const expanded = !!pickerExpanded[key]
+                              const shortList = d.candidates.length > 0 ? d.candidates : activeProjs.map(p => ({ id: p.id, name: p.name })).slice(0, 8)
+                              const pickList = expanded ? activeProjs.map(p => ({ id: p.id, name: p.name })) : shortList
+                              // 第一筆還沒選專案的 → 使用者直接在對話框打數字就是選這一筆
+                              const isFirstUnresolved = drafts.findIndex(x => !x.chosenId && x.state !== 'done') === di
+                              return (
+                                <div key={di} className={`rounded-lg border p-2.5 ${d.state === 'done' ? 'border-emerald-200 bg-emerald-50' : d.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
+                                  <div className="text-sm text-gray-700 space-y-0.5">
+                                    <p className="font-medium">{d.description}</p>
+                                    <p className="text-xs text-gray-500">📅 {d.date}</p>
+                                  </div>
+                                  {d.state === 'done' ? (
+                                    <p className="text-xs text-emerald-700 font-medium mt-1.5">✅ 已記到【{d.chosenName}】</p>
+                                  ) : d.state === 'error' ? (
+                                    <p className="text-xs text-red-600 mt-1.5">❌ 寫入失敗：{d.note}</p>
+                                  ) : d.state === 'saving' ? (
+                                    <p className="text-xs text-gray-500 mt-1.5">⏳ 寫入中…</p>
+                                  ) : d.chosenId ? (
+                                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                      <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">📁 {d.chosenName}</span>
+                                      <button onClick={() => patchDraft(i, di, { chosenId: null, chosenName: null })}
+                                        className="text-xs text-gray-400 hover:text-indigo-600 underline">改成別的專案</button>
+                                    </div>
+                                  ) : (
+                                    <div className="mt-2">
+                                      <p className="text-sm text-amber-700 font-medium mb-1.5">
+                                        這筆是哪個案場？
+                                        {isFirstUnresolved && <span className="font-normal text-gray-500">（點下面，或直接打數字）</span>}
+                                      </p>
+                                      <div className="flex flex-col gap-1.5">
+                                        {pickList.map((p, pi) => (
+                                          <button key={p.id} onClick={() => pickDraftProject(i, di, p.id, p.name)}
+                                            className="w-full flex items-center gap-2.5 bg-white border border-emerald-300 text-emerald-800 rounded-xl px-3 py-2.5 text-base font-medium text-left hover:bg-emerald-50 active:bg-emerald-100">
+                                            <span className="shrink-0 w-7 h-7 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center">{pi + 1}</span>
+                                            <span className="flex-1 leading-tight">{p.name}</span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                      {!expanded && activeProjs.length > pickList.length && (
+                                        <button onClick={() => setPickerExpanded(s => ({ ...s, [key]: true }))}
+                                          className="mt-1.5 text-sm text-indigo-600 hover:underline px-1">
+                                          都不是 → 顯示全部 {activeProjs.length} 個案場
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                            {!allDone && (
+                              <div className="flex gap-2 items-center flex-wrap">
+                                <button onClick={() => confirmAllDrafts(i)} disabled={ready === 0}
+                                  className="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
+                                  ✓ {drafts.length > 1 ? `全部確認新增（${ready} 筆）` : '確認新增'}
+                                </button>
+                                <button onClick={() => cancelChatProgress(i)}
+                                  className="text-gray-400 hover:text-gray-600 text-sm px-2">取消</button>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+                      {m.role === 'assistant' && m.suggestions && m.suggestions.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <p className="text-xs text-gray-400 mb-1.5">💡 你可能還想問：</p>
+                          <div className="flex flex-col items-start gap-1.5">
+                            {m.suggestions.map((s, si) => (
+                              <button key={si} onClick={() => sendChat(s)} disabled={chatLoading}
+                                className="text-left text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-1.5 hover:bg-indigo-100 disabled:opacity-40 transition-colors">
+                                {s}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-white border border-gray-200/70 shadow-sm rounded-2xl px-4 py-2.5 text-sm text-gray-400">{pdfBusy || '思考中…（查詢公司資料）'}</div>
+                  </div>
+                )}
+              </div>
+              {(recording || transcribing || recError) && (
+                <div className="pt-2 flex items-center gap-2 text-sm">
+                  {recording && (
+                    <>
+                      <span className="inline-block w-3 h-3 rounded-full bg-red-500 animate-pulse shrink-0" />
+                      <span className="text-red-600 font-medium">錄音中 {Math.floor(recSecs / 60)}:{String(recSecs % 60).padStart(2, '0')}</span>
+                      <span className="text-gray-400">講完按「停止」</span>
+                    </>
+                  )}
+                  {transcribing && <span className="text-indigo-600 font-medium">🎧 正在轉成文字…</span>}
+                  {!!recError && !recording && !transcribing && <span className="text-red-600">{recError}</span>}
+                </div>
+              )}
+              {/* min-w-0 一定要有：textarea 預設有最小寬度，不加就會把「送出」按鈕擠出畫面（手機上等於不能用）*/}
+              <div className="flex gap-2 pt-2 border-t border-gray-200 items-end" data-tour="chat-input">
+                {/* 待辦清單 PDF 匯入：總經理的私人待辦，只有管理者看得到這顆按鈕（真正的門在 API 那一關）*/}
+                {isAdmin && (
+                  <>
+                    <input ref={pdfFileRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handlePdfImport} />
+                    <button onClick={() => pdfFileRef.current?.click()} disabled={chatLoading}
+                      title="上傳待辦清單 PDF（抽出標了【自己】的項目）"
+                      aria-label="上傳待辦清單 PDF"
+                      className="shrink-0 rounded-xl px-4 py-3 text-base font-semibold border bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-600 transition-colors disabled:opacity-40">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7l-5-5zm-1 6V3.5L18.5 9H14a1 1 0 0 1-1-1z" />
+                        <path d="M8.5 13.5h7a.75.75 0 0 1 0 1.5h-7a.75.75 0 0 1 0-1.5zm0 3h5a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1 0-1.5z" fill="#fff" />
+                      </svg>
+                    </button>
+                  </>
+                )}
+                <button onClick={() => (recording ? stopRecording() : startRecording())} disabled={transcribing}
+                  title={recording ? '停止錄音' : '按一下開始講話，講完再按一次'}
+                  aria-label={recording ? '停止錄音' : '語音輸入'}
+                  className={`shrink-0 rounded-xl px-4 py-3 text-base font-semibold border transition-colors disabled:opacity-40 flex items-center gap-1.5 ${
+                    recording ? 'bg-red-600 text-white border-red-600 hover:bg-red-700' : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-600'}`}>
+                  {recording ? (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <rect x="6" y="6" width="12" height="12" rx="2" />
+                      </svg>
+                      停止
+                    </>
+                  ) : (
+                    // 鍵盤上常見的麥克風圖示（實心，小尺寸也清楚）
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M12 14.5a3.5 3.5 0 0 0 3.5-3.5V5a3.5 3.5 0 0 0-7 0v6a3.5 3.5 0 0 0 3.5 3.5z" />
+                      <path d="M18 10a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V20h2.5a1 1 0 1 1 0 2h-7a1 1 0 1 1 0-2H11v-2.06A8 8 0 0 1 4 10a1 1 0 1 1 2 0 6 6 0 0 0 12 0z" />
+                    </svg>
+                  )}
+                </button>
+                <textarea ref={chatInputRef} value={chatInput} onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
+                  rows={1} placeholder="輸入問題…"
+                  className="flex-1 min-w-0 border border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white resize-none overflow-y-auto" />
+                <button onClick={() => sendChat()} disabled={chatLoading || !chatInput.trim()}
+                  className="aurora-grad text-white shadow-sm rounded-xl px-5 py-3 text-base font-semibold shrink-0 hover:brightness-105 disabled:opacity-40">
+                  {chatLoading ? '…' : '送出'}
+                </button>
+              </div>
+            </div>
+  )
+
     return (
       <div className="mt-1 ml-1.5 mr-1 mb-2 p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
         <div>
@@ -2418,6 +2900,7 @@ export default function Page() {
     { v: 'search', icon: '🔍', label: '任務查詢', short: '查詢', onClick: () => { setView('search'); fetchInProgress() } },
     { v: 'chat', icon: '💬', label: 'AI 助理', short: 'AI', onClick: () => setView('chat') },
     { v: 'issues', icon: '🔧', label: '會議事項', short: '議題', onClick: () => { setView('issues'); fetchIssues('open') } },
+    { v: 'doors', icon: '🚪', label: '門單', short: '門單', onClick: () => setView('doors') },
     ...(isAdmin ? [
       { v: 'meeting' as View, icon: '📋', label: '會議模式', short: '會議', onClick: () => { setView('meeting'); fetchInProgress(); fetchPrivatePersonTasks() } },
       { v: 'private' as View, icon: '🔐', label: '私人行事曆', short: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } },
@@ -2611,7 +3094,7 @@ export default function Page() {
       )}
 
       <div className="md:pl-[246px]">
-      <main className={`relative z-10 mx-auto p-4 pb-24 md:px-[34px] md:pt-[26px] md:pb-10 animate-fade-in ${view === 'meeting' || view === 'issues' ? 'max-w-none' : view === 'dashboard' || view === 'private' || view === 'daily' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : view === 'report' ? 'max-w-[1250px]' : 'max-w-2xl'}`}>
+      <main className={`relative z-10 mx-auto p-4 pb-24 md:px-[34px] md:pt-[26px] md:pb-10 animate-fade-in ${view === 'meeting' || view === 'issues' ? 'max-w-none' : view === 'dashboard' || view === 'private' || view === 'daily' || view === 'doors' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : view === 'report' ? 'max-w-[1250px]' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
@@ -4186,481 +4669,7 @@ export default function Page() {
 
         {/* AI 助理 */}
         {view === 'chat' && (
-          <div className="flex flex-col h-[calc(100vh-200px)] md:h-[calc(100vh-130px)]">
-            {chatMessages.length > 0 && (
-              <div className="flex justify-end mb-2">
-                <button onClick={() => { if (confirm('確定清除所有對話記錄？')) setChatMessages([]) }}
-                  className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">
-                  🗑 清除對話
-                </button>
-              </div>
-            )}
-            <div className="flex-1 overflow-y-auto space-y-3 pb-4">
-              {chatMessages.length === 0 && (
-                <div className="glass-card p-5 text-sm text-gray-600">
-                  <p className="font-medium text-gray-800 mb-2">👋 我是公司 AI 助理</p>
-                  <p className="text-gray-500 mb-2">我會優先用「檔案庫」裡的公司資料回答。你可以問我：</p>
-                  <ul className="list-disc pl-5 space-y-1 text-gray-500">
-                    <li>客戶通話的話術建議</li>
-                    <li>公司機具的參數、保養方式</li>
-                    <li>幫忙整理某項作業的 SOP、排除困難</li>
-                  </ul>
-                  <p className="text-gray-500 mt-3 mb-1">也可以<span className="font-medium text-emerald-700">直接記錄專案進度</span>，例如：</p>
-                  <p className="text-gray-400 text-xs bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">「冠德的箱蓋今天噴好了」→ 我會幫你對應專案、確認後寫進進度紀錄</p>
-                  {isAdmin && (
-                    <>
-                      <p className="text-gray-500 mt-3 mb-1">也可以<span className="font-medium text-indigo-700">上傳待辦清單 PDF</span>（下面那顆 📄）：</p>
-                      <p className="text-gray-400 text-xs bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">心智圖匯出的 PDF 也讀得動。我只抽「掛在【自己】底下」的項目，勾選確認後才會加進你的待辦。</p>
-                    </>
-                  )}
-                  <p className="text-xs text-gray-400 mt-3">※ 公司內部資料若查不到，我會直接說不知道、不亂編；若引用網路資料會標註清楚。</p>
-                </div>
-              )}
-              {chatMessages.map((m, i) => (
-                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`rounded-2xl px-4 py-3 ${m.role === 'user' ? 'text-sm whitespace-pre-wrap' : 'text-base'} ${m.images?.some(x => x.kind === 'video' || x.kind === 'embed') ? 'w-full max-w-[96%]' : 'max-w-[85%]'} ${m.role === 'user' ? 'aurora-grad text-white' : 'bg-white border border-gray-200/70 shadow-sm text-gray-800'}`}>
-                    {/* AI 的回答用輕量排版器處理（粗體、條列、內文插圖），使用者自己打的字保持原樣 */}
-                    {m.role === 'assistant' ? <RichText text={m.content} media={m.images} /> : m.content}
-                    {m.files && m.files.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                        <p className="text-xs text-gray-400 font-medium">📎 相關檔案</p>
-                        {m.files.map((f, fi) => (
-                          <a key={fi} href={f.url} download={f.name} target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 transition-colors no-underline group">
-                            <span className="text-lg leading-none">📄</span>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium text-indigo-700 truncate">{f.title}</p>
-                              {f.name !== f.title && <p className="text-xs text-indigo-400 truncate">{f.name}</p>}
-                            </div>
-                            <span className="text-xs text-indigo-500 shrink-0 group-hover:underline">下載 ↓</span>
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                    {m.images && m.images.length > 0 && (() => {
-                      // 已經被 AI 插進內文的（[[MEDIA:n]]）就不要在最後重複出現一次
-                      const used = new Set(
-                        Array.from(String(m.content).matchAll(/\[\[MEDIA:(\d{1,2})\]\]/gi))
-                          .map(x => Number(x[1]) - 1)
-                      )
-                      // 內文插了某一張，就代表「那一整組」都已經在內文出現過了（見 richtext 的 MediaGroup），
-                      // 頁尾要把整組排除，否則同一批圖會重複出現兩次。
-                      const usedSources = new Set(
-                        m.images!.filter((im, i) => used.has(i) && im.kind === 'image').map(im => im.source)
-                      )
-                      const rest = m.images!.filter((im, i) =>
-                        !used.has(i) && !(im.kind === 'image' && usedSources.has(im.source)))
-                      if (rest.length === 0) return null
-                      const hasVideo = rest.some(x => x.kind === 'video' || x.kind === 'embed')
-                      return (
-                      <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                        <p className="text-xs text-gray-400 font-medium">{hasVideo ? '🖼️ 其他相關圖片／影片' : '🖼️ 其他相關圖片'}</p>
-                        <div className="space-y-2">
-                          {/* 同一個來源（Notion 同一列）的圖排成一組一起顯示，不要一張一張堆 */}
-                          {(() => {
-                            const groups: ImageResult[][] = []
-                            for (const img of rest) {
-                              const last = groups[groups.length - 1]
-                              if (last && last[0].source === img.source) last.push(img)
-                              else groups.push([img])
-                            }
-                            return groups.map((g, gi) => <MediaGroup key={gi} items={g} />)
-                          })()}
-                        </div>
-                      </div>
-                      )
-                    })()}
-                    {m.builds && m.builds.length > 0 && (() => {
-                      const builds = m.builds!
-                      const pending = builds.filter(b => b.state !== 'done').length
-                      const verb = builds[0].done ? '打勾' : '取消打勾'
-                      return (
-                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                          {builds.map((b, bi) => (
-                            <div key={bi} className={`rounded-lg border p-2.5 ${b.state === 'done' ? 'border-emerald-200 bg-emerald-50' : b.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
-                              <p className="text-sm text-gray-700">
-                                🏗️ <span className="font-medium">{b.site}</span> · {b.building}
-                              </p>
-                              <p className="text-sm mt-0.5">
-                                <span className="font-medium text-gray-900">{b.step}</span>
-                                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded font-medium ${b.done ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'}`}>
-                                  {b.done ? '☑ 標成完成' : '☐ 取消完成'}
-                                </span>
-                                {/* 本來就是這個狀態時先講，免得按了以為沒反應 */}
-                                {b.already && b.state !== 'done' && <span className="ml-1.5 text-[11px] text-gray-400">本來就是這樣</span>}
-                              </p>
-                              {b.state === 'done' && <p className="text-xs text-emerald-700 font-medium mt-1">✅ 已更新</p>}
-                              {b.state === 'saving' && <p className="text-xs text-gray-500 mt-1">⏳ 更新中…</p>}
-                              {b.state === 'error' && <p className="text-xs text-red-600 mt-1">❌ 失敗：{b.note}</p>}
-                            </div>
-                          ))}
-                          {!m.draftDone && pending > 0 && (
-                            <div className="flex gap-2 pt-0.5">
-                              <button onClick={() => confirmAllBuilds(i)}
-                                className="flex-1 aurora-grad text-white rounded-lg py-2 text-sm font-medium shadow-sm hover:brightness-105">
-                                ✓ 確認{verb}{builds.length > 1 ? `（${pending} 項）` : ''}
-                              </button>
-                              <button onClick={() => cancelChatBuilds(i)}
-                                className="px-3 rounded-lg border border-gray-200 text-sm text-gray-500 hover:bg-gray-50">取消</button>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
-                    {m.tasks && m.tasks.length > 0 && (() => {
-                      const tasks = m.tasks!
-                      const ready = tasks.filter(t => t.chosenPerson && t.state !== 'done').length
-                      const allDone = tasks.every(t => t.state === 'done' || t.state === 'error')
-                      return (
-                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                          {tasks.length > 1 && <p className="text-xs font-semibold text-gray-500">共 {tasks.length} 件待辦</p>}
-                          {tasks.map((t, ti) => {
-                            // 清單有顯示出來的那一筆，使用者才能直接打數字選人
-                            const isFirstListed = tasks.findIndex(x => !x.chosenPerson && x.state !== 'done' && (!x.suggested || x.picking)) === ti
-                            return (
-                              <div key={ti} className={`rounded-lg border p-2.5 ${t.state === 'done' ? 'border-emerald-200 bg-emerald-50' : t.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
-                                <div className="text-sm text-gray-700 space-y-0.5">
-                                  <p className="font-medium">📌 {t.task}</p>
-                                  <p className="text-xs text-gray-500">📅 {t.date}</p>
-                                </div>
-                                {t.state === 'done' ? (
-                                  <p className="text-xs text-emerald-700 font-medium mt-1.5">✅ 已派給【{personLabel(t.chosenPerson!)}】</p>
-                                ) : t.state === 'error' ? (
-                                  <p className="text-xs text-red-600 mt-1.5">❌ 寫入失敗：{t.note}</p>
-                                ) : t.state === 'saving' ? (
-                                  <p className="text-xs text-gray-500 mt-1.5">⏳ 派送中…</p>
-                                ) : t.chosenPerson ? (
-                                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                    <span className="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-800 font-medium">
-                                      👤 {personLabel(t.chosenPerson)}
-                                    </span>
-                                    {t.ownerReason && <span className="text-[11px] text-gray-400">{t.ownerReason}</span>}
-                                    <button onClick={() => patchTask(i, ti, { chosenPerson: null, picking: true })}
-                                      className="text-xs text-gray-400 hover:text-indigo-600 underline">改派別人</button>
-                                  </div>
-                                ) : t.suggested && !t.picking ? (
-                                  // 依專長建議的人選：一定要他點過「就派給他」才算數，不會自己送出去
-                                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
-                                    <p className="text-sm text-amber-900">
-                                      我建議派給 <span className="font-bold">{personLabel(t.suggested)}</span>
-                                      {t.why && <span className="font-normal text-amber-800">　（{t.why}）</span>}
-                                    </p>
-                                    <div className="flex gap-2 mt-2 flex-wrap">
-                                      <button onClick={() => patchTask(i, ti, { chosenPerson: t.suggested })}
-                                        className="bg-amber-500 text-white rounded-lg px-3 py-1.5 text-sm font-medium hover:bg-amber-600">
-                                        ✓ 就派給 {personLabel(t.suggested)}
-                                      </button>
-                                      <button onClick={() => patchTask(i, ti, { picking: true })}
-                                        className="text-sm text-gray-500 hover:text-indigo-600 underline px-1">改派別人</button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="mt-2">
-                                    <p className="text-sm text-amber-700 font-medium mb-1.5">
-                                      這件事要派給誰？
-                                      {isFirstListed && <span className="font-normal text-gray-500">（點下面，或直接打數字）</span>}
-                                    </p>
-                                    <div className="flex flex-col gap-1.5">
-                                      {taskPickList.map((n, pi) => (
-                                        <button key={n} onClick={() => patchTask(i, ti, { chosenPerson: n, picking: false })}
-                                          className="w-full flex items-center gap-2.5 bg-white border border-indigo-300 text-indigo-800 rounded-xl px-3 py-2.5 text-base font-medium text-left hover:bg-indigo-50 active:bg-indigo-100">
-                                          <span className="shrink-0 w-7 h-7 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center">{pi + 1}</span>
-                                          <span className="flex-1 leading-tight">
-                                            {n === UNASSIGNED_PERSON ? '先不指定（放待確認）' : personLabel(n)}
-                                            {PERSON_SKILLS[n] && <span className="block text-[11px] text-gray-400 font-normal">{PERSON_SKILLS[n]}</span>}
-                                          </span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
-                          {!allDone && (
-                            <div className="flex gap-2 items-center flex-wrap">
-                              <button onClick={() => confirmAllTasks(i)} disabled={ready === 0}
-                                className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
-                                ✓ {tasks.length > 1 ? `全部派下去（${ready} 件）` : '確認派下去'}
-                              </button>
-                              <button onClick={() => cancelChatTasks(i)}
-                                className="text-gray-400 hover:text-gray-600 text-sm px-2">取消</button>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
-                    {m.pdfs && m.pdfs.length > 0 && (() => {
-                      const pdfs = m.pdfs!
-                      const picked = pdfs.filter(d => d.picked && d.state !== 'done').length
-                      const written = pdfs.filter(d => d.state === 'done').length
-                      const failedN = pdfs.filter(d => d.state === 'error').length
-                      const saving = pdfs.some(d => d.state === 'saving')
-                      const fallback = m.pdfFallbackDate || todayISO()
-                      // 日期是從哪裡判斷出來的，寫給人看（後端傳「項目／分支／檔名」這幾種）
-                      const dueLabel = (k: string) =>
-                        k === '項目' ? '項目上寫的'
-                        : k === '分支' ? '心智圖上的日期'
-                        : k === '檔案' ? '檔案裡寫的'
-                        : k === '檔名' ? '取自檔名' : k
-                      // 依日期分組（心智圖上一個日期就是一批），沒有日期的排最後
-                      const groups: { key: string; idxs: number[] }[] = []
-                      pdfs.forEach((d, di) => {
-                        const key = d.date || ''
-                        let g = groups.find(x => x.key === key)
-                        if (!g) { g = { key, idxs: [] }; groups.push(g) }
-                        g.idxs.push(di)
-                      })
-                      groups.sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1) || a.key.localeCompare(b.key))
-                      const noDateCount = pdfs.filter(d => !d.date).length
-                      return (
-                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <p className="text-xs font-semibold text-gray-500">
-                              共 {pdfs.length} 筆　已勾選 {picked} 筆
-                              {written > 0 && <span className="text-emerald-600">　已寫入 {written}</span>}
-                              {failedN > 0 && <span className="text-red-600">　失敗 {failedN}</span>}
-                            </p>
-                            {!saving && written + failedN < pdfs.length && (
-                              <div className="flex gap-2 text-xs">
-                                <button onClick={() => pickPdfMany(i, null, true)} className="text-indigo-600 hover:underline">全選</button>
-                                <span className="text-gray-300">|</span>
-                                <button onClick={() => pickPdfMany(i, null, false)} className="text-gray-400 hover:underline">全不選</button>
-                              </div>
-                            )}
-                          </div>
-                          {noDateCount > 0 && (
-                            <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-2">
-                              <span>有 {noDateCount} 筆讀不到日期，統一設為</span>
-                              <input type="date" value={fallback}
-                                onChange={ev => setChatMessages(prev => prev.map((mm, mi) =>
-                                  mi === i ? { ...mm, pdfFallbackDate: ev.target.value } : mm))}
-                                className="border border-amber-200 rounded px-1.5 py-0.5 text-xs bg-white" />
-                            </div>
-                          )}
-                          {groups.map(g => {
-                            const open = g.idxs.filter(di => pdfs[di].state !== 'done')
-                            const allPicked = open.length > 0 && open.every(di => pdfs[di].picked)
-                            return (
-                              <div key={g.key || 'nodate'} className="rounded-lg border border-gray-200 overflow-hidden">
-                                <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-gray-50 border-b border-gray-200">
-                                  <p className="text-xs font-semibold text-gray-600">
-                                    📅 {g.key || '未設日期'}　<span className="font-normal text-gray-400">{g.idxs.length} 筆</span>
-                                  </p>
-                                  {open.length > 0 && !saving && (
-                                    <button onClick={() => pickPdfMany(i, open, !allPicked)}
-                                      className="text-xs text-indigo-600 hover:underline shrink-0">
-                                      {allPicked ? '這批不要' : '這批全選'}
-                                    </button>
-                                  )}
-                                </div>
-                                <div className="divide-y divide-gray-100">
-                                  {g.idxs.map(di => {
-                                    const d = pdfs[di]
-                                    const locked = d.state === 'done' || d.state === 'saving'
-                                    return (
-                                      <label key={di}
-                                        className={`flex items-start gap-2.5 px-2.5 py-2 ${locked ? '' : 'cursor-pointer hover:bg-indigo-50/40'} ${
-                                          d.state === 'done' ? 'bg-emerald-50' : d.state === 'error' ? 'bg-red-50' : ''}`}>
-                                        <input type="checkbox" checked={d.picked} disabled={locked}
-                                          onChange={() => patchPdf(i, di, { picked: !d.picked })}
-                                          className="mt-1 w-4 h-4 shrink-0 accent-indigo-600" />
-                                        <div className="min-w-0 flex-1">
-                                          <p className={`text-sm leading-snug ${d.picked ? 'text-gray-800' : 'text-gray-400'}`}>{d.task}</p>
-                                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                                            {d.duplicate && (
-                                              <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">已在清單裡</span>
-                                            )}
-                                            {!d.date && (
-                                              <span className="text-[11px] text-gray-400">未設日期 → {fallback}</span>
-                                            )}
-                                            {d.date && d.dueFrom && (
-                                              <span className="text-[11px] text-gray-400">{dueLabel(d.dueFrom)}</span>
-                                            )}
-                                            {d.state === 'done' && <span className="text-[11px] text-emerald-700 font-medium">✅ 已加入</span>}
-                                            {d.state === 'saving' && <span className="text-[11px] text-gray-500">⏳ 寫入中…</span>}
-                                            {d.state === 'error' && <span className="text-[11px] text-red-600">❌ {d.note}</span>}
-                                          </div>
-                                        </div>
-                                      </label>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )
-                          })}
-                          {written + failedN < pdfs.length && (
-                            <div className="flex gap-2 items-center flex-wrap">
-                              <button onClick={() => confirmPdfDrafts(i)} disabled={picked === 0 || saving}
-                                className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
-                                {saving ? `寫入中… ${written}/${written + picked}` : `✓ 加進我的待辦（${picked} 筆）`}
-                              </button>
-                              {!saving && (
-                                <button onClick={() => cancelChatPdfs(i)}
-                                  className="text-gray-400 hover:text-gray-600 text-sm px-2">取消</button>
-                              )}
-                              {saving && <span className="text-xs text-gray-400">一筆一筆寫，請不要關掉這頁</span>}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
-                    {m.drafts && m.drafts.length > 0 && (() => {
-                      const activeProjs = projects.filter(p => !INACTIVE_STATUSES.includes(p.status))
-                      const drafts = m.drafts!
-                      const ready = drafts.filter(d => d.chosenId && d.state !== 'done').length
-                      const allDone = drafts.every(d => d.state === 'done' || d.state === 'error')
-                      return (
-                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                          {drafts.length > 1 && (
-                            <p className="text-xs font-semibold text-gray-500">共 {drafts.length} 筆進度</p>
-                          )}
-                          {drafts.map((d, di) => {
-                            const key = `${i}-${di}`
-                            const expanded = !!pickerExpanded[key]
-                            const shortList = d.candidates.length > 0 ? d.candidates : activeProjs.map(p => ({ id: p.id, name: p.name })).slice(0, 8)
-                            const pickList = expanded ? activeProjs.map(p => ({ id: p.id, name: p.name })) : shortList
-                            // 第一筆還沒選專案的 → 使用者直接在對話框打數字就是選這一筆
-                            const isFirstUnresolved = drafts.findIndex(x => !x.chosenId && x.state !== 'done') === di
-                            return (
-                              <div key={di} className={`rounded-lg border p-2.5 ${d.state === 'done' ? 'border-emerald-200 bg-emerald-50' : d.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
-                                <div className="text-sm text-gray-700 space-y-0.5">
-                                  <p className="font-medium">{d.description}</p>
-                                  <p className="text-xs text-gray-500">📅 {d.date}</p>
-                                </div>
-                                {d.state === 'done' ? (
-                                  <p className="text-xs text-emerald-700 font-medium mt-1.5">✅ 已記到【{d.chosenName}】</p>
-                                ) : d.state === 'error' ? (
-                                  <p className="text-xs text-red-600 mt-1.5">❌ 寫入失敗：{d.note}</p>
-                                ) : d.state === 'saving' ? (
-                                  <p className="text-xs text-gray-500 mt-1.5">⏳ 寫入中…</p>
-                                ) : d.chosenId ? (
-                                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                    <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">📁 {d.chosenName}</span>
-                                    <button onClick={() => patchDraft(i, di, { chosenId: null, chosenName: null })}
-                                      className="text-xs text-gray-400 hover:text-indigo-600 underline">改成別的專案</button>
-                                  </div>
-                                ) : (
-                                  <div className="mt-2">
-                                    <p className="text-sm text-amber-700 font-medium mb-1.5">
-                                      這筆是哪個案場？
-                                      {isFirstUnresolved && <span className="font-normal text-gray-500">（點下面，或直接打數字）</span>}
-                                    </p>
-                                    <div className="flex flex-col gap-1.5">
-                                      {pickList.map((p, pi) => (
-                                        <button key={p.id} onClick={() => pickDraftProject(i, di, p.id, p.name)}
-                                          className="w-full flex items-center gap-2.5 bg-white border border-emerald-300 text-emerald-800 rounded-xl px-3 py-2.5 text-base font-medium text-left hover:bg-emerald-50 active:bg-emerald-100">
-                                          <span className="shrink-0 w-7 h-7 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center">{pi + 1}</span>
-                                          <span className="flex-1 leading-tight">{p.name}</span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                    {!expanded && activeProjs.length > pickList.length && (
-                                      <button onClick={() => setPickerExpanded(s => ({ ...s, [key]: true }))}
-                                        className="mt-1.5 text-sm text-indigo-600 hover:underline px-1">
-                                        都不是 → 顯示全部 {activeProjs.length} 個案場
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
-                          {!allDone && (
-                            <div className="flex gap-2 items-center flex-wrap">
-                              <button onClick={() => confirmAllDrafts(i)} disabled={ready === 0}
-                                className="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
-                                ✓ {drafts.length > 1 ? `全部確認新增（${ready} 筆）` : '確認新增'}
-                              </button>
-                              <button onClick={() => cancelChatProgress(i)}
-                                className="text-gray-400 hover:text-gray-600 text-sm px-2">取消</button>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
-                    {m.role === 'assistant' && m.suggestions && m.suggestions.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <p className="text-xs text-gray-400 mb-1.5">💡 你可能還想問：</p>
-                        <div className="flex flex-col items-start gap-1.5">
-                          {m.suggestions.map((s, si) => (
-                            <button key={si} onClick={() => sendChat(s)} disabled={chatLoading}
-                              className="text-left text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-1.5 hover:bg-indigo-100 disabled:opacity-40 transition-colors">
-                              {s}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {chatLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-white border border-gray-200/70 shadow-sm rounded-2xl px-4 py-2.5 text-sm text-gray-400">{pdfBusy || '思考中…（查詢公司資料）'}</div>
-                </div>
-              )}
-            </div>
-            {(recording || transcribing || recError) && (
-              <div className="pt-2 flex items-center gap-2 text-sm">
-                {recording && (
-                  <>
-                    <span className="inline-block w-3 h-3 rounded-full bg-red-500 animate-pulse shrink-0" />
-                    <span className="text-red-600 font-medium">錄音中 {Math.floor(recSecs / 60)}:{String(recSecs % 60).padStart(2, '0')}</span>
-                    <span className="text-gray-400">講完按「停止」</span>
-                  </>
-                )}
-                {transcribing && <span className="text-indigo-600 font-medium">🎧 正在轉成文字…</span>}
-                {!!recError && !recording && !transcribing && <span className="text-red-600">{recError}</span>}
-              </div>
-            )}
-            {/* min-w-0 一定要有：textarea 預設有最小寬度，不加就會把「送出」按鈕擠出畫面（手機上等於不能用）*/}
-            <div className="flex gap-2 pt-2 border-t border-gray-200 items-end" data-tour="chat-input">
-              {/* 待辦清單 PDF 匯入：總經理的私人待辦，只有管理者看得到這顆按鈕（真正的門在 API 那一關）*/}
-              {isAdmin && (
-                <>
-                  <input ref={pdfFileRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handlePdfImport} />
-                  <button onClick={() => pdfFileRef.current?.click()} disabled={chatLoading}
-                    title="上傳待辦清單 PDF（抽出標了【自己】的項目）"
-                    aria-label="上傳待辦清單 PDF"
-                    className="shrink-0 rounded-xl px-4 py-3 text-base font-semibold border bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-600 transition-colors disabled:opacity-40">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                      <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7l-5-5zm-1 6V3.5L18.5 9H14a1 1 0 0 1-1-1z" />
-                      <path d="M8.5 13.5h7a.75.75 0 0 1 0 1.5h-7a.75.75 0 0 1 0-1.5zm0 3h5a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1 0-1.5z" fill="#fff" />
-                    </svg>
-                  </button>
-                </>
-              )}
-              <button onClick={() => (recording ? stopRecording() : startRecording())} disabled={transcribing}
-                title={recording ? '停止錄音' : '按一下開始講話，講完再按一次'}
-                aria-label={recording ? '停止錄音' : '語音輸入'}
-                className={`shrink-0 rounded-xl px-4 py-3 text-base font-semibold border transition-colors disabled:opacity-40 flex items-center gap-1.5 ${
-                  recording ? 'bg-red-600 text-white border-red-600 hover:bg-red-700' : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-600'}`}>
-                {recording ? (
-                  <>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                      <rect x="6" y="6" width="12" height="12" rx="2" />
-                    </svg>
-                    停止
-                  </>
-                ) : (
-                  // 鍵盤上常見的麥克風圖示（實心，小尺寸也清楚）
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path d="M12 14.5a3.5 3.5 0 0 0 3.5-3.5V5a3.5 3.5 0 0 0-7 0v6a3.5 3.5 0 0 0 3.5 3.5z" />
-                    <path d="M18 10a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V20h2.5a1 1 0 1 1 0 2h-7a1 1 0 1 1 0-2H11v-2.06A8 8 0 0 1 4 10a1 1 0 1 1 2 0 6 6 0 0 0 12 0z" />
-                  </svg>
-                )}
-              </button>
-              <textarea ref={chatInputRef} value={chatInput} onChange={e => setChatInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
-                rows={1} placeholder="輸入問題…"
-                className="flex-1 min-w-0 border border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white resize-none overflow-y-auto" />
-              <button onClick={() => sendChat()} disabled={chatLoading || !chatInput.trim()}
-                className="aurora-grad text-white shadow-sm rounded-xl px-5 py-3 text-base font-semibold shrink-0 hover:brightness-105 disabled:opacity-40">
-                {chatLoading ? '…' : '送出'}
-              </button>
-            </div>
-          </div>
+          <div className="h-[calc(100vh-200px)] md:h-[calc(100vh-130px)]">{chatBody}</div>
         )}
 
         {/* PRIVATE CALENDAR（僅管理者） */}
@@ -5289,6 +5298,10 @@ export default function Page() {
           )
         })()}
 
+        {/* 門單（防火門訂料尺寸）。整包在 components/DoorOrderForm.tsx 裡，
+            page.tsx 已經五千多行了，不要再往裡面塞。 */}
+        {view === 'doors' && <DoorOrderForm />}
+
       </main>
       </div>
 
@@ -5296,12 +5309,32 @@ export default function Page() {
           手機要避開底部導覽列，所以用 env(safe-area-inset-bottom) 再往上墊 84px，
           不然在 iPhone 上會壓到導覽列、或卡在home indicator 底下。
           已經在 AI 助理頁就不顯示——那等於一顆按了沒反應的按鈕。 */}
-      {view !== 'chat' && (
-        <button onClick={() => setView('chat')} title="問 AI 助理"
+      {view !== 'chat' && !chatPop && (
+        <button onClick={() => setChatPop(true)} title="問 AI 助理"
           className={`ai-fab ${fabHidden ? 'ai-fab-away' : ''} fixed right-4 md:right-6 z-30 w-16 h-16 rounded-full aurora-grad text-white flex flex-col items-center justify-center leading-none`}>
           <span className="text-[17px] font-bold tracking-wide">AI</span>
           <span className="text-[12px] font-medium mt-0.5">助理</span>
         </button>
+      )}
+
+      {/* 右下角的 AI 小視窗：不離開目前這一頁就能問。
+          裡面用的是 chatBody——跟整頁的 AI 助理同一份介面，不是複製出來的第二套。 */}
+      {chatPop && (
+        <>
+          {/* 手機上用半透明底遮住後面，避免點到下面的東西 */}
+          <div className="md:hidden fixed inset-0 z-40 bg-black/30" onClick={() => setChatPop(false)} />
+          <div className="chat-pop fixed z-50 bg-white flex flex-col overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--hairline)' }}>
+              <span className="w-9 h-9 rounded-full aurora-grad text-white flex items-center justify-center text-sm font-bold shrink-0">AI</span>
+              <span className="text-base font-semibold text-gray-900">AI 助理</span>
+              <button onClick={() => { setChatPop(false); setView('chat') }}
+                className="ml-auto text-sm text-blue-700 underline px-2 py-1">開整頁</button>
+              <button onClick={() => setChatPop(false)} title="關閉"
+                className="text-2xl leading-none text-gray-500 hover:text-gray-900 px-2">×</button>
+            </div>
+            <div className="flex-1 min-h-0 px-4 pb-3">{chatBody}</div>
+          </div>
+        </>
       )}
 
       {/* 手機版：底部導覽列（電腦版隱藏）。用圖示＋短標籤，方便單手點選 */}
