@@ -2184,6 +2184,259 @@ export default function Page() {
 
   // 任務詳情面板（今日工作 / 任務查詢 共用）
   function renderTaskDetail(t: DailyTask) {
+    return (
+      <div className="mt-1 ml-1.5 mr-1 mb-2 p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
+        <div>
+          <input ref={taskFileRef} type="file" multiple className="hidden"
+            onChange={async e => {
+              const files = Array.from(e.target.files ?? [])
+              for (const f of files) {
+                const att = await uploadTaskFile(f)
+                if (att) setDetailAttachments(prev => [...prev, att])
+              }
+              if (taskFileRef.current) taskFileRef.current.value = ''
+            }} />
+          <div className="flex items-center justify-between mb-0.5">
+            <label className="text-xs text-gray-500">任務內容</label>
+            <button onClick={() => taskFileRef.current?.click()} disabled={uploading}
+              className="text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded px-2 py-0.5 disabled:opacity-40">
+              {uploading ? '上傳中...' : '📎 新增附件'}
+            </button>
+          </div>
+          <textarea value={detailContent} onChange={e => setDetailContent(e.target.value)} rows={3}
+            placeholder="這個任務的背景、細節、目前狀況..."
+            className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
+          {detailAttachments.length > 0 && (
+            <div className="mt-1 space-y-1">
+              {detailAttachments.map((att, i) => (
+                <div key={i} className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded px-2 py-1">
+                  <span className="text-xs text-indigo-600 flex-1 truncate">📎 {att.name}</span>
+                  <a href={att.url} download={att.name} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-indigo-500 hover:underline shrink-0">下載</a>
+                  <button onClick={() => setDetailAttachments(prev => prev.filter((_, j) => j !== i))}
+                    className="text-xs text-gray-300 hover:text-red-400 shrink-0">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => saveDetail(t.id)} disabled={savingDetail}
+            className="aurora-grad text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:brightness-105 disabled:opacity-40">
+            {savingDetail ? '儲存中...' : '儲存'}
+          </button>
+          {saveDetailOk && <span className="text-xs text-green-600 font-medium">✓ 已儲存</span>}
+          {saveDetailErr && <span className="text-xs text-red-500">{saveDetailErr}</span>}
+          <button onClick={() => { setDetailId(null); setSaveDetailOk(false); setSaveDetailErr('') }} className="text-xs text-gray-400 hover:text-gray-600 px-1">關閉</button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── 會議事項 ──────────────────────────────────────────
+  async function fetchIssues(tab: 'open' | 'closed') {
+    setIssueTab(tab)
+    setIssuesLoading(true)
+    try {
+      const r = await fetch('/api/meeting-items' + (tab === 'closed' ? '?closed=1' : ''))
+      const d = await readJson(r)
+      if (r.ok) { tab === 'closed' ? setIssuesClosed(d.items ?? []) : setIssues(d.items ?? []) }
+    } catch { /* 讀取失敗就維持原本清單 */ }
+    finally { setIssuesLoading(false) }
+  }
+  // 進度欄位有 2000 字上限，滿了會從最舊的砍起（完整版留在頁面內文）。
+  // 表格平常直接顯示欄位內容，只有接近上限時才提供這個按鈕把更早的補回來——
+  // 不是收合展開，是把被截掉的那段接上去。
+  async function loadIssueHistory(id: string) {
+    setIssueExpanded(s => ({ ...s, [id]: [] }))
+    try {
+      const r = await fetch('/api/meeting-items?history=' + encodeURIComponent(id))
+      const d = await readJson(r)
+      if (r.ok) setIssueExpanded(s => ({ ...s, [id]: d.history ?? [] }))
+    } catch { /* 讀不到就顯示空的 */ }
+  }
+  async function submitIssue(form: HTMLFormElement) {
+    const f = new FormData(form)
+    setIssueBusy(true); setIssueErr('')
+    try {
+      const r = await fetch('/api/meeting-items', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meetDate: f.get('meetDate'), category: f.get('category'), issue: f.get('issue'),
+          proposer: f.get('proposer'), owner: f.get('owner'), due: f.get('due'),
+        }),
+      })
+      const d = await readJson(r)
+      if (!r.ok) { setIssueErr(d.error ?? '新增失敗'); return }
+      setIssueForm(false); form.reset(); fetchIssues('open')
+    } catch (e: any) { setIssueErr(e.message) }
+    finally { setIssueBusy(false) }
+  }
+  // 預計日直接在表格上改。日期本來就常常要動（延期、對外約好時間），
+  // 為了改一個日期還要展開「更新進度」表單、又逼著寫一段進度，太重了。
+  async function updateIssueDue(id: string, due: string) {
+    setIssueBusy(true)
+    try {
+      const r = await fetch('/api/meeting-items', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, due }),
+      })
+      const d = await readJson(r)
+      if (!r.ok) { setIssueErr(d.error ?? '更新失敗'); return }
+      // 只改本機那一筆就好，不整份重抓——重抓會把展開中的卡片收起來
+      const patch = (list: MeetingItem[]) => list.map(x => x.id === id ? { ...x, due } : x)
+      issueTab === 'closed' ? setIssuesClosed(patch) : setIssues(patch)
+    } catch (e: any) { setIssueErr(e.message) }
+    finally { setIssueBusy(false) }
+  }
+
+  // 勾選／取消勾選某一條支線任務。做法是在該行前面加上或拿掉「✔」，
+  // 整欄回寫回去——支線任務本來就是一整段文字，沒有各自的資料列可以更新。
+  // 支線任務是一整欄文字（一行一筆），所以勾選、修改、刪除都是「改完整欄再整批回寫」。
+  // 三個動作共用這一支：先動畫面再送出，失敗就退回原本的內容。
+  async function writeSubtasks(it: MeetingItem, text: string) {
+    const apply = (v: string) => {
+      const upd = (arr: MeetingItem[]) => arr.map(x => x.id === it.id ? { ...x, subtasks: v } : x)
+      setIssues(upd); setIssuesClosed(upd)
+    }
+    apply(text)
+    try {
+      const r = await fetch('/api/meeting-items', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: it.id, subtasks: text }),
+      })
+      if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
+    } catch (e: any) {
+      apply(it.subtasks)
+      setIssueErr(e.message)
+    }
+  }
+  // 晨會第二步「當場開一條支線任務」。跟表格那邊一樣是整欄覆寫，
+  // 但錯誤要往外丟——表單得知道成功沒有，不能像 writeSubtasks 那樣默默吞掉。
+  async function addFlowSubtask(itemId: string, who: string, what: string, when: string) {
+    const it = issues.find(x => x.id === itemId)
+    if (!it) throw new Error('找不到這個議題，請按重新整理')
+    const lines = (it.subtasks || '').split('\n').filter(l => l.trim())
+    lines.push([who, what, when].join('｜'))
+    const text = lines.join('\n')
+    const r = await fetch('/api/meeting-items', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: itemId, subtasks: text }),
+    })
+    if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
+    setIssues(prev => prev.map(x => x.id === itemId ? { ...x, subtasks: text } : x))
+  }
+  // 只取有內容的行；顯示、編輯、刪除都用同一組索引，才不會對到別行
+  const subLines = (it: MeetingItem) => (it.subtasks || '').split('\n').filter(l => l.trim())
+
+  function toggleSubtask(it: MeetingItem, lineIndex: number) {
+    const lines = subLines(it)
+    const raw = lines[lineIndex]
+    if (raw === undefined) return
+    lines[lineIndex] = raw.trimStart().startsWith('✔')
+      ? raw.replace(/^\s*✔\s*/, '')
+      : '✔' + raw.trimStart()
+    return writeSubtasks(it, lines.join('\n'))
+  }
+
+  function saveSubtask(it: MeetingItem, lineIndex: number, who: string, what: string, when: string) {
+    const lines = subLines(it)
+    if (lines[lineIndex] === undefined) return
+    const done = lines[lineIndex].trimStart().startsWith('✔')
+    lines[lineIndex] = (done ? '✔' : '') + [who.trim(), what.trim(), when.trim()].join('｜')
+    setEditSub(null)
+    return writeSubtasks(it, lines.join('\n'))
+  }
+
+  function deleteSubtask(it: MeetingItem, lineIndex: number) {
+    const lines = subLines(it)
+    const raw = lines[lineIndex]
+    if (raw === undefined) return
+    const what = raw.replace(/^\s*✔\s*/, '').split('｜')[1] || raw
+    if (!confirm(`確定刪除這條支線任務？\n\n${what}`)) return
+    lines.splice(lineIndex, 1)
+    setEditSub(null)
+    return writeSubtasks(it, lines.join('\n'))
+  }
+
+  async function submitIssueProgress(id: string, form: HTMLFormElement, close = false, reopen = false) {
+    const f = new FormData(form)
+    const progress = String(f.get('progress') ?? '').trim()
+    // 問題本文與類別：只有真的改過才送，沒動就不要覆寫
+    const cur = [...issues, ...issuesClosed].find(x => x.id === id)
+    const issueRaw = String(f.get('issue') ?? '').trim()
+    const issue = issueRaw && issueRaw !== (cur?.issue ?? '') ? issueRaw : undefined
+    const catRaw = String(f.get('category') ?? '').trim()
+    const category = catRaw && catRaw !== (cur?.category ?? '') ? catRaw : undefined
+    // 結案可以不寫進度；一般更新則至少要有一項變動，不然是空按
+    const due = String(f.get('due') ?? '').trim()
+    const owner = String(f.get('owner') ?? '').trim()
+    // 支線任務是「加一筆」，但送給後端的是整份清單——合併規則放在前端才看得懂目前有幾筆
+    const subWho = String(f.get('subWho') ?? '').trim()
+    const subWhat = String(f.get('subWhat') ?? '').trim()
+    const subWhen = String(f.get('subWhen') ?? '').trim()
+    let subtasks: string | undefined
+    if (subWhat || subWho) {
+      const cur = (issues.find(x => x.id === id)?.subtasks ?? '').split('\n').filter(l => l.trim())
+      cur.push([subWho, subWhat, subWhen].join('｜'))
+      subtasks = cur.join('\n')
+    }
+    if (!close && !reopen && !progress && !due && !owner && !subtasks && !issue && !category) {
+      setIssueErr('請至少填一項'); return
+    }
+    setIssueBusy(true); setIssueErr('')
+    try {
+      const r = await fetch('/api/meeting-items', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, progress, close, reopen,
+          ...(due ? { due } : {}), ...(owner ? { owner } : {}),
+          ...(subtasks !== undefined ? { subtasks } : {}),
+          ...(issue ? { issue } : {}), ...(category ? { category } : {}) }),
+      })
+      const d = await readJson(r)
+      if (!r.ok) { setIssueErr(d.error ?? '更新失敗'); return }
+      setIssueProgressId(null)
+      // 卡片正展開時，剛加的那行也要出現在歷程裡；不重抓的話畫面上「最新」變了、
+      // 底下的歷程還是舊的，看起來像沒存進去
+      if (issueExpanded[id]) {
+        try {
+          const h = await fetch('/api/meeting-items?history=' + encodeURIComponent(id))
+          const hd = await readJson(h)
+          if (h.ok) setIssueExpanded(st => ({ ...st, [id]: hd.history ?? [] }))
+        } catch { /* 抓不到就維持原本歷程 */ }
+      }
+      // 結案的那筆會從進行中消失，所以兩邊都重抓
+      fetchIssues('open')
+      if (close) setIssuesClosed([])
+    } catch (e: any) { setIssueErr(e.message) }
+    finally { setIssueBusy(false) }
+  }
+
+  // 導覽項目：電腦版側欄與手機版底部導覽共用（label 給側欄、short 給底部列）
+  const NAV_ITEMS: { v: View; icon: string; label: string; short: string; onClick: () => void }[] = [
+    { v: 'dashboard', icon: '📊', label: '總覽', short: '總覽', onClick: () => { setView('dashboard'); fetchProjects(); fetchDailyTasks() } },
+    { v: 'list', icon: '📋', label: '案件清單', short: '案件', onClick: () => setView('list') },
+    { v: 'daily', icon: '✅', label: '今日工作', short: '今日', onClick: () => { setView('daily'); fetchDailyTasks() } },
+    { v: 'search', icon: '🔍', label: '任務查詢', short: '查詢', onClick: () => { setView('search'); fetchInProgress() } },
+    { v: 'chat', icon: '💬', label: 'AI 助理', short: 'AI', onClick: () => setView('chat') },
+    { v: 'issues', icon: '🔧', label: '會議事項', short: '議題', onClick: () => { setView('issues'); fetchIssues('open') } },
+    { v: 'doors', icon: '🚪', label: '門單', short: '門單', onClick: () => setView('doors') },
+    ...(isAdmin ? [
+      { v: 'meeting' as View, icon: '📋', label: '會議模式', short: '會議', onClick: () => { setView('meeting'); fetchInProgress(); fetchPrivatePersonTasks() } },
+      { v: 'private' as View, icon: '🔐', label: '私人行事曆', short: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } },
+    ] : []),
+  ]
+
+  // 側欄底部小卡：本週完成率（用真實任務資料計算，非假數字）
+  const wkNow = new Date(Date.now() + 8 * 3600 * 1000)
+  const wkMon = new Date(wkNow); wkMon.setUTCDate(wkNow.getUTCDate() - ((wkNow.getUTCDay() + 6) % 7))
+  const wkStart = wkMon.toISOString().slice(0, 10)
+  const wkSun = new Date(wkMon); wkSun.setUTCDate(wkMon.getUTCDate() + 6)
+  const wkEnd = wkSun.toISOString().slice(0, 10)
+  const wkTasks = dailyAll.filter(t => t.date >= wkStart && t.date <= wkEnd)
+  const wkDone = wkTasks.filter(t => t.status === '完成').length
+  const wkRate = wkTasks.length ? Math.round((wkDone / wkTasks.length) * 100) : 0
+
   // 聊天室介面只有一份：整頁的 AI 助理和右下角的小視窗共用這一塊。
   // 複製第二份的話，草稿卡片、影片、建議按鈕都會變成兩套各自壞掉。
   const chatBody = (
@@ -2663,259 +2916,6 @@ export default function Page() {
               </div>
             </div>
   )
-
-    return (
-      <div className="mt-1 ml-1.5 mr-1 mb-2 p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
-        <div>
-          <input ref={taskFileRef} type="file" multiple className="hidden"
-            onChange={async e => {
-              const files = Array.from(e.target.files ?? [])
-              for (const f of files) {
-                const att = await uploadTaskFile(f)
-                if (att) setDetailAttachments(prev => [...prev, att])
-              }
-              if (taskFileRef.current) taskFileRef.current.value = ''
-            }} />
-          <div className="flex items-center justify-between mb-0.5">
-            <label className="text-xs text-gray-500">任務內容</label>
-            <button onClick={() => taskFileRef.current?.click()} disabled={uploading}
-              className="text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded px-2 py-0.5 disabled:opacity-40">
-              {uploading ? '上傳中...' : '📎 新增附件'}
-            </button>
-          </div>
-          <textarea value={detailContent} onChange={e => setDetailContent(e.target.value)} rows={3}
-            placeholder="這個任務的背景、細節、目前狀況..."
-            className="w-full mt-0.5 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none" />
-          {detailAttachments.length > 0 && (
-            <div className="mt-1 space-y-1">
-              {detailAttachments.map((att, i) => (
-                <div key={i} className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded px-2 py-1">
-                  <span className="text-xs text-indigo-600 flex-1 truncate">📎 {att.name}</span>
-                  <a href={att.url} download={att.name} target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-indigo-500 hover:underline shrink-0">下載</a>
-                  <button onClick={() => setDetailAttachments(prev => prev.filter((_, j) => j !== i))}
-                    className="text-xs text-gray-300 hover:text-red-400 shrink-0">✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => saveDetail(t.id)} disabled={savingDetail}
-            className="aurora-grad text-white shadow-sm rounded px-3 py-1 text-xs font-medium hover:brightness-105 disabled:opacity-40">
-            {savingDetail ? '儲存中...' : '儲存'}
-          </button>
-          {saveDetailOk && <span className="text-xs text-green-600 font-medium">✓ 已儲存</span>}
-          {saveDetailErr && <span className="text-xs text-red-500">{saveDetailErr}</span>}
-          <button onClick={() => { setDetailId(null); setSaveDetailOk(false); setSaveDetailErr('') }} className="text-xs text-gray-400 hover:text-gray-600 px-1">關閉</button>
-        </div>
-      </div>
-    )
-  }
-
-  // ── 會議事項 ──────────────────────────────────────────
-  async function fetchIssues(tab: 'open' | 'closed') {
-    setIssueTab(tab)
-    setIssuesLoading(true)
-    try {
-      const r = await fetch('/api/meeting-items' + (tab === 'closed' ? '?closed=1' : ''))
-      const d = await readJson(r)
-      if (r.ok) { tab === 'closed' ? setIssuesClosed(d.items ?? []) : setIssues(d.items ?? []) }
-    } catch { /* 讀取失敗就維持原本清單 */ }
-    finally { setIssuesLoading(false) }
-  }
-  // 進度欄位有 2000 字上限，滿了會從最舊的砍起（完整版留在頁面內文）。
-  // 表格平常直接顯示欄位內容，只有接近上限時才提供這個按鈕把更早的補回來——
-  // 不是收合展開，是把被截掉的那段接上去。
-  async function loadIssueHistory(id: string) {
-    setIssueExpanded(s => ({ ...s, [id]: [] }))
-    try {
-      const r = await fetch('/api/meeting-items?history=' + encodeURIComponent(id))
-      const d = await readJson(r)
-      if (r.ok) setIssueExpanded(s => ({ ...s, [id]: d.history ?? [] }))
-    } catch { /* 讀不到就顯示空的 */ }
-  }
-  async function submitIssue(form: HTMLFormElement) {
-    const f = new FormData(form)
-    setIssueBusy(true); setIssueErr('')
-    try {
-      const r = await fetch('/api/meeting-items', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          meetDate: f.get('meetDate'), category: f.get('category'), issue: f.get('issue'),
-          proposer: f.get('proposer'), owner: f.get('owner'), due: f.get('due'),
-        }),
-      })
-      const d = await readJson(r)
-      if (!r.ok) { setIssueErr(d.error ?? '新增失敗'); return }
-      setIssueForm(false); form.reset(); fetchIssues('open')
-    } catch (e: any) { setIssueErr(e.message) }
-    finally { setIssueBusy(false) }
-  }
-  // 預計日直接在表格上改。日期本來就常常要動（延期、對外約好時間），
-  // 為了改一個日期還要展開「更新進度」表單、又逼著寫一段進度，太重了。
-  async function updateIssueDue(id: string, due: string) {
-    setIssueBusy(true)
-    try {
-      const r = await fetch('/api/meeting-items', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, due }),
-      })
-      const d = await readJson(r)
-      if (!r.ok) { setIssueErr(d.error ?? '更新失敗'); return }
-      // 只改本機那一筆就好，不整份重抓——重抓會把展開中的卡片收起來
-      const patch = (list: MeetingItem[]) => list.map(x => x.id === id ? { ...x, due } : x)
-      issueTab === 'closed' ? setIssuesClosed(patch) : setIssues(patch)
-    } catch (e: any) { setIssueErr(e.message) }
-    finally { setIssueBusy(false) }
-  }
-
-  // 勾選／取消勾選某一條支線任務。做法是在該行前面加上或拿掉「✔」，
-  // 整欄回寫回去——支線任務本來就是一整段文字，沒有各自的資料列可以更新。
-  // 支線任務是一整欄文字（一行一筆），所以勾選、修改、刪除都是「改完整欄再整批回寫」。
-  // 三個動作共用這一支：先動畫面再送出，失敗就退回原本的內容。
-  async function writeSubtasks(it: MeetingItem, text: string) {
-    const apply = (v: string) => {
-      const upd = (arr: MeetingItem[]) => arr.map(x => x.id === it.id ? { ...x, subtasks: v } : x)
-      setIssues(upd); setIssuesClosed(upd)
-    }
-    apply(text)
-    try {
-      const r = await fetch('/api/meeting-items', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: it.id, subtasks: text }),
-      })
-      if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
-    } catch (e: any) {
-      apply(it.subtasks)
-      setIssueErr(e.message)
-    }
-  }
-  // 晨會第二步「當場開一條支線任務」。跟表格那邊一樣是整欄覆寫，
-  // 但錯誤要往外丟——表單得知道成功沒有，不能像 writeSubtasks 那樣默默吞掉。
-  async function addFlowSubtask(itemId: string, who: string, what: string, when: string) {
-    const it = issues.find(x => x.id === itemId)
-    if (!it) throw new Error('找不到這個議題，請按重新整理')
-    const lines = (it.subtasks || '').split('\n').filter(l => l.trim())
-    lines.push([who, what, when].join('｜'))
-    const text = lines.join('\n')
-    const r = await fetch('/api/meeting-items', {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: itemId, subtasks: text }),
-    })
-    if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
-    setIssues(prev => prev.map(x => x.id === itemId ? { ...x, subtasks: text } : x))
-  }
-  // 只取有內容的行；顯示、編輯、刪除都用同一組索引，才不會對到別行
-  const subLines = (it: MeetingItem) => (it.subtasks || '').split('\n').filter(l => l.trim())
-
-  function toggleSubtask(it: MeetingItem, lineIndex: number) {
-    const lines = subLines(it)
-    const raw = lines[lineIndex]
-    if (raw === undefined) return
-    lines[lineIndex] = raw.trimStart().startsWith('✔')
-      ? raw.replace(/^\s*✔\s*/, '')
-      : '✔' + raw.trimStart()
-    return writeSubtasks(it, lines.join('\n'))
-  }
-
-  function saveSubtask(it: MeetingItem, lineIndex: number, who: string, what: string, when: string) {
-    const lines = subLines(it)
-    if (lines[lineIndex] === undefined) return
-    const done = lines[lineIndex].trimStart().startsWith('✔')
-    lines[lineIndex] = (done ? '✔' : '') + [who.trim(), what.trim(), when.trim()].join('｜')
-    setEditSub(null)
-    return writeSubtasks(it, lines.join('\n'))
-  }
-
-  function deleteSubtask(it: MeetingItem, lineIndex: number) {
-    const lines = subLines(it)
-    const raw = lines[lineIndex]
-    if (raw === undefined) return
-    const what = raw.replace(/^\s*✔\s*/, '').split('｜')[1] || raw
-    if (!confirm(`確定刪除這條支線任務？\n\n${what}`)) return
-    lines.splice(lineIndex, 1)
-    setEditSub(null)
-    return writeSubtasks(it, lines.join('\n'))
-  }
-
-  async function submitIssueProgress(id: string, form: HTMLFormElement, close = false, reopen = false) {
-    const f = new FormData(form)
-    const progress = String(f.get('progress') ?? '').trim()
-    // 問題本文與類別：只有真的改過才送，沒動就不要覆寫
-    const cur = [...issues, ...issuesClosed].find(x => x.id === id)
-    const issueRaw = String(f.get('issue') ?? '').trim()
-    const issue = issueRaw && issueRaw !== (cur?.issue ?? '') ? issueRaw : undefined
-    const catRaw = String(f.get('category') ?? '').trim()
-    const category = catRaw && catRaw !== (cur?.category ?? '') ? catRaw : undefined
-    // 結案可以不寫進度；一般更新則至少要有一項變動，不然是空按
-    const due = String(f.get('due') ?? '').trim()
-    const owner = String(f.get('owner') ?? '').trim()
-    // 支線任務是「加一筆」，但送給後端的是整份清單——合併規則放在前端才看得懂目前有幾筆
-    const subWho = String(f.get('subWho') ?? '').trim()
-    const subWhat = String(f.get('subWhat') ?? '').trim()
-    const subWhen = String(f.get('subWhen') ?? '').trim()
-    let subtasks: string | undefined
-    if (subWhat || subWho) {
-      const cur = (issues.find(x => x.id === id)?.subtasks ?? '').split('\n').filter(l => l.trim())
-      cur.push([subWho, subWhat, subWhen].join('｜'))
-      subtasks = cur.join('\n')
-    }
-    if (!close && !reopen && !progress && !due && !owner && !subtasks && !issue && !category) {
-      setIssueErr('請至少填一項'); return
-    }
-    setIssueBusy(true); setIssueErr('')
-    try {
-      const r = await fetch('/api/meeting-items', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, progress, close, reopen,
-          ...(due ? { due } : {}), ...(owner ? { owner } : {}),
-          ...(subtasks !== undefined ? { subtasks } : {}),
-          ...(issue ? { issue } : {}), ...(category ? { category } : {}) }),
-      })
-      const d = await readJson(r)
-      if (!r.ok) { setIssueErr(d.error ?? '更新失敗'); return }
-      setIssueProgressId(null)
-      // 卡片正展開時，剛加的那行也要出現在歷程裡；不重抓的話畫面上「最新」變了、
-      // 底下的歷程還是舊的，看起來像沒存進去
-      if (issueExpanded[id]) {
-        try {
-          const h = await fetch('/api/meeting-items?history=' + encodeURIComponent(id))
-          const hd = await readJson(h)
-          if (h.ok) setIssueExpanded(st => ({ ...st, [id]: hd.history ?? [] }))
-        } catch { /* 抓不到就維持原本歷程 */ }
-      }
-      // 結案的那筆會從進行中消失，所以兩邊都重抓
-      fetchIssues('open')
-      if (close) setIssuesClosed([])
-    } catch (e: any) { setIssueErr(e.message) }
-    finally { setIssueBusy(false) }
-  }
-
-  // 導覽項目：電腦版側欄與手機版底部導覽共用（label 給側欄、short 給底部列）
-  const NAV_ITEMS: { v: View; icon: string; label: string; short: string; onClick: () => void }[] = [
-    { v: 'dashboard', icon: '📊', label: '總覽', short: '總覽', onClick: () => { setView('dashboard'); fetchProjects(); fetchDailyTasks() } },
-    { v: 'list', icon: '📋', label: '案件清單', short: '案件', onClick: () => setView('list') },
-    { v: 'daily', icon: '✅', label: '今日工作', short: '今日', onClick: () => { setView('daily'); fetchDailyTasks() } },
-    { v: 'search', icon: '🔍', label: '任務查詢', short: '查詢', onClick: () => { setView('search'); fetchInProgress() } },
-    { v: 'chat', icon: '💬', label: 'AI 助理', short: 'AI', onClick: () => setView('chat') },
-    { v: 'issues', icon: '🔧', label: '會議事項', short: '議題', onClick: () => { setView('issues'); fetchIssues('open') } },
-    { v: 'doors', icon: '🚪', label: '門單', short: '門單', onClick: () => setView('doors') },
-    ...(isAdmin ? [
-      { v: 'meeting' as View, icon: '📋', label: '會議模式', short: '會議', onClick: () => { setView('meeting'); fetchInProgress(); fetchPrivatePersonTasks() } },
-      { v: 'private' as View, icon: '🔐', label: '私人行事曆', short: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } },
-    ] : []),
-  ]
-
-  // 側欄底部小卡：本週完成率（用真實任務資料計算，非假數字）
-  const wkNow = new Date(Date.now() + 8 * 3600 * 1000)
-  const wkMon = new Date(wkNow); wkMon.setUTCDate(wkNow.getUTCDate() - ((wkNow.getUTCDay() + 6) % 7))
-  const wkStart = wkMon.toISOString().slice(0, 10)
-  const wkSun = new Date(wkMon); wkSun.setUTCDate(wkMon.getUTCDate() + 6)
-  const wkEnd = wkSun.toISOString().slice(0, 10)
-  const wkTasks = dailyAll.filter(t => t.date >= wkStart && t.date <= wkEnd)
-  const wkDone = wkTasks.filter(t => t.status === '完成').length
-  const wkRate = wkTasks.length ? Math.round((wkDone / wkTasks.length) * 100) : 0
 
   return (
     <div className="min-h-screen relative">
