@@ -2412,20 +2412,34 @@ export default function Page() {
     finally { setIssueBusy(false) }
   }
 
-  // 導覽項目：電腦版側欄與手機版底部導覽共用（label 給側欄、short 給底部列）
-  const NAV_ITEMS: { v: View; icon: string; label: string; short: string; onClick: () => void }[] = [
-    { v: 'dashboard', icon: '📊', label: '總覽', short: '總覽', onClick: () => { setView('dashboard'); fetchProjects(); fetchDailyTasks() } },
-    { v: 'list', icon: '📋', label: '案件清單', short: '案件', onClick: () => setView('list') },
-    { v: 'daily', icon: '✅', label: '今日工作', short: '今日', onClick: () => { setView('daily'); fetchDailyTasks() } },
-    { v: 'search', icon: '🔍', label: '任務查詢', short: '查詢', onClick: () => { setView('search'); fetchInProgress() } },
-    { v: 'chat', icon: '💬', label: 'AI 助理', short: 'AI', onClick: () => setView('chat') },
-    { v: 'issues', icon: '🔧', label: '會議事項', short: '議題', onClick: () => { setView('issues'); fetchIssues('open') } },
-    { v: 'doors', icon: '🚪', label: '門單', short: '門單', onClick: () => setView('doors') },
-    ...(isAdmin ? [
-      { v: 'meeting' as View, icon: '📋', label: '會議模式', short: '會議', onClick: () => { setView('meeting'); fetchInProgress(); fetchPrivatePersonTasks() } },
-      { v: 'private' as View, icon: '🔐', label: '私人行事曆', short: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } },
-    ] : []),
+  // 導覽項目：電腦版側欄與手機版底部導覽共用（label 給側欄、short 給底部列）。
+  // 分成兩區：接案／管理是一區，工廠自己用的製圖工具是另一區，不要混在一起——
+  // 兩邊是不同的人在用，看到的東西也不該互相干擾。
+  type NavItem = { v: View; icon: string; label: string; short: string; onClick: () => void }
+  const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
+    {
+      title: '專案',
+      items: [
+        { v: 'dashboard', icon: '📊', label: '總覽', short: '總覽', onClick: () => { setView('dashboard'); fetchProjects(); fetchDailyTasks() } },
+        { v: 'list', icon: '📋', label: '案件清單', short: '案件', onClick: () => setView('list') },
+        { v: 'daily', icon: '✅', label: '今日工作', short: '今日', onClick: () => { setView('daily'); fetchDailyTasks() } },
+        { v: 'search', icon: '🔍', label: '任務查詢', short: '查詢', onClick: () => { setView('search'); fetchInProgress() } },
+        { v: 'chat', icon: '💬', label: 'AI 助理', short: 'AI', onClick: () => setView('chat') },
+        { v: 'issues', icon: '🔧', label: '會議事項', short: '議題', onClick: () => { setView('issues'); fetchIssues('open') } },
+        ...(isAdmin ? [
+          { v: 'meeting' as View, icon: '📋', label: '會議模式', short: '會議', onClick: () => { setView('meeting'); fetchInProgress(); fetchPrivatePersonTasks() } },
+          { v: 'private' as View, icon: '🔐', label: '私人行事曆', short: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } },
+        ] : []),
+      ],
+    },
+    {
+      title: '製圖',
+      items: [
+        { v: 'doors', icon: '🚪', label: '製圖', short: '製圖', onClick: () => setView('doors') },
+      ],
+    },
   ]
+  const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap(g => g.items)
 
   // 側欄底部小卡：本週完成率（用真實任務資料計算，非假數字）
   const wkNow = new Date(Date.now() + 8 * 3600 * 1000)
@@ -2939,17 +2953,25 @@ export default function Page() {
         </div>
         {/* 導覽項 */}
         <nav className="flex flex-col gap-1">
-          {NAV_ITEMS.map(item => {
-            const on = view === item.v
-            return (
-              <button key={item.v} onClick={item.onClick} data-tour={`nav-${item.v}`}
-                className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-left transition-colors ${on ? '' : 'hover:bg-[rgba(120,130,170,0.10)]'}`}
-                style={{ background: on ? 'rgba(110,168,254,0.14)' : undefined, color: on ? '#4a7fd6' : 'var(--text-2)', fontWeight: on ? 700 : 500 }}>
-                <span className="text-base leading-none" style={{ filter: on ? 'none' : 'grayscale(.4) opacity(.7)' }}>{item.icon}</span>
-                {item.label}
-              </button>
-            )
-          })}
+          {NAV_GROUPS.map((g, gi) => (
+            <div key={g.title} className={gi > 0 ? 'mt-4 pt-3 border-t' : ''}
+              style={gi > 0 ? { borderColor: 'var(--hairline)' } : undefined}>
+              <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide" style={{ color: 'var(--text-3)' }}>{g.title}</p>
+              <div className="flex flex-col gap-1">
+                {g.items.map(item => {
+                  const on = view === item.v
+                  return (
+                    <button key={item.v} onClick={item.onClick} data-tour={`nav-${item.v}`}
+                      className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-left transition-colors ${on ? '' : 'hover:bg-[rgba(120,130,170,0.10)]'}`}
+                      style={{ background: on ? 'rgba(110,168,254,0.14)' : undefined, color: on ? '#4a7fd6' : 'var(--text-2)', fontWeight: on ? 700 : 500 }}>
+                      <span className="text-base leading-none" style={{ filter: on ? 'none' : 'grayscale(.4) opacity(.7)' }}>{item.icon}</span>
+                      {item.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
         {/* 底部：本週完成率 + 帳號列 */}
         <div className="mt-auto pt-4 space-y-2.5">
@@ -5347,9 +5369,12 @@ export default function Page() {
         }}>
         {NAV_ITEMS.map(item => {
           const on = view === item.v
+          // 底部列塞不下分區標題，改用一條細線把「製圖」跟專案那幾項隔開
+          const 起新區 = NAV_GROUPS.some((g, gi) => gi > 0 && g.items[0]?.v === item.v)
           return (
             <button key={item.v} onClick={item.onClick} data-tour={`nav-${item.v}`}
-              className="flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 transition-all">
+              className="flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 transition-all"
+              style={起新區 ? { borderLeft: '1px solid var(--glass-border)' } : undefined}>
               {/* 作用中：icon 原色、label 主色粗體；非作用中：icon 去飽和、label 次要色 */}
               <span className="text-lg leading-none" style={{ filter: on ? 'none' : 'grayscale(.5) opacity(.65)' }}>{item.icon}</span>
               <span className="text-[10px] leading-none" style={{ color: on ? '#4a7fd6' : 'var(--text-3)', fontWeight: on ? 700 : 500 }}>{item.short}</span>

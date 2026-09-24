@@ -1671,11 +1671,15 @@ export async function addDoor(d: Door): Promise<{ id: string }> {
 
 // 整包覆寫，不做逐欄合併——訂料單每次都送完整的一樘，
 // 合併規則一旦有歧義（清空一個欄位算不算「沒送」）就會弄丟資料。
-export async function updateDoor(id: string, d: Door) {
+//
+// 回傳 {gone:true} 而不是安靜地當作成功：這一樘被別人刪掉時，使用者手上那份修改
+// 哪裡都沒存到。回 ok 會讓他以為存好了，關掉畫面，尺寸就真的不見了。
+export async function updateDoor(id: string, d: Door): Promise<{ gone?: boolean }> {
   try {
     await notion.pages.update({ page_id: id, properties: doorProps(d) })
+    return {}
   } catch (e: any) {
-    if (String(e?.message ?? e).includes('archived')) return   // 已刪掉，前端重抓就好
+    if (String(e?.message ?? e).includes('archived')) return { gone: true }
     throw e
   }
 }

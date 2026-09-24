@@ -137,6 +137,7 @@ export default function DoorOrderForm() {
   const [msg, setMsg] = useState('')
   const msgTimer = useRef<any>(null)
   const 表單頂 = useRef<HTMLDivElement>(null)
+  const 存序 = useRef(0)                             // 擋掉慢回來的存檔去蓋掉新狀態
 
   const toast = useCallback((m: string) => {
     setMsg(m)
@@ -154,31 +155,43 @@ export default function DoorOrderForm() {
     return () => clearTimeout(t)
   }, [justId])
 
-  const set = (k: string, v: string) => setF(p => ({ ...p, [k]: v }))
+  // 使用者一碰過建案/棟別，初次載入就不准再去蓋它
+  const 碰過 = useRef(false)
+  const set = (k: string, v: string) => {
+    if (k === 'f_job' || k === 'f_bldg') 碰過.current = true
+    setF(p => {
+      const n = { ...p, [k]: v }
+      // 一開始填門扇摺段，就把手打的門扇寬/高清掉。不清的話：先打 1130（量完成面）、
+      // 再改填摺段 30/942/30、又把摺段清光，欄位會把 1130 變回來當成真尺寸存下去。
+      if (k.startsWith('f_lws')) n.f_lw = ''
+      if (k.startsWith('f_lhs')) n.f_lh = ''
+      return n
+    })
+  }
 
   // ---------- 載入 ----------
-  const load = useCallback(async () => {
+  const load = useCallback(async (seed = false) => {
     setLoading(true); setErr('')
     try {
       const r = await fetch('/api/door-orders')
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || '讀取失敗')
-      setRows(Array.isArray(d.rows) ? d.rows : [])
-    } catch (e: any) { setErr(e.message) }
+      const list: DoorRow[] = Array.isArray(d.rows) ? d.rows : []
+      setRows(list)
+      // 只有第一次、而且使用者還沒動過那兩格，才把上次的建案帶進來。
+      // 現場常常是「打開就直接開始打字」，讀取要好幾秒，回來蓋掉他打的東西
+      // 會讓門被存到別的建案去。
+      if (seed && list.length && !碰過.current) {
+        const last = list[list.length - 1].door
+        setJob(String(last.f_job ?? ''))
+        setF(p => ({ ...p, f_job: String(last.f_job ?? ''), f_bldg: String(last.f_bldg ?? '') }))
+      }
+      return list
+    } catch (e: any) { setErr(e.message); return null }
     finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { load() }, [load])
-
-  // 第一次載到資料時，自動跳到最後一樘所屬的工單，並把建案/棟別帶進表單
-  const inited = useRef(false)
-  useEffect(() => {
-    if (inited.current || !rows.length) return
-    inited.current = true
-    const last = rows[rows.length - 1].door
-    setJob(String(last.f_job ?? ''))
-    setF(p => ({ ...p, f_job: String(last.f_job ?? ''), f_bldg: String(last.f_bldg ?? '') }))
-  }, [rows])
+  useEffect(() => { load(true) }, [load])
 
   // ---------- 衍生值 ----------
   const 工單清單 = useMemo(() => {
@@ -210,9 +223,12 @@ export default function DoorOrderForm() {
     f_tw: sumSegs(f, 'f_ts'), f_lfw: sumSegs(f, 'f_ls'),
     f_rfw: sumSegs(f, 'f_rs'), f_dw: sumSegs(f, 'f_ds', 3),
   }), [f])
-  // 門扇寬高是軟自動：有填摺段才鎖起來，沒填就讓人自己打
-  const 扇寬 = sumSegs(f, 'f_lws')
-  const 扇高 = sumSegs(f, 'f_lhs')
+  // 門扇寬高是軟自動：有填摺段才鎖起來，沒填就讓人自己打。
+  // 相加是 0 不算數——有人會在第一格打 0 表示「這邊不折」，
+  // 照收的話門扇寬會被鎖成 0，而且因為欄位變成唯讀，他改不回來。
+  const 軟 = (pre: string) => { const v = sumSegs(f, pre); return v !== null && v > 0 ? v : null }
+  const 扇寬 = 軟('f_lws')
+  const 扇高 = 軟('f_lhs')
   const 顯示寬 = 扇寬 !== null ? String(扇寬) : (f.f_lw ?? '')
   const 顯示高 = 扇高 !== null ? String(扇高) : (f.f_lh ?? '')
 
@@ -264,9 +280,13 @@ export default function DoorOrderForm() {
 
     // 棟別／樓層沒填就沿用上一樘，但一定要講出來補了什麼。
     // 安靜地補錯樓層，比擋下來讓人重填糟糕得多。
+    //
+    // 參考對象一定要限在「同一張工單」裡面。rows 是整個資料庫（所有建案混在一起），
+    // 拿全庫最後一樘來沿用的話，新開一張工單的第一樘會被補上別的建案的棟別和樓層。
+    // 新工單本來就沒有東西可以沿用——讓 missing() 擋下來叫他填才對。
     const 參考 = editingId
-      ? (() => { const i = rows.findIndex(r => r.id === editingId); return i > 0 ? rows[i - 1].door : null })()
-      : (本單.length ? 本單[本單.length - 1].door : (rows.length ? rows[rows.length - 1].door : null))
+      ? (() => { const i = 本單.findIndex(r => r.id === editingId); return i > 0 ? 本單[i - 1].door : null })()
+      : (本單.length ? 本單[本單.length - 1].door : null)
     const 補了: string[] = []
     if (參考) {
       ;([['f_bldg', '棟別'], ['f_floor', '樓層']] as const).forEach(([k, 名]) => {
@@ -277,6 +297,10 @@ export default function DoorOrderForm() {
     const m = missing(d)
     if (m.length) { toast('還缺：' + m.join('、')); return }
 
+    // 存檔要等 Notion 回來，大概一秒。這一秒裡使用者可能已經按了「改」去開別的門，
+    // 回來以後如果照樣把表單清空，他剛打的東西就沒了，而且 editingId 被清成 null，
+    // 下次按儲存會變成新增一筆，同一樘會被畫兩次。用序號擋掉過期的那次。
+    const 這次 = ++存序.current
     setBusy(true); setErr('')
     try {
       let id = editingId
@@ -286,7 +310,6 @@ export default function DoorOrderForm() {
           body: JSON.stringify({ id, door: d }),
         })
         const j = await r.json(); if (!r.ok) throw new Error(j.error || '存檔失敗')
-        setRows(p => p.map(x => (x.id === id ? { ...x, door: d } : x)))
       } else {
         const r = await fetch('/api/door-orders', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -294,8 +317,8 @@ export default function DoorOrderForm() {
         })
         const j = await r.json(); if (!r.ok) throw new Error(j.error || '存檔失敗')
         id = j.id
-        setRows(p => [...p, { id: j.id, door: d, updatedAt: '' }])
       }
+      if (存序.current !== 這次) return      // 中途被別的操作接手了，不要回頭亂改畫面
       setEditingId(null)
       setJustId(id)
       setJob(String(d.f_job ?? ''))
@@ -305,8 +328,11 @@ export default function DoorOrderForm() {
       fillForm(null)
       setF(p => ({ ...p, ...留 }))
       toast(`已存　歸到「${棟名(d)}」` + (補了.length ? '　自動補：' + 補了.join('、') : ''))
-    } catch (e: any) { setErr(e.message) }
-    finally { setBusy(false) }
+      // 重抓而不是在本地拼湊。這個 API 沒有擋登入，就是為了讓好幾台平板同時填同一張工單，
+      // 所以「別人也存了東西」是常態，本地那份一定會越差越多。
+      load()
+    } catch (e: any) { if (存序.current === 這次) setErr(e.message) }
+    finally { if (存序.current === 這次) setBusy(false) }
   }
 
   async function remove(r: DoorRow) {
@@ -315,9 +341,9 @@ export default function DoorOrderForm() {
     try {
       const res = await fetch('/api/door-orders?id=' + encodeURIComponent(r.id), { method: 'DELETE' })
       const j = await res.json(); if (!res.ok) throw new Error(j.error || '刪除失敗')
-      setRows(p => p.filter(x => x.id !== r.id))
       if (editingId === r.id) { setEditingId(null); fillForm(null) }
       toast('已刪除')
+      load()
     } catch (e: any) { setErr(e.message) }
     finally { setBusy(false) }
   }
@@ -338,27 +364,43 @@ export default function DoorOrderForm() {
     toast(`已帶入「${doorName(d)}」，改掉不一樣的地方就好`)
   }
 
-  function 門單JSON() {
-    return JSON.stringify({ doors: 本單.map(r => r.door) }, null, 1)
+  // 匯出前一定要重抓一次。好幾台平板同時填是常態，拿畫面上這份舊快照去出圖，
+  // 會少掉別人剛剛填的那幾樘，而且少了不會有任何提示。
+  async function 取最新(): Promise<Door[] | null> {
+    const list = await load()
+    const src = list ?? rows
+    const ds = src.filter(r => String(r.door.f_job ?? '').trim() === job.trim()).map(r => r.door)
+    if (!ds.length) { toast('這張工單還沒有門'); return null }
+    return ds
   }
 
-  function download() {
-    if (!本單.length) { toast('這張工單還沒有門'); return }
+  async function download() {
+    const ds = await 取最新(); if (!ds) return
     const name = (job.trim() || '門單').replace(/[\\/:*?"<>|]/g, '_') + '-門單.json'
-    const url = URL.createObjectURL(new Blob([門單JSON()], { type: 'application/json' }))
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ doors: ds }, null, 1)], { type: 'application/json' }))
     const a = document.createElement('a')
     a.href = url; a.download = name
     document.body.appendChild(a); a.click(); a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
-    toast('已下載 ' + name + '，拖到製圖.exe 上面就會出圖')
+    toast(`已下載 ${name}（${ds.length} 樘），拖到製圖.exe 上面就會出圖`)
   }
 
   async function copyAll() {
-    if (!本單.length) { toast('這張工單還沒有門'); return }
+    const ds = await 取最新(); if (!ds) return
+    const txt = JSON.stringify({ doors: ds }, null, 1)
     try {
-      await navigator.clipboard.writeText(門單JSON())
-      toast(`已複製 ${本單.length} 樘`)
-    } catch { toast('複製失敗，請改用「下載門單」') }
+      await navigator.clipboard.writeText(txt)
+      toast(`已複製 ${ds.length} 樘`)
+    } catch {
+      // 平板上剪貼簿權限常常被擋。退回舊做法，不要讓人完全拿不出資料。
+      const ta = document.createElement('textarea')
+      ta.value = txt
+      ta.style.cssText = 'position:fixed;opacity:0'
+      document.body.appendChild(ta); ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      toast(ok ? `已複製 ${ds.length} 樘` : '複製失敗，請改用「下載門單」')
+    }
   }
 
   // 有鎖具卻沒選鎖側——這個沒有預設值，選錯孔會切到門的另一邊
@@ -366,9 +408,10 @@ export default function DoorOrderForm() {
 
   return (
     <div className="pb-4" ref={表單頂}>
-      <p className="text-xl font-bold text-gray-900">🚪 門單</p>
+      <p className="text-xl font-bold text-gray-900">🚪 製圖</p>
       <p className="text-xs text-gray-400 mb-4">
-        防火門訂料尺寸。一次填一樘，填了哪幾格就畫哪幾格，沒有的件整組留空。單位 mm，全部填「攤平之後」的尺寸。
+        防火門雷切尺寸。一次填一樘，填了哪幾格就畫哪幾格，沒有的件整組留空。單位 mm，全部填「攤平之後」的尺寸。<br />
+        填完按「下載門單」，把檔案拖到 <b>製圖.exe</b> 上面就會出圖。
       </p>
 
       {err && <div className="glass-card p-3 mb-3 text-sm text-red-600">{err}</div>}
@@ -470,6 +513,17 @@ export default function DoorOrderForm() {
               value={自動.f_rfw === null ? '' : String(自動.f_rfw)} />
           </label>
         </div>
+
+        {/* 這三行是整份表單裡唯一說明「左框和右框的第1格在相反側」的地方。
+            少了它，兩支框都從同一端填，相加起來一樣對，圖卻是鏡射反的。 */}
+        <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+          <p className="text-xs font-medium text-amber-900 mb-1">摺段要從哪一端數起</p>
+          <ul className="text-xs text-amber-800 space-y-0.5">
+            <li>‧ 內＝靠門扇那一側，外＝靠牆那一側</li>
+            <li>‧ 摺段一律由左而右數（上框由下而上）</li>
+            <li>‧ <b>左框第1格在外、右框第1格在內、上框第1格在內。檔板同左框。</b></li>
+          </ul>
+        </div>
       </div>
 
       {/* ---- 摺段 ---- */}
@@ -488,13 +542,13 @@ export default function DoorOrderForm() {
         <div className={CARD}>
           <p className="text-sm font-medium text-gray-700">上框</p>
           <p className="text-xs text-gray-400 mb-3">單片不折就只填第一格。展開寬會自動相加，不用填。</p>
-          <span className={CAP}>摺段（由下而上）</span>
+          <span className={CAP}>摺段（由下而上，<b>第1格在內</b>）</span>
           <div className="mt-1"><Seg pre="f_ts" f={f} set={set} /></div>
         </div>
 
         <div className={CARD}>
           <p className="text-sm font-medium text-gray-700 mb-3">左框</p>
-          <span className={CAP}>摺段（由左而右）</span>
+          <span className={CAP}>摺段（由左而右，<b>第1格在外</b>）</span>
           <div className="mt-1 mb-3"><Seg pre="f_ls" f={f} set={set} /></div>
           <div className="grid grid-cols-3 gap-2">
             <label className="block"><span className={CAP}>缺口角</span>
@@ -508,7 +562,7 @@ export default function DoorOrderForm() {
 
         <div className={CARD}>
           <p className="text-sm font-medium text-gray-700 mb-3">右框</p>
-          <span className={CAP}>摺段（由左而右）</span>
+          <span className={CAP}>摺段（由左而右，<b>第1格在內</b>）</span>
           <div className="mt-1 mb-3"><Seg pre="f_rs" f={f} set={set} /></div>
           <div className="grid grid-cols-3 gap-2">
             <label className="block"><span className={CAP}>缺口角</span>
@@ -529,7 +583,7 @@ export default function DoorOrderForm() {
                 value={自動.f_dw === null ? '' : String(自動.f_dw)} /></label>
             <label className="block"><span className={CAP}>長</span><div className="mt-1"><Num v={f.f_dl ?? ''} on={v => set('f_dl', v)} /></div></label>
           </div>
-          <span className={CAP}>摺段</span>
+          <span className={CAP}>摺段（<b>第1格在外</b>，同左框）</span>
           <div className="mt-1"><Seg pre="f_ds" n={3} f={f} set={set} /></div>
         </div>
 
@@ -618,15 +672,15 @@ export default function DoorOrderForm() {
           className="aurora-grad text-white shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:brightness-105 disabled:opacity-40 shrink-0">
           {busy ? '存檔中…' : editingId ? '儲存修改' : '存這一樘'}
         </button>
-        <button type="button" onClick={reuse}
-          className="bg-white border border-indigo-300 text-indigo-700 rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-50">沿用上一樘</button>
-        <button type="button" onClick={() => { setEditingId(null); fillForm(null) }}
-          className="text-sm text-gray-500 hover:text-indigo-600 border border-gray-200 rounded-lg px-3 py-1.5">清空欄位</button>
+        <button type="button" onClick={reuse} disabled={busy}
+          className="bg-white border border-indigo-300 text-indigo-700 rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-50 disabled:opacity-40">沿用上一樘</button>
+        <button type="button" onClick={() => { setEditingId(null); fillForm(null) }} disabled={busy}
+          className="text-sm text-gray-500 hover:text-indigo-600 border border-gray-200 rounded-lg px-3 py-1.5 disabled:opacity-40">清空欄位</button>
         <span className="flex-1" />
-        <button type="button" onClick={download}
-          className="bg-white border border-indigo-300 text-indigo-700 rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-50">下載門單</button>
-        <button type="button" onClick={copyAll}
-          className="text-sm text-gray-500 hover:text-indigo-600 border border-gray-200 rounded-lg px-3 py-1.5">複製全部</button>
+        <button type="button" onClick={download} disabled={busy}
+          className="bg-white border border-indigo-300 text-indigo-700 rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-50 disabled:opacity-40">下載門單</button>
+        <button type="button" onClick={copyAll} disabled={busy}
+          className="text-sm text-gray-500 hover:text-indigo-600 border border-gray-200 rounded-lg px-3 py-1.5 disabled:opacity-40">複製全部</button>
       </div>
 
       {/* ---- 清單 ---- */}
@@ -652,20 +706,30 @@ export default function DoorOrderForm() {
             {list.map(r => {
               const d = r.door
               const sz = (a: string, b: string) => (d[a] && d[b]) ? `${d[a]}×${d[b]}` : (d[a] || '')
+              // 鎖側要看得到，而且窄螢幕也要看得到。這是那個「選錯孔會切到門的另一邊」
+              // 的欄位，原本就是靠在清單上一次掃完七十幾樘來確認左右的。
+              const 鎖 = (d.locks || []).join('、') + (d.f_side ? '・' + d.f_side : '')
               return (
                 <div key={r.id} id={'door-' + r.id}
-                  className={`flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 last:border-0 text-sm transition-colors ${
+                  className={`px-3 py-2.5 border-b border-gray-100 last:border-0 text-sm transition-colors ${
                     r.id === editingId ? 'bg-indigo-50' : r.id === justId ? 'bg-emerald-50' : ''}`}>
-                  <span className="w-10 shrink-0 text-xs text-gray-400">{d.f_floor || ''}</span>
-                  <span className="w-10 shrink-0 text-xs mono-num text-gray-500">{d.f_no || ''}</span>
-                  <span className="flex-1 min-w-0 truncate">{doorName(d) || <span className="text-gray-300">未命名</span>}</span>
-                  <span className="hidden md:inline text-xs mono-num text-gray-500 w-24 text-right">{sz('f_lw', 'f_lh')}</span>
-                  <span className="hidden lg:inline text-xs mono-num text-gray-400 w-20 text-right">{sz('f_tl', 'f_tw')}</span>
-                  {(d.locks || []).length > 0 && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-800 shrink-0">鎖</span>}
-                  <button type="button" onClick={() => edit(r)}
-                    className="shrink-0 text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">改</button>
-                  <button type="button" onClick={() => remove(r)}
-                    className="shrink-0 text-gray-300 hover:text-red-500 px-1 leading-none">✕</button>
+                  <div className="flex items-center gap-2">
+                    <span className="w-10 shrink-0 text-xs text-gray-400">{d.f_floor || ''}</span>
+                    <span className="w-10 shrink-0 text-xs mono-num text-gray-500">{d.f_no || ''}</span>
+                    <span className="flex-1 min-w-0 truncate">{doorName(d) || <span className="text-gray-300">未命名</span>}</span>
+                    <button type="button" onClick={() => edit(r)} disabled={busy}
+                      className="shrink-0 text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">改</button>
+                    <button type="button" onClick={() => remove(r)} disabled={busy}
+                      className="shrink-0 text-gray-300 hover:text-red-500 px-1 leading-none disabled:opacity-40">✕</button>
+                  </div>
+                  {/* 尺寸另起一行，窄螢幕才不會被擠掉。順序照原表單：展開寬×長 */}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 pl-[5.25rem] text-xs text-gray-400">
+                    {sz('f_lw', 'f_lh') && <span>扇 <span className="mono-num text-gray-600">{sz('f_lw', 'f_lh')}</span></span>}
+                    {sz('f_tl', 'f_tw') && <span>上 <span className="mono-num">{sz('f_tl', 'f_tw')}</span></span>}
+                    {sz('f_lfw', 'f_ll') && <span>左 <span className="mono-num">{sz('f_lfw', 'f_ll')}</span></span>}
+                    {sz('f_rfw', 'f_rl') && <span>右 <span className="mono-num">{sz('f_rfw', 'f_rl')}</span></span>}
+                    {鎖 && <span className="text-blue-700">{鎖}</span>}
+                  </div>
                 </div>
               )
             })}

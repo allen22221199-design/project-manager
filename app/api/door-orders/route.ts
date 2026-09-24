@@ -86,7 +86,11 @@ export async function PATCH(req: NextRequest) {
     const d = cleanDoor(b?.door)
     if (!d) return NextResponse.json({ error: '門的資料格式不對' }, { status: 400 })
     if (!d.f_job) return NextResponse.json({ error: '缺少建案/工單' }, { status: 400 })
-    await updateDoor(id, d)
+    const r = await updateDoor(id, d)
+    if (r.gone) {
+      return NextResponse.json(
+        { error: '這一樘已經被刪掉了，你的修改沒有存到。請重新整理再確認一次。' }, { status: 409 })
+    }
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
