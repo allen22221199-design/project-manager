@@ -94,6 +94,35 @@ function 圖號序(d: Door): [number, number, string] {
   return [1, 0, s]
 }
 
+// 工單名稱打錯一個字，這批門就會裂成兩張單，之後怎麼查都湊不齊。
+// 真的發生過：「桃大27期」被打成「陶大27期」，C 棟圖號 50 那一樘就從 42~59
+// 的連號裡掉出去，變成獨立的一張單。所以只要跟現有工單差一兩個字就要問一聲。
+function 差幾個字(a: string, b: string): number {
+  if (a === b) return 0
+  const m = a.length, n = b.length
+  let prev = Array.from({ length: n + 1 }, (_, j) => j)
+  for (let i = 1; i <= m; i++) {
+    const cur = [i]
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    }
+    prev = cur
+  }
+  return prev[n]
+}
+
+function 像哪一個(打的: string, 現有: string[]): string | null {
+  const s = 打的.trim()
+  if (s.length < 3 || 現有.includes(s)) return null
+  const 容忍 = s.length >= 6 ? 2 : 1
+  let 最近: string | null = null, 最小 = 99
+  for (const j of 現有) {
+    const d = 差幾個字(s, j)
+    if (d > 0 && d <= 容忍 && d < 最小) { 最小 = d; 最近 = j }
+  }
+  return 最近
+}
+
 // ---------- 樣式（沿用 App 既有的寫法）----------
 const INPUT = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100'
 const SELECT = INPUT + ' bg-white'
@@ -405,6 +434,8 @@ export default function DoorOrderForm() {
 
   // 有鎖具卻沒選鎖側——這個沒有預設值，選錯孔會切到門的另一邊
   const 鎖側警告 = locks.some(Boolean) && !f.f_side
+  // 工單名稱跟現有的很像＝很可能打錯字，問一聲
+  const 像的 = 像哪一個(f.f_job ?? '', 工單清單)
 
   return (
     <div className="pb-4" ref={表單頂}>
@@ -425,7 +456,15 @@ export default function DoorOrderForm() {
             <input className={INPUT + ' mt-1'} list="joblist" placeholder="大安一期"
               value={f.f_job ?? ''} onChange={e => { set('f_job', e.target.value); setJob(e.target.value) }} />
             <datalist id="joblist">{工單清單.map(j => <option key={j} value={j} />)}</datalist>
-            <span className={HINT}>選既有的工單會把那一批的門叫出來；打新的就是開一張新單。</span>
+            {像的 ? (
+              <p className="text-xs text-amber-700 mt-1">
+                ⚠ 跟現有的「<b>{像的}</b>」只差一兩個字。同一個案子請用一樣的名字，不然這批門會裂成兩張單，之後查不齊。
+                <button type="button" onClick={() => { set('f_job', 像的!); setJob(像的!) }}
+                  className="ml-1 underline hover:no-underline">改成「{像的}」</button>
+              </p>
+            ) : (
+              <span className={HINT}>選既有的工單會把那一批的門叫出來；打新的就是開一張新單。</span>
+            )}
           </label>
           <label className="block">
             <span className={CAP}>棟別</span>
