@@ -916,14 +916,6 @@ export default function Page() {
     }
   }, [projectDetail?.progressRows, projectDetail?.itemRows, progCat, progBldg, progItem])
 
-  // 從「最新進度回報」移除某案件（重算其最新進度標記；沒有紀錄就清空）
-  async function dismissProgress(p: Project) {
-    setProjects(prev => prev.map(x => x.id === p.id ? { ...x, latestProgress: '', latestProgressDate: '' } : x))
-    try {
-      await fetch('/api/projects', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, recomputeProgress: true }) })
-    } finally { fetchProjects() }
-  }
-
   // 直接變更專案狀態（例如標記完成）
   async function changeProjectStatus(status: string) {
     if (!selected) return
@@ -2821,6 +2813,7 @@ export default function Page() {
             <div className="glass-card p-4">
               <div className="flex items-center gap-2 mb-3">
                 <p className="text-sm font-medium text-gray-700">最新進度</p>
+                <span className="text-xs text-gray-500">（唯讀，要改請到案件頁）</span>
                 {newCount > 0 && (
                   <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
                     近三天 {newCount} 筆
@@ -2832,20 +2825,16 @@ export default function Page() {
               ) : (
                 <div className="space-y-2">
                   {recentProg.map(p => (
-                    <div key={p.id} className="group w-full flex items-start gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-emerald-50/60 transition-colors">
-                      <button onClick={() => selectProject(p)} className="flex items-start gap-2 flex-1 min-w-0 text-left">
-                        <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 font-medium ${
-                          p.latestProgressDate === todayP ? 'bg-emerald-600 text-white'
-                          : (p.latestProgressDate ?? '') >= freshPStr ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-gray-100 text-gray-600'}`}>
-                          {p.latestProgressDate === todayP ? '今天' : p.latestProgressDate?.slice(5)}
-                        </span>
-                        {p.color && <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5" style={{ background: p.color }} />}
-                        <span className="font-medium text-gray-800 shrink-0">{p.name}</span>
-                        <span className="text-gray-500 flex-1 truncate">{p.latestProgress}</span>
-                      </button>
-                      <button onClick={() => dismissProgress(p)} title="移除此筆（清掉最新進度標記）"
-                        className="shrink-0 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 leading-none px-1">✕</button>
+                    <div key={p.id} className="w-full flex items-start gap-2 text-sm rounded-lg px-2 py-1.5">
+                      <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 font-medium ${
+                        p.latestProgressDate === todayP ? 'bg-emerald-600 text-white'
+                        : (p.latestProgressDate ?? '') >= freshPStr ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-gray-100 text-gray-600'}`}>
+                        {p.latestProgressDate === todayP ? '今天' : p.latestProgressDate?.slice(5)}
+                      </span>
+                      {p.color && <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5" style={{ background: p.color }} />}
+                      <span className="font-medium text-gray-800 shrink-0">{p.name}</span>
+                      <span className="text-gray-500 flex-1 min-w-0 break-words md:truncate">{p.latestProgress}</span>
                     </div>
                   ))}
                 </div>
