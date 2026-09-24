@@ -2951,7 +2951,7 @@ export default function Page() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { setColorPickerOpenId(null); selectProject(p) }}>
-                        <p className="font-medium text-gray-900 truncate">{p.name}</p>
+                        <p className="font-medium text-gray-900 break-words md:truncate">{p.name}</p>
                         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5 min-w-0">
                           {/* 沒填什麼就直接寫在名字底下，不用點進去才知道 */}
                           {miss.length > 0 && (
@@ -2960,8 +2960,16 @@ export default function Page() {
                             </span>
                           )}
                           {/* 手機上聯絡人自己佔一行——跟警告標籤擠在一起只剩「楊雅惠 …」 */}
-                          <p className="text-sm text-gray-500 truncate w-full min-w-0 md:w-auto md:flex-1">
-                            {p.contact || <span className="text-amber-700/70">未填聯絡人</span>}{p.address ? ` · ${p.address}` : ''}
+                          {/* 手機不截斷：出現「…」等於把資訊藏起來，而使用者不會去想後面還有沒有字。
+                              聯絡人和地址各自一行完整顯示；桌機寬度夠，維持原本一行帶過。 */}
+                          <p className="text-sm text-gray-500 w-full min-w-0 md:truncate md:w-auto md:flex-1">
+                            <span className="block md:inline">{p.contact || <span className="text-amber-700/70">未填聯絡人</span>}</span>
+                            {p.address && (
+                              <>
+                                <span className="hidden md:inline"> · </span>
+                                <span className="block md:inline">{p.address}</span>
+                              </>
+                            )}
                           </p>
                         </div>
                       </div>
@@ -3661,7 +3669,7 @@ export default function Page() {
                       <div key={p.id} onClick={() => loadDetail(p)}
                         className="glass-card p-4 mb-2 cursor-pointer hover:border-gray-400 transition-colors flex items-center gap-3">
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 truncate">{p.name}</p>
+                          <p className="font-medium text-gray-900 break-words md:truncate">{p.name}</p>
                           <p className="text-sm text-gray-500">{p.contact}</p>
                         </div>
                         <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${STATUS_COLORS[p.status] ?? 'bg-gray-100 text-gray-600'}`}>{p.status}</span>
