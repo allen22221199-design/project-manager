@@ -145,6 +145,10 @@ body {
   --glass-bg: #FFFFFF; --glass-2: #FFFFFF;
   --glass-border: #C7CDD8;
   --acc1: #1D4ED8; --acc2: #1D4ED8; --accent: #1D4ED8;
+
+  /* 狀態語意色本來是拿來當底色的淺色，但畫面上很多地方直接拿它當文字色，
+     對比只有 2.5～3.5，遠低於 4.5。底色維持原本的淡，文字色改深。 */
+  --st-progress: #12519E; --st-done: #1D6B43; --st-late: #A5342A; --st-wait: #7A5306;
 }
 
 /* 背景改純色：內容區不要有會動的東西。頂部那條漸層保留當品牌識別。 */
@@ -177,8 +181,8 @@ body { background: var(--surface); }
 .text-gray-400 { color: #5A6475; }   /* 原 3.03 → 5.6 */
 .text-gray-500 { color: #3A4254; }   /* 原 4.83 → 8.6 */
 .text-gray-600 { color: #2B3245; }
-.text-\[10px\], .text-\[11px\] { font-size: 13px; }
-.text-xs   { font-size: 14px; line-height: 1.55; }
+.text-\[10px\], .text-\[11px\] { font-size: 14px; }
+.text-xs   { font-size: 15px; line-height: 1.55; }
 .text-sm   { font-size: 16px; line-height: 1.6; }
 .text-base { font-size: 17px; line-height: 1.65; }
 
