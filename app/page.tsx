@@ -668,6 +668,22 @@ export default function Page() {
     return () => document.removeEventListener('click', handler)
   }, [colorPickerOpenId])
 
+  useEffect(() => {
+    let last = window.scrollY
+    let timer: any
+    const onScroll = () => {
+      const y = window.scrollY
+      // 只有明顯往下捲才收起來，免得手指小抖動就閃爍
+      if (y > last + 12 && y > 120) setFabHidden(true)
+      else if (y < last - 12) setFabHidden(false)
+      last = y
+      clearTimeout(timer)
+      timer = setTimeout(() => setFabHidden(false), 700)   // 停下來就回來
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => { window.removeEventListener('scroll', onScroll); clearTimeout(timer) }
+  }, [])
+
   // 每次進到案件清單就重查一次：案件屬性（聯絡人）和內文品項都重讀。
   // 補完資料回來標記一定要消失，不然會一直提醒你去補一個已經補好的東西。
   // 實測掃 78 個案件約 1 秒，所以每次重來的成本可以接受。
