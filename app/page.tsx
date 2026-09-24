@@ -54,7 +54,6 @@ const TOUR_STEPS: TourStep[] = [
 
   // ── 總覽 ──
   { view: 'dashboard', target: '[data-tour="nav-dashboard"]', title: '📊 總覽（主畫面）', body: '一進來就在這頁。上面是流程排程表，下面有今日待辦、逾期任務、本週完成率、進行中案件數。', demo: { type: 'click' } },
-  { view: 'dashboard', target: '[data-tour="schedule"]', title: '🗓️ 流程排程表', body: '每個案子排在哪天、哪個工序，一格一格看清楚。操作：① 先點上方要排的「案件」→ ② 在格子上「按住滑鼠拖過去」就會塗上顏色；同一案件再塗一次可清除。', demo: { type: 'drag' } },
 
   // ── 今日工作（每天最常開的一頁）──
   { view: 'daily', target: '[data-tour="nav-daily"]', title: '✅ 今日工作', body: '看每位同事今天要做什麼、直接勾選完成。這是每天最常開的一頁，下面幾個操作我一個一個講。', demo: { type: 'click' } },
@@ -334,131 +333,7 @@ export default function Page() {
   const [projectDetail, setProjectDetail] = useState<any>(null)
   const [projectDetailLoading, setProjectDetailLoading] = useState(false)
   const [colorPickerOpenId, setColorPickerOpenId] = useState<string | null>(null)
-  const [ganttMonth, setGanttMonth] = useState(() => {
-    const n = new Date(Date.now() + 8 * 3600 * 1000)
-    return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}`
-  })
-  const [ganttActiveProject, setGanttActiveProject] = useState<string | null>(null)
-  const [ganttChipsOpen, setGanttChipsOpen] = useState(false)   // 手機上案件色塊先收起來
-  // 流程排程表：按住拖曳塗色用（像 Excel 拖曳選取一樣直覺）
-  const [ganttDragStart, setGanttDragStart] = useState<{ proc: string; ampm: string; date: string } | null>(null)
-  const [ganttDragOver, setGanttDragOver] = useState<string | null>(null)
-  // 用 ref 同步保存拖曳狀態，讓「放開滑鼠/手指」時一定拿得到最新值（避免 useEffect 掛監聽的時間差造成「塗不上」）
-  const ganttDragStartRef = useRef<{ proc: string; ampm: string; date: string } | null>(null)
-  const ganttDragOverRef = useRef<string | null>(null)
-  const commitGanttRef = useRef<(proc: string, ampm: string, d1: string, d2: string) => void>(() => {})
 
-  // 流程排程表用：讀取／寫入某案件的排程資料（key 格式：流程|AM或PM|日期）
-  function parseGanttSchedule(p: Project): Record<string, string> {
-    let obj: Record<string, string> = {}
-    try { obj = p.schedule ? JSON.parse(p.schedule) : {} } catch { return {} }
-    const out: Record<string, string> = {}
-    for (const k in obj) {
-      const parts = k.split('|')
-      let proc = parts[0]
-      if (/^\d+$/.test(proc)) {
-        const name = OLD_PROCESS_STEPS[Number(proc)]
-        if (name) proc = name
-      }
-      if (MERGED_INTO_PRODUCTION.includes(proc)) proc = '生產'
-      const key = `${proc}|${parts[1]}|${parts[2]}`
-      if (!(key in out) || obj[k]) out[key] = obj[k]
-    }
-    return out
-  }
-  function saveGanttSchedule(p: Project, obj: Record<string, string>) {
-    const json = JSON.stringify(obj)
-    setProjects(prev => prev.map(x => x.id === p.id ? { ...x, schedule: json } : x))
-    fetch('/api/projects', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, schedule: json }) })
-  }
-  function ganttCellKey(proc: string, ampm: string, dateStr: string) {
-    return `${proc}|${ampm}|${dateStr}`
-  }
-  // 拖曳結束時套用：整段塗上目前選定案件的顏色；若整段本來就是該案件，改成清除
-  function commitGanttDrag(proc: string, ampm: string, d1: string, d2: string) {
-    const ap = projects.find(p => p.id === ganttActiveProject)
-    if (!ap) return
-    const activeProj = projects.filter(p => !INACTIVE_STATUSES.includes(p.status))
-    const owners: Record<string, string> = {}
-    for (const p of activeProj) {
-      const s = parseGanttSchedule(p)
-      for (const k in s) owners[k] = p.id
-    }
-    const lo = d1 <= d2 ? d1 : d2
-    const hi = d1 <= d2 ? d2 : d1
-    const startKey = ganttCellKey(proc, ampm, d1)
-    const clearMode = owners[startKey] === ap.id
-    const apSched = parseGanttSchedule(ap)
-    const otherEdits: Record<string, Record<string, string>> = {}
-    const [gy2, gm2] = ganttMonth.split('-').map(Number)
-    const daysInMonth2 = new Date(gy2, gm2, 0).getDate()
-    for (let d = 1; d <= daysInMonth2; d++) {
-      const ds = `${ganttMonth}-${String(d).padStart(2, '0')}`
-      if (ds < lo || ds > hi) continue
-      const key = ganttCellKey(proc, ampm, ds)
-      if (clearMode) {
-        if (owners[key] === ap.id) delete apSched[key]
-      } else {
-        const ownerId = owners[key]
-        if (ownerId && ownerId !== ap.id) {
-          const op = activeProj.find(p => p.id === ownerId)
-          if (op) {
-            if (!otherEdits[op.id]) otherEdits[op.id] = parseGanttSchedule(op)
-            delete otherEdits[op.id][key]
-          }
-        }
-        if (!(key in apSched)) apSched[key] = ''
-      }
-    }
-    saveGanttSchedule(ap, apSched)
-    for (const pid in otherEdits) {
-      const op = activeProj.find(p => p.id === pid)
-      if (op) saveGanttSchedule(op, otherEdits[pid])
-    }
-  }
-  // 讓下面「掛一次就好」的監聽器永遠呼叫到最新的 commitGanttDrag（帶最新的 projects / 選定案件）
-  commitGanttRef.current = commitGanttDrag
-  // 拖曳結束（放開滑鼠／手指）時套用整段塗色。監聽器只在掛載時掛一次，狀態改讀 ref，
-  // 這樣即使快速點一下或快速拖曳（在 useEffect 來得及執行前就放開），也一定會完成塗色。
-  useEffect(() => {
-    function endDrag() {
-      const start = ganttDragStartRef.current
-      if (start) {
-        const over = ganttDragOverRef.current
-        commitGanttRef.current(start.proc, start.ampm, start.date, over ?? start.date)
-      }
-      ganttDragStartRef.current = null
-      ganttDragOverRef.current = null
-      setGanttDragStart(null)
-      setGanttDragOver(null)
-    }
-    // 手機／平板：用手指拖曳。滑鼠 onMouseEnter 在觸控不會觸發，改用 elementFromPoint 找目前手指下的格子
-    function onTouchMove(e: TouchEvent) {
-      const start = ganttDragStartRef.current
-      if (!start) return
-      const t = e.touches[0]
-      if (!t) return
-      const cell = (document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null)?.closest('[data-gcell]')
-      const key = cell?.getAttribute('data-gcell')
-      if (!key) return
-      const [proc, ampm, date] = key.split('|')
-      if (proc === start.proc && ampm === start.ampm) {
-        e.preventDefault()  // 拖曳塗色時不要讓頁面跟著捲動
-        ganttDragOverRef.current = date
-        setGanttDragOver(date)
-      }
-    }
-    window.addEventListener('mouseup', endDrag)
-    window.addEventListener('touchend', endDrag)
-    window.addEventListener('touchcancel', endDrag)
-    window.addEventListener('touchmove', onTouchMove, { passive: false })
-    return () => {
-      window.removeEventListener('mouseup', endDrag)
-      window.removeEventListener('touchend', endDrag)
-      window.removeEventListener('touchcancel', endDrag)
-      window.removeEventListener('touchmove', onTouchMove)
-    }
-  }, [])
 
   // 知識庫同步
   const [kbSyncing, setKbSyncing] = useState(false)
@@ -2930,24 +2805,41 @@ export default function Page() {
           const byStatus: Record<string, number> = {}
           for (const p of projects) byStatus[p.status] = (byStatus[p.status] ?? 0) + 1
           const statusList = Object.entries(byStatus).sort((a, b) => b[1] - a[1])
-          // 最新進度回報卡片（寬螢幕時放到右側灰色區）
+          // 最新進度：有人回報就會出現在這裡。
+          // 原本只取「近兩天」，但沒人回報時整張卡就是空的，看起來像壞掉；
+          // 改成一律列最新的 15 筆，最近三天的另外標出來，這樣永遠看得到東西、新的也一定在最上面。
           const nowP = new Date(Date.now() + 8 * 3600 * 1000)
-          const cutP = new Date(nowP); cutP.setUTCDate(nowP.getUTCDate() - 2)
-          const cutPStr = cutP.toISOString().slice(0, 10)
-          const recentProg = projects
-            .filter(p => p.latestProgress && p.latestProgressDate && p.latestProgressDate >= cutPStr)
+          const todayP = nowP.toISOString().slice(0, 10)
+          const freshP = new Date(nowP); freshP.setUTCDate(nowP.getUTCDate() - 3)
+          const freshPStr = freshP.toISOString().slice(0, 10)
+          const allProg = projects
+            .filter(p => p.latestProgress && p.latestProgressDate)
             .sort((a, b) => (b.latestProgressDate ?? '').localeCompare(a.latestProgressDate ?? ''))
+          const recentProg = allProg.slice(0, 15)
+          const newCount = allProg.filter(p => (p.latestProgressDate ?? '') >= freshPStr).length
           const recentProgressCard = (
             <div className="glass-card p-4">
-              <p className="text-sm font-medium text-gray-700 mb-3">最新進度回報 {recentProg.length > 0 && <span className="text-emerald-500">({recentProg.length})</span>}</p>
+              <div className="flex items-center gap-2 mb-3">
+                <p className="text-sm font-medium text-gray-700">最新進度</p>
+                {newCount > 0 && (
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                    近三天 {newCount} 筆
+                  </span>
+                )}
+              </div>
               {recentProg.length === 0 ? (
-                <p className="text-sm text-gray-400">近兩天尚無進度回報</p>
+                <p className="text-sm text-gray-400">還沒有任何進度回報。在案件頁的「回報進度」寫一筆，就會出現在這裡。</p>
               ) : (
                 <div className="space-y-2">
                   {recentProg.map(p => (
                     <div key={p.id} className="group w-full flex items-start gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-emerald-50/60 transition-colors">
                       <button onClick={() => selectProject(p)} className="flex items-start gap-2 flex-1 min-w-0 text-left">
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 shrink-0 mt-0.5">{p.latestProgressDate?.slice(5)}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 font-medium ${
+                          p.latestProgressDate === todayP ? 'bg-emerald-600 text-white'
+                          : (p.latestProgressDate ?? '') >= freshPStr ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-gray-100 text-gray-600'}`}>
+                          {p.latestProgressDate === todayP ? '今天' : p.latestProgressDate?.slice(5)}
+                        </span>
                         {p.color && <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5" style={{ background: p.color }} />}
                         <span className="font-medium text-gray-800 shrink-0">{p.name}</span>
                         <span className="text-gray-500 flex-1 truncate">{p.latestProgress}</span>
@@ -3000,167 +2892,8 @@ export default function Page() {
                 )}
               </div>
 
-              {/* 最新進度回報卡片已依需求在此頁隱藏（recentProgressCard 保留供其他用途） */}
-
-              {/* 流程排程表（單一表格，用顏色區分案件） */}
-              {(() => {
-                const [gy, gm] = ganttMonth.split('-').map(Number)
-                const daysInMonth = new Date(gy, gm, 0).getDate()
-                const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
-                const todayStr = todayISO()
-                const prevMon = () => { const d = new Date(gy, gm - 2, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
-                const nextMon = () => { const d = new Date(gy, gm, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
-                const activeProj = projects.filter(p => !INACTIVE_STATUSES.includes(p.status))
-                const CELL_W = 36
-                const NAME_W = 140
-
-                // 建立每格「擁有者」對照（哪個案件佔用了這格），render 用
-                const owners: Record<string, { pid: string; color: string; name: string; text: string }> = {}
-                for (const p of activeProj) {
-                  const s = parseGanttSchedule(p)
-                  for (const k in s) owners[k] = { pid: p.id, color: p.color || '#AEC6E8', name: p.name, text: s[k] }
-                }
-
-                return (
-                  <div className="order-first glass-card p-4" data-tour="schedule">
-                    {/* 手機：月份切換自己一行。跟說明文字並排的話，
-                        說明會被壓成五行的窄長條，完全讀不下去。 */}
-                    <div className="flex flex-col gap-2 mb-3 md:flex-row md:items-center md:justify-between md:gap-3">
-                      <div className="min-w-0 md:order-1">
-                        <p className="text-base font-semibold text-gray-800">流程排程表</p>
-                        <p className={`text-sm mt-0.5 ${ganttActiveProject ? 'text-gray-400' : 'text-amber-600 font-medium'}`}>
-                          {ganttActiveProject ? '在日期格子上「點一下」標記單格，或「按住拖過去」標記多天；點已標記的同案件格子可清除' : '① 先點一下下面的「案件」色塊　②再到日期格子上「點一下」或「按住拖曳」即可標記'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0 md:order-2">
-                        <button onClick={() => setGanttMonth(prevMon())}
-                          className="w-9 h-9 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 text-base flex items-center justify-center">‹</button>
-                        <span className="text-base font-semibold text-gray-700 w-24 text-center">{gy}年{gm}月</span>
-                        <button onClick={() => setGanttMonth(nextMon())}
-                          className="w-9 h-9 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 text-base flex items-center justify-center">›</button>
-                      </div>
-                    </div>
-
-                    {activeProj.length === 0 ? (
-                      <p className="text-sm text-gray-400 py-4 text-center">目前無進行中案件</p>
-                    ) : (
-                      <>
-                        {/* 案件色塊選取列 */}
-                        {/* 手機上案子一多，光這排色塊就要滑好幾屏才看得到排程格，
-                            所以先露 6 個、其餘點開才出現；桌機一律全部顯示。
-                            已選取的那個一定看得到，不然會不知道自己選了誰。 */}
-                        <div className="flex flex-wrap gap-2 mb-3">
-                          {activeProj.map((p, pi) => {
-                            const sel = ganttActiveProject === p.id
-                            const hideOnPhone = !ganttChipsOpen && pi >= 6 && !sel
-                            return (
-                              <button key={p.id}
-                                onClick={() => setGanttActiveProject(sel ? null : p.id)}
-                                className={`text-base px-4 py-2 rounded-full font-medium border transition-all ${hideOnPhone ? 'hidden md:inline-block' : ''} ${sel ? 'ring-2 ring-offset-1 ring-indigo-400 border-transparent' : 'border-gray-200 hover:border-gray-400'}`}
-                                style={{ background: sel ? (p.color || '#AEC6E8') : `${p.color || '#AEC6E8'}33`, color: sel ? '#1a1a1a' : '#555' }}>
-                                <span className="inline-block w-3 h-3 rounded-full mr-2 align-middle" style={{ background: p.color || '#AEC6E8' }} />
-                                {p.name}
-                              </button>
-                            )
-                          })}
-                          {activeProj.length > 6 && (
-                            <button onClick={() => setGanttChipsOpen(v => !v)}
-                              className="md:hidden text-sm px-4 py-2 rounded-full font-medium border border-dashed border-gray-300 text-gray-500">
-                              {ganttChipsOpen ? '收起案件' : `還有 ${activeProj.length - 6} 個…`}
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="overflow-x-auto -mx-1 px-1 select-none">
-                          <table className="border-collapse w-full" style={{ minWidth: NAME_W + daysInMonth * CELL_W }}>
-                            <thead>
-                              <tr>
-                                <th className="text-left text-sm font-medium text-gray-400 pb-2 pr-2" style={{ width: NAME_W, minWidth: NAME_W }}>流程</th>
-                                {days.map(d => {
-                                  const ds = `${ganttMonth}-${String(d).padStart(2,'0')}`
-                                  const isToday = ds === todayStr
-                                  const dow = new Date(ds).getDay()
-                                  const isWknd = dow === 0 || dow === 6
-                                  return (
-                                    <th key={d} style={{ minWidth: CELL_W }}
-                                      className={`text-center pb-2 text-sm font-semibold ${isToday ? 'text-indigo-600' : isWknd ? 'text-purple-400' : 'text-gray-500'}`}>
-                                      {d}
-                                    </th>
-                                  )
-                                })}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {PROCESS_STEPS.map((proc, procIdx) => (
-                                ['AM', 'PM'].map((ampm, ai) => (
-                                  <tr key={`${procIdx}-${ampm}`} className={procIdx % 2 === 0 ? 'bg-gray-50/40' : ''}>
-                                    <td className="whitespace-nowrap pr-2" style={{ width: NAME_W, minWidth: NAME_W }}>
-                                      <div className="flex items-center gap-1.5 text-base">
-                                        {ai === 0 ? (
-                                          <span className="text-gray-800 font-bold" style={{ minWidth: 60, display: 'inline-block' }}>{proc}</span>
-                                        ) : (
-                                          <span style={{ minWidth: 60, display: 'inline-block' }} />
-                                        )}
-                                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${ampm === 'AM' ? 'bg-sky-50 text-sky-600' : 'bg-orange-50 text-orange-600'}`}>{ampm}</span>
-                                      </div>
-                                    </td>
-                                    {days.map(d => {
-                                      const ds = `${ganttMonth}-${String(d).padStart(2,'0')}`
-                                      const isToday = ds === todayStr
-                                      const dow = new Date(ds).getDay()
-                                      const isWknd = dow === 0 || dow === 6
-                                      const key = ganttCellKey(proc, ampm, ds)
-                                      const owner = owners[key]
-                                      // 判斷左右相鄰格是不是同一個案件（連在一起）→ 拿掉中間邊界、文字只顯示一次
-                                      const ownerAt = (dd: number) => (dd >= 1 && dd <= daysInMonth)
-                                        ? owners[ganttCellKey(proc, ampm, `${ganttMonth}-${String(dd).padStart(2,'0')}`)]
-                                        : undefined
-                                      const sameLeft = !!owner && ownerAt(d - 1)?.pid === owner.pid
-                                      const sameRight = !!owner && ownerAt(d + 1)?.pid === owner.pid
-                                      // 這格是連續區塊的開頭 → 算出整段長度，把名稱置中橫跨整段只顯示一次
-                                      let runLen = 1
-                                      if (owner && !sameLeft) {
-                                        let dd = d + 1
-                                        while (ownerAt(dd)?.pid === owner.pid) { runLen++; dd++ }
-                                      }
-                                      const inDragRow = ganttDragStart && ganttDragStart.proc === proc && ganttDragStart.ampm === ampm
-                                      const isPreview = inDragRow && ganttDragOver &&
-                                        ds >= (ganttDragStart!.date <= ganttDragOver ? ganttDragStart!.date : ganttDragOver) &&
-                                        ds <= (ganttDragStart!.date <= ganttDragOver ? ganttDragOver : ganttDragStart!.date)
-                                      return (
-                                        <td key={d}
-                                          data-gcell={`${proc}|${ampm}|${ds}`}
-                                          onMouseDown={() => { if (ganttActiveProject) { ganttDragStartRef.current = { proc, ampm, date: ds }; ganttDragOverRef.current = ds; setGanttDragStart({ proc, ampm, date: ds }); setGanttDragOver(ds) } }}
-                                          onMouseEnter={() => { if (inDragRow) { ganttDragOverRef.current = ds; setGanttDragOver(ds) } }}
-                                          onTouchStart={() => { if (ganttActiveProject) { ganttDragStartRef.current = { proc, ampm, date: ds }; ganttDragOverRef.current = ds; setGanttDragStart({ proc, ampm, date: ds }); setGanttDragOver(ds) } }}
-                                          title={owner ? owner.name : ganttActiveProject ? '按住拖曳塗色（手機可用手指）' : '請先點選上面的案件'}
-                                          className={`relative border-y border-gray-100 ${sameLeft ? '' : 'border-l'} ${sameRight ? '' : 'border-r'} hover:opacity-70 ${ganttActiveProject ? 'cursor-pointer' : 'cursor-not-allowed'} ${isPreview ? 'ring-2 ring-inset ring-indigo-500' : isToday ? 'ring-1 ring-inset ring-indigo-300' : ''}`}
-                                          style={{
-                                            minWidth: CELL_W, touchAction: ganttActiveProject ? 'none' : undefined,
-                                            background: isPreview ? `${(projects.find(p => p.id === ganttActiveProject)?.color) || '#AEC6E8'}99` : owner ? owner.color : isWknd ? '#F3F0FF22' : 'transparent',
-                                          }}>
-                                          <div className="h-10">
-                                            {owner && !sameLeft && (
-                                              <span className="absolute inset-y-0 left-0 flex items-center justify-center px-0.5 z-10 pointer-events-none"
-                                                style={{ width: runLen * CELL_W }}>
-                                                <span className="text-[9px] font-bold leading-tight text-center text-gray-800/80 whitespace-normal break-all">{owner.name}</span>
-                                              </span>
-                                            )}
-                                          </div>
-                                        </td>
-                                      )
-                                    })}
-                                  </tr>
-                                ))
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )
-              })()}
+              {/* 最新進度：只要有人回報新的進度就會出現在這裡（原本這塊是流程排程表）*/}
+              {recentProgressCard}
             </div>
 
             {/* 寬螢幕右側「最新進度回報」欄已依需求隱藏 */}
