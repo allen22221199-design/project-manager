@@ -5274,6 +5274,18 @@ export default function Page() {
       </main>
       </div>
 
+      {/* 隨叫隨到的 AI 助理按鈕：不管在哪一頁，右下角都找得到。
+          手機要避開底部導覽列，所以用 env(safe-area-inset-bottom) 再往上墊 84px，
+          不然在 iPhone 上會壓到導覽列、或卡在home indicator 底下。
+          已經在 AI 助理頁就不顯示——那等於一顆按了沒反應的按鈕。 */}
+      {view !== 'chat' && (
+        <button onClick={() => setView('chat')} title="問 AI 助理"
+          className="ai-fab fixed right-4 md:right-6 z-30 w-16 h-16 rounded-full aurora-grad text-white flex flex-col items-center justify-center leading-none">
+          <span className="text-[17px] font-bold tracking-wide">AI</span>
+          <span className="text-[12px] font-medium mt-0.5">助理</span>
+        </button>
+      )}
+
       {/* 手機版：底部導覽列（電腦版隱藏）。用圖示＋短標籤，方便單手點選 */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch pb-[env(safe-area-inset-bottom)]"
         style={{

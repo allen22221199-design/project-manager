@@ -196,3 +196,13 @@ button, select, input[type="date"], input[type="number"], input[type="text"], te
 button.leading-none, button.px-1 { min-height: 0; }
 button[class*="h-5"], button[class*="h-6"], button[class*="h-7"],
 button[class*="h-8"], button[class*="h-9"], button[class*="h-10"] { min-height: 0; }
+
+/* 隨叫隨到的 AI 助理按鈕。手機要讓開底部導覽列（約 70px）與 iPhone 的 home indicator，
+   桌機沒有導覽列，貼著右下角就好。 */
+.ai-fab {
+  bottom: calc(env(safe-area-inset-bottom) + 84px);
+  box-shadow: 0 4px 14px rgba(20, 30, 60, 0.28);
+  border: 2px solid #fff;
+}
+@media (min-width: 768px) { .ai-fab { bottom: 24px; } }
+.ai-fab:active { transform: scale(0.96); }
