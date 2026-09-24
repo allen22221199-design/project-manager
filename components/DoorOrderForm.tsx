@@ -130,6 +130,10 @@ const AUTO = 'w-full border border-dashed border-gray-300 rounded-lg px-3 py-2 t
 const CAP = 'text-xs font-medium text-gray-600'
 const HINT = 'text-xs text-gray-400 mt-1'
 const CARD = 'glass-card p-4'
+// 立面示意圖上的件（上框／左框／門扇／右框）與件上的 內／外、第1格 標註
+const PART = 'relative flex items-center justify-center rounded-sm border-2 border-gray-800 bg-gray-50 text-xs text-gray-500 tracking-wide select-none'
+const IO = 'absolute text-[10px] font-bold leading-none text-indigo-700 pointer-events-none'
+const IOSM = 'absolute text-[9px] leading-none text-gray-400 pointer-events-none whitespace-nowrap'
 
 // 這兩個一定要定義在元件外面。放在元件裡面的話，每次 render 都是一個新的
 // 函式型別，React 會把 input 整個重掛，打一個字游標就跳掉。
@@ -163,6 +167,8 @@ export default function DoorOrderForm() {
   const [locks, setLocks] = useState<string[]>([''])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [justId, setJustId] = useState<string | null>(null)
+  const [開新案, set開新案] = useState(false)
+  const [新案名, set新案名] = useState('')
   const [msg, setMsg] = useState('')
   const msgTimer = useRef<any>(null)
   const 表單頂 = useRef<HTMLDivElement>(null)
@@ -229,6 +235,13 @@ export default function DoorOrderForm() {
     return [...s].sort()
   }, [rows])
 
+  // 剛開的新案場還沒有門，不會出現在 工單清單 裡，但它已經是選中的那個，
+  // 頁籤上要看得到，不然使用者不知道自己在哪一個案場底下填。
+  const 案場清單 = useMemo(() => {
+    const j = job.trim()
+    return j && !工單清單.includes(j) ? [...工單清單, j] : 工單清單
+  }, [工單清單, job])
+
   // 這張工單的門。分組與排序只影響畫面，不影響存出去的順序。
   const 本單 = useMemo(() => rows.filter(r => String(r.door.f_job ?? '').trim() === job.trim()), [rows, job])
 
@@ -287,7 +300,7 @@ export default function DoorOrderForm() {
 
   function missing(d: Door): string[] {
     const m: string[] = []
-    if (!d.f_job) m.push('建案/工單')
+    if (!d.f_job) m.push('案場（上面先選一個）')
     if (!d.f_floor) m.push('樓層')
     if (!d.f_lw) m.push('門扇寬')
     if (!d.f_lh) m.push('門扇高')
@@ -298,6 +311,9 @@ export default function DoorOrderForm() {
   function fillForm(d: Door | null) {
     const n: Record<string, string> = {}
     FIELDS.forEach(k => { n[k] = d ? String(d[k] ?? '') : '' })
+    // 建案不再是表單裡打的欄位，是上面選的案場。清空表單時一定要把它留住，
+    // 不然清完就沒地方補，存檔會一直卡在「還缺：建案/工單」。
+    if (!d) n.f_job = job
     setF(n)
     setHoles(d && Array.isArray(d.holes) ? d.holes.map((h: any) => ({ ...h })) : [])
     setLocks(d && Array.isArray(d.locks) && d.locks.length ? [...d.locks] : [''])
@@ -383,6 +399,25 @@ export default function DoorOrderForm() {
     表單頂.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  // 換案場＝整張表單重來，但建案名稱直接帶好。
+  // 以前要先按「清空欄位」再手動改建案名稱，換一次要動三個地方。
+  function 換案場(j: string) {
+    setEditingId(null)
+    set開新案(false)
+    set新案名('')
+    setJob(j)
+    碰過.current = true
+    fillForm(null)
+    setF(p => ({ ...p, f_job: j }))
+  }
+
+  function 建新案() {
+    const n = 新案名.trim()
+    if (!n) { toast('要先打案場名稱'); return }
+    換案場(n)
+    toast(`開了新案場「${n}」，接著填第一樘`)
+  }
+
   function reuse() {
     const 來源 = 本單.length ? 本單[本單.length - 1].door : null
     if (!來源) { toast('這張工單還沒有可以沿用的門'); return }
@@ -434,8 +469,9 @@ export default function DoorOrderForm() {
 
   // 有鎖具卻沒選鎖側——這個沒有預設值，選錯孔會切到門的另一邊
   const 鎖側警告 = locks.some(Boolean) && !f.f_side
-  // 工單名稱跟現有的很像＝很可能打錯字，問一聲
-  const 像的 = 像哪一個(f.f_job ?? '', 工單清單)
+  // 開新案場時，名稱跟現有的很像＝很可能打錯字，問一聲。
+  // 真的發生過：「桃大27期」有一樘被打成「陶大27期」，那一樘就從清單裡掉出去。
+  const 像的 = 開新案 ? 像哪一個(新案名, 工單清單) : null
 
   return (
     <div className="pb-4" ref={表單頂}>
@@ -447,32 +483,54 @@ export default function DoorOrderForm() {
 
       {err && <div className="glass-card p-3 mb-3 text-sm text-red-600">{err}</div>}
 
-      {/* ---- 這一批 ---- */}
+      {/* ---- 案場（頁面層級，不是每一樘的欄位）----
+           一個案場一個頁籤。切換只要點一下，不用先清空表單再重打建案名稱。 */}
       <div className={CARD + ' mb-3'}>
-        <p className="text-sm font-medium text-gray-700 mb-3">這一批</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <label className="block">
-            <span className={CAP}>建案 / 工單 <span className="text-red-400">*</span></span>
-            <input className={INPUT + ' mt-1'} list="joblist" placeholder="大安一期"
-              value={f.f_job ?? ''} onChange={e => { set('f_job', e.target.value); setJob(e.target.value) }} />
-            <datalist id="joblist">{工單清單.map(j => <option key={j} value={j} />)}</datalist>
-            {像的 ? (
-              <p className="text-xs text-amber-700 mt-1">
-                ⚠ 跟現有的「<b>{像的}</b>」只差一兩個字。同一個案子請用一樣的名字，不然這批門會裂成兩張單，之後查不齊。
-                <button type="button" onClick={() => { set('f_job', 像的!); setJob(像的!) }}
-                  className="ml-1 underline hover:no-underline">改成「{像的}」</button>
-              </p>
-            ) : (
-              <span className={HINT}>選既有的工單會把那一批的門叫出來；打新的就是開一張新單。</span>
-            )}
-          </label>
-          <label className="block">
-            <span className={CAP}>棟別</span>
-            <input className={INPUT + ' mt-1'} placeholder="A棟（沒標就留空）"
-              value={f.f_bldg ?? ''} onChange={e => set('f_bldg', e.target.value)} />
-            <span className={HINT}>來源圖沒標棟別就留空，圖上會印「未標示」。沒填會沿用上一樘。</span>
-          </label>
+        <p className="text-sm font-medium text-gray-700 mb-2">案場</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {案場清單.map(j => {
+            const on = j === job.trim()
+            const n = rows.filter(r => String(r.door.f_job ?? '').trim() === j).length
+            return (
+              <button key={j} type="button" onClick={() => 換案場(j)} disabled={busy}
+                className={`text-sm px-3 py-1.5 rounded-full font-medium border transition-colors disabled:opacity-40 ${
+                  on ? 'bg-indigo-600 text-white border-indigo-600'
+                     : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                {j}
+                <span className={`ml-1.5 ${on ? 'text-white/70' : 'text-gray-400'}`}>{n}</span>
+              </button>
+            )
+          })}
+          {開新案 ? (
+            <span className="flex items-center gap-1">
+              <input className="border border-indigo-300 rounded-full px-3 py-1.5 text-sm w-44
+                                focus:outline-none focus:border-indigo-500" autoFocus
+                placeholder="新案場名稱" value={新案名}
+                onChange={e => set新案名(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') 建新案(); if (e.key === 'Escape') { set開新案(false); set新案名('') } }} />
+              <button type="button" onClick={建新案}
+                className="text-sm px-3 py-1.5 rounded-full font-medium bg-indigo-600 text-white hover:bg-indigo-700">建立</button>
+              <button type="button" onClick={() => { set開新案(false); set新案名('') }}
+                className="text-sm text-gray-400 hover:text-gray-600 px-1">取消</button>
+            </span>
+          ) : (
+            <button type="button" onClick={() => set開新案(true)}
+              className="text-sm px-3 py-1.5 rounded-full border border-dashed border-gray-300 text-gray-500 hover:border-gray-500 hover:text-gray-700">
+              ＋ 新案場
+            </button>
+          )}
         </div>
+        {像的 && (
+          <p className="text-xs text-amber-700 mt-2">
+            ⚠ 「{新案名.trim()}」跟現有的「<b>{像的}</b>」只差一兩個字。同一個案子請用一樣的名字，
+            不然這批門會裂成兩張單，之後查不齊。
+            <button type="button" onClick={() => { set開新案(false); set新案名(''); 換案場(像的!) }}
+              className="ml-1 underline hover:no-underline">改用「{像的}」</button>
+          </p>
+        )}
+        {!job.trim() && !開新案 && (
+          <p className={HINT}>先選一個案場，或按「＋ 新案場」開一張新的。</p>
+        )}
       </div>
 
       {/* ---- 這一樘 ---- */}
@@ -481,6 +539,11 @@ export default function DoorOrderForm() {
           這一樘{editingId && <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800">修改中</span>}
         </p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <label className="block">
+            <span className={CAP}>棟別</span>
+            <input className={INPUT + ' mt-1'} placeholder="A（沒標就留空）"
+              value={f.f_bldg ?? ''} onChange={e => set('f_bldg', e.target.value)} />
+          </label>
           <label className="block">
             <span className={CAP}>樓層 <span className="text-red-400">*</span></span>
             <input className={INPUT + ' mt-1'} placeholder="B1（沒填沿用上一樘）"
@@ -519,38 +582,75 @@ export default function DoorOrderForm() {
 
       {/* ---- 門扇和框料 ---- */}
       <div className={CARD + ' mb-3'}>
-        <p className="text-sm font-medium text-gray-700 mb-3">門扇和框料</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <label className="block">
-            <span className={CAP}>門扇　寬 <span className="text-red-400">*</span></span>
-            {扇寬 !== null
-              ? <input className={AUTO + ' mt-1'} readOnly tabIndex={-1} value={顯示寬} />
-              : <input className={INPUT + ' mt-1'} inputMode="decimal" value={f.f_lw ?? ''} onChange={e => set('f_lw', e.target.value)} />}
-          </label>
-          <label className="block">
-            <span className={CAP}>門扇　高 <span className="text-red-400">*</span></span>
+        <p className="text-sm font-medium text-gray-700">門扇和框料</p>
+        <p className="text-xs text-gray-400 mb-3">尺寸就填在圖上對應的位置。框料填「攤平之後」的尺寸，展開寬不用填。</p>
+
+        {/* 輸入框照門的樣子排：上框長在上框上面、左框長在左框下面。
+            原本的訂料單就是這樣，排成平的一列會讓人分不出在填哪一支。
+            每個件上標著 外／內 和「第1格→」，左框和右框的第1格在相反側。 */}
+        <div className="grid gap-2 items-center"
+          style={{ gridTemplateColumns: 'minmax(62px,78px) minmax(0,1fr) minmax(62px,78px) minmax(78px,96px)' }}>
+
+          {/* 第一列：上框長 */}
+          <div />
+          <label className="block"><span className={CAP}>上框　長</span>
+            <div className="mt-1"><Num v={f.f_tl ?? ''} on={v => set('f_tl', v)} /></div></label>
+          <div /><div />
+
+          {/* 第二列：上框本體 + 展開寬 */}
+          <div />
+          <div className={PART + ' h-9'}>
+            <span className={IO + ' top-0.5 left-2'}>外</span>
+            上框
+            <span className={IO + ' bottom-0.5 left-2'}>內</span>
+            <span className={IOSM + ' right-1.5 top-1/2 -translate-y-1/2'}>摺段由下而上</span>
+          </div>
+          <div />
+          <label className="block"><span className={CAP}>展開寬</span>
+            <input className={AUTO + ' mt-1'} readOnly tabIndex={-1} placeholder="摺段相加"
+              value={自動.f_tw === null ? '' : String(自動.f_tw)} /></label>
+
+          {/* 第三列：左框 門扇 右框 + 門扇高 */}
+          <div className={PART + ' h-40 md:h-52'} style={{ writingMode: 'vertical-rl' }}>
+            <span className={IO + ' left-0.5 top-1/2 -translate-y-1/2'} style={{ writingMode: 'horizontal-tb' }}>外</span>
+            左框
+            <span className={IO + ' right-0.5 top-1/2 -translate-y-1/2'} style={{ writingMode: 'horizontal-tb' }}>內</span>
+            <span className={IOSM + ' left-1 bottom-1'} style={{ writingMode: 'horizontal-tb' }}>第1格→</span>
+          </div>
+          <div className={PART + ' h-40 md:h-52 text-base text-gray-700'}>門扇</div>
+          <div className={PART + ' h-40 md:h-52'} style={{ writingMode: 'vertical-rl' }}>
+            <span className={IO + ' left-0.5 top-1/2 -translate-y-1/2'} style={{ writingMode: 'horizontal-tb' }}>內</span>
+            右框
+            <span className={IO + ' right-0.5 top-1/2 -translate-y-1/2'} style={{ writingMode: 'horizontal-tb' }}>外</span>
+            <span className={IOSM + ' left-1 bottom-1'} style={{ writingMode: 'horizontal-tb' }}>第1格→</span>
+          </div>
+          <label className="block"><span className={CAP}>門扇　高 <span className="text-red-400">*</span></span>
             {扇高 !== null
               ? <input className={AUTO + ' mt-1'} readOnly tabIndex={-1} value={顯示高} />
               : <input className={INPUT + ' mt-1'} inputMode="decimal" value={f.f_lh ?? ''} onChange={e => set('f_lh', e.target.value)} />}
           </label>
-          <label className="block"><span className={CAP}>上框　長</span><div className="mt-1"><Num v={f.f_tl ?? ''} on={v => set('f_tl', v)} /></div></label>
-          <label className="block">
-            <span className={CAP}>上框　展開寬</span>
-            <input className={AUTO + ' mt-1'} readOnly tabIndex={-1} placeholder="摺段相加"
-              value={自動.f_tw === null ? '' : String(自動.f_tw)} />
+
+          {/* 第四列：左框長 門扇寬 右框長 */}
+          <label className="block"><span className={CAP}>左框　長</span>
+            <div className="mt-1"><Num v={f.f_ll ?? ''} on={v => set('f_ll', v)} /></div></label>
+          <label className="block"><span className={CAP}>門扇　寬 <span className="text-red-400">*</span></span>
+            {扇寬 !== null
+              ? <input className={AUTO + ' mt-1'} readOnly tabIndex={-1} value={顯示寬} />
+              : <input className={INPUT + ' mt-1'} inputMode="decimal" value={f.f_lw ?? ''} onChange={e => set('f_lw', e.target.value)} />}
           </label>
-          <label className="block"><span className={CAP}>左框　長</span><div className="mt-1"><Num v={f.f_ll ?? ''} on={v => set('f_ll', v)} /></div></label>
-          <label className="block">
-            <span className={CAP}>左框　展開寬</span>
+          <label className="block"><span className={CAP}>右框　長</span>
+            <div className="mt-1"><Num v={f.f_rl ?? ''} on={v => set('f_rl', v)} /></div></label>
+          <div />
+
+          {/* 第五列：左右框展開寬 */}
+          <label className="block"><span className={CAP}>左框展開寬</span>
             <input className={AUTO + ' mt-1'} readOnly tabIndex={-1} placeholder="摺段相加"
-              value={自動.f_lfw === null ? '' : String(自動.f_lfw)} />
-          </label>
-          <label className="block"><span className={CAP}>右框　長</span><div className="mt-1"><Num v={f.f_rl ?? ''} on={v => set('f_rl', v)} /></div></label>
-          <label className="block">
-            <span className={CAP}>右框　展開寬</span>
+              value={自動.f_lfw === null ? '' : String(自動.f_lfw)} /></label>
+          <div />
+          <label className="block"><span className={CAP}>右框展開寬</span>
             <input className={AUTO + ' mt-1'} readOnly tabIndex={-1} placeholder="摺段相加"
-              value={自動.f_rfw === null ? '' : String(自動.f_rfw)} />
-          </label>
+              value={自動.f_rfw === null ? '' : String(自動.f_rfw)} /></label>
+          <div />
         </div>
 
         {/* 這三行是整份表單裡唯一說明「左框和右框的第1格在相反側」的地方。
