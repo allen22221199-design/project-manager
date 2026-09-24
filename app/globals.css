@@ -124,3 +124,67 @@ body {
 @keyframes tourDrag { 0% { left: var(--x0); } 8% { transform: translateY(-4px); } 46% { left: var(--x1); } 54% { left: var(--x1); } 92% { left: var(--x0); } 100% { left: var(--x0); } }
 .tour-drag { position: absolute; font-size: 28px; filter: drop-shadow(0 3px 5px rgba(0,0,0,.35)); animation: tourDrag 2.4s ease-in-out infinite; pointer-events: none; }
 .tour-type { position: absolute; max-width: 80%; padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.96); border: 1px solid rgba(110,168,254,0.5); box-shadow: 0 8px 20px -10px rgba(45,70,150,.5); font-size: 14px; color: #26293a; pointer-events: none; white-space: nowrap; overflow: hidden; }
+
+/* =====================================================================
+   清晰模式（50–60 歲使用者）
+   ---------------------------------------------------------------------
+   實際量過舊版：整頁 87 處文字裡，85 處小於 15px、20 處對比低於 AA 的 4.5，
+   最糟的是 10px 配 3.03 對比；卡片還是 72% 半透明疊在會飄動的漸層上。
+   對老花眼來說「半透明 + 會動的底色 + 淺灰小字」是最難讀的組合。
+
+   這一段放在最後面，用來整層覆蓋前面的極光／玻璃風格。
+   要改回去只要刪掉這一整段，上面的東西原封不動。
+   ===================================================================== */
+
+:root {
+  --surface: #F1F3F6;
+  --text: #14181F;          /* 主文字：對比 15.8 */
+  --text-2: #3A4254;        /* 次要文字：對比 8.6（原本 5.9）*/
+  --text-3: #5A6475;        /* 最淡的字：對比 5.6（原本 3.03，不及格）*/
+  --hairline: #C7CDD8;      /* 看得見的實線，不是若有似無的灰 */
+  --glass-bg: #FFFFFF; --glass-2: #FFFFFF;
+  --glass-border: #C7CDD8;
+  --acc1: #1D4ED8; --acc2: #1D4ED8; --accent: #1D4ED8;
+}
+
+/* 背景改純色：內容區不要有會動的東西。頂部那條漸層保留當品牌識別。 */
+.aurora-bg { display: none; }
+body { background: var(--surface); }
+
+/* 卡片：純白、實線框、不透光、不模糊 */
+.glass-card {
+  background: #FFFFFF;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  border: 1px solid #C7CDD8;
+  border-radius: 10px;
+  box-shadow: none;
+}
+.glass-card:hover { border-color: #8A93A5; box-shadow: none; }
+.glass-card.lift:hover { transform: none; border-color: #1D4ED8; }
+
+/* 主要按鈕：實心深藍，不要漸層。漸層在淺色字上會有一段對比不足。 */
+.aurora-grad {
+  background-image: none !important;
+  background-color: #1D4ED8 !important;
+  box-shadow: none;
+}
+.aurora-grad:hover { background-color: #1A43BA !important; filter: none; }
+
+/* ── 字級與對比的整層調整 ──────────────────────────────────
+   全站共有 132 個 text-gray-400、79 個 text-gray-500、234 個 text-xs。
+   一個一個改要動五百多處、風險高又難回頭；在這裡統一調，改 6 行就全站生效。 */
+.text-gray-300 { color: #6B7485; }   /* 原 #D1D5DB 對比 1.5，幾乎看不見 */
+.text-gray-400 { color: #5A6475; }   /* 原 3.03 → 5.6 */
+.text-gray-500 { color: #3A4254; }   /* 原 4.83 → 8.6 */
+.text-gray-600 { color: #2B3245; }
+.text-\[10px\], .text-\[11px\] { font-size: 13px; }
+.text-xs   { font-size: 14px; line-height: 1.55; }
+.text-sm   { font-size: 16px; line-height: 1.6; }
+.text-base { font-size: 17px; line-height: 1.65; }
+
+/* 可點的東西要夠大、而且看得出可以點 */
+button, select, input[type="date"], input[type="number"], input[type="text"], textarea {
+  min-height: 40px;
+}
+/* 純圖示的小按鈕（✕、🚩、↻）例外：它們用 leading-none，撐高會破版 */
+button.leading-none, button.px-1 { min-height: 0; }
