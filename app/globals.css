@@ -206,3 +206,6 @@ button[class*="h-8"], button[class*="h-9"], button[class*="h-10"] { min-height: 
 }
 @media (min-width: 768px) { .ai-fab { bottom: 24px; } }
 .ai-fab:active { transform: scale(0.96); }
+.ai-fab { transition: transform .22s ease, opacity .22s ease; }
+/* 往下捲時滑開，不要永遠壓在卡片右邊的狀態標籤上面 */
+.ai-fab-away { transform: translateY(96px); opacity: 0; pointer-events: none; }

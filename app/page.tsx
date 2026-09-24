@@ -296,6 +296,8 @@ export default function Page() {
   const [scanState, setScanState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [onlyIncomplete, setOnlyIncomplete] = useState(false)
   // 案件抬頭（名稱／聯絡人／地址）打字中的草稿，離開欄位才寫回 Notion
+  // AI 按鈕固定在右下角，會一直蓋住卡片右邊的狀態標籤。往下捲就讓開，往上捲或停住就回來。
+  const [fabHidden, setFabHidden] = useState(false)
   const [projEdit, setProjEdit] = useState<Record<string, string>>({})
   const [projErr, setProjErr] = useState('')
   // 進度紀錄的篩選與展開狀態
@@ -5296,7 +5298,7 @@ export default function Page() {
           已經在 AI 助理頁就不顯示——那等於一顆按了沒反應的按鈕。 */}
       {view !== 'chat' && (
         <button onClick={() => setView('chat')} title="問 AI 助理"
-          className="ai-fab fixed right-4 md:right-6 z-30 w-16 h-16 rounded-full aurora-grad text-white flex flex-col items-center justify-center leading-none">
+          className={`ai-fab ${fabHidden ? 'ai-fab-away' : ''} fixed right-4 md:right-6 z-30 w-16 h-16 rounded-full aurora-grad text-white flex flex-col items-center justify-center leading-none`}>
           <span className="text-[17px] font-bold tracking-wide">AI</span>
           <span className="text-[12px] font-medium mt-0.5">助理</span>
         </button>
