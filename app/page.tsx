@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Tour, { type TourStep } from './tour'
 import RichText, { MediaGroup } from './richtext'
-import MeetingFlow from '@/components/MeetingFlow'
 import DoorOrderForm from '@/components/DoorOrderForm'
 import { catOf, buildingsOf, monthKey, monthLabel, shortDate, sortKey, itemVocabulary, itemsOf } from '@/lib/progressTags'
 import { missingOf, hasPhone } from '@/lib/projectChecks'
@@ -76,10 +75,6 @@ const TOUR_STEPS: TourStep[] = [
   { view: 'chat', target: '[data-tour="nav-chat"]', title: '💬 AI 助理', body: '不會的直接問它。查 SOP、機具參數、防火標章、丈量步驟，都會從公司資料找答案，還會把對應的圖片和教學影片一起附上。', demo: { type: 'click' } },
   { view: 'chat', target: '[data-tour="chat-input"]', title: '⌨️ 它會做四件事', body: '① 問問題（Enter 送出）② 記進度：講「冠德的箱蓋今天噴好了」，它會對應到專案，確認後寫進進度 ③ 交辦任務：講「叫治先把冠德圖面畫完」，它會出確認卡片 ④ 按 🎤 用講的，會自動轉文字。不管哪一種，都要你按確認才會真的寫進去。', demo: { type: 'type', text: '冠德的箱蓋今天噴好了' } },
 
-  // ── 會議事項 ──
-  { view: 'issues', target: '[data-tour="nav-issues"]', title: '🔧 會議事項', body: '品質會議的問題追蹤，跟「今日工作」是分開的兩套。今日工作是「今天要做什麼」，會議事項是「這個問題還沒解決，誰在追」，可以跨好幾週。', demo: { type: 'click' } },
-  { view: 'issues', target: '[data-tour="issue-list"]', title: '📌 一眼看四件事', body: '每一筆都看得到：遇到什麼問題、誰在處理、什麼時候要好（逾期會變紅字）、目前進行到哪。項目按類別分組，點「更新」可以寫本次進度、改負責人或日期、也能改問題內容。', demo: { type: 'click' } },
-  { view: 'issues', target: '[data-tour="issue-actions"]', title: '➕ 新增與週會流程', body: '「＋ 新增項目」開一筆新的問題追蹤；「📅 週一晨會流程」是開會時照著跑的流程表。解決了就按「結案」，會移到已結案分頁，之後用關鍵字（例如「橘皮」「斷墨」）就查得到當初怎麼解的。', demo: { type: 'click' } },
 
 
   { title: '這樣就會用囉！🎉', body: '之後想再看一次，隨時點左下角的「🎓 新手教學」。有些頁面（會議模式、私人行事曆）要管理者登入才看得到，一般同仁不會出現。開始操作看看吧！' },
@@ -170,17 +165,8 @@ const PROJECT_COLORS_LIST = [
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string; ganttStart?: string; ganttEnd?: string; schedule?: string; latestProgress?: string; latestProgressDate?: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
-type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private' | 'meeting' | 'issues' | 'doors'
+type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private' | 'meeting' | 'doors'
 // 會議事項（品質會議的問題追蹤）。跟每日工作是兩套獨立資料，欄位也不一樣。
-type MeetingItem = {
-  id: string; no: string; meetDate: string; category: string; issue: string
-  proposer: string; discussion: string; suggester: string
-  owner: string        // 負責人（議題主責人）
-  subtasks: string     // 支線任務：一行一筆「執行人｜任務｜預計日」
-  due: string; progress: string; status: string; closedDate: string
-}
-const ISSUE_CATEGORIES = ['前處理', '底漆', '噴印', '面漆', '包裝', '施工', '品管', '研發', '廠務',
-  '官網', '行銷', '業務', '樣品', '其他']
 type PrivateEvent = { id: string; title: string; date: string; note?: string; time?: string; endTime?: string; allDay?: boolean }
 type FileResult = { title: string; name: string; url: string }
 type ImageResult = { source: string; url: string; caption: string; kind?: 'image' | 'video' | 'embed' }
@@ -274,13 +260,7 @@ export default function Page() {
   // 管理者登入 / 私人行事曆
   const [isAdmin, setIsAdmin] = useState(false)
   // 會議事項
-  const [issues, setIssues] = useState<MeetingItem[]>([])
-  const [issuesClosed, setIssuesClosed] = useState<MeetingItem[]>([])
-  const [issueTab, setIssueTab] = useState<'open' | 'closed'>('open')
   // 清單模式／週一晨會流程模式（同一份進行中的議題，換一種排法）
-  const [issueView, setIssueView] = useState<'list' | 'flow'>('list')
-  const [issuesLoading, setIssuesLoading] = useState(false)
-  const [issueSearch, setIssueSearch] = useState('')
   const [editSub, setEditSub] = useState<string | null>(null)   // 正在編輯的支線任務：`${itemId}:${行號}`
   // 施工進度（案場 × 棟別 × 五道工序）
   const BUILD_STEPS = ['門片', '門框', '裝鎖', '貼邊角料', '自主巡查'] as const
@@ -308,13 +288,6 @@ export default function Page() {
   const [progItem, setProgItem] = useState('')        // 品項篩選（標籤從資料自己長出來）
   const [progOpen, setProgOpen] = useState<Record<string, boolean>>({})   // 哪幾個月展開了
   const [progEditDate, setProgEditDate] = useState<number | null>(null)   // 正在改日期的那一列
-  const [issueCatFilter, setIssueCatFilter] = useState('')
-  const [issueOwnerFilter, setIssueOwnerFilter] = useState('')
-  const [issueExpanded, setIssueExpanded] = useState<Record<string, string[]>>({})
-  const [issueForm, setIssueForm] = useState(false)
-  const [issueProgressId, setIssueProgressId] = useState<string | null>(null)
-  const [issueBusy, setIssueBusy] = useState(false)
-  const [issueErr, setIssueErr] = useState('')
   const [showLogin, setShowLogin] = useState(false)
   const [loginUser, setLoginUser] = useState('')
   const [loginPass, setLoginPass] = useState('')
@@ -643,7 +616,7 @@ export default function Page() {
     // 支援用網址參數 ?v=<view> 直接開啟指定頁面（截圖／分享用）
     try {
       const v = new URLSearchParams(window.location.search).get('v') as View | null
-      const valid: View[] = ['dashboard', 'list', 'daily', 'search', 'chat', 'private', 'doors', 'issues']
+      const valid: View[] = ['dashboard', 'list', 'daily', 'search', 'chat', 'private', 'doors']
       if (v && valid.includes(v)) {
         setView(v)
         if (v === 'search') fetchInProgress()
@@ -2233,184 +2206,6 @@ export default function Page() {
     )
   }
 
-  // ── 會議事項 ──────────────────────────────────────────
-  async function fetchIssues(tab: 'open' | 'closed') {
-    setIssueTab(tab)
-    setIssuesLoading(true)
-    try {
-      const r = await fetch('/api/meeting-items' + (tab === 'closed' ? '?closed=1' : ''))
-      const d = await readJson(r)
-      if (r.ok) { tab === 'closed' ? setIssuesClosed(d.items ?? []) : setIssues(d.items ?? []) }
-    } catch { /* 讀取失敗就維持原本清單 */ }
-    finally { setIssuesLoading(false) }
-  }
-  // 進度欄位有 2000 字上限，滿了會從最舊的砍起（完整版留在頁面內文）。
-  // 表格平常直接顯示欄位內容，只有接近上限時才提供這個按鈕把更早的補回來——
-  // 不是收合展開，是把被截掉的那段接上去。
-  async function loadIssueHistory(id: string) {
-    setIssueExpanded(s => ({ ...s, [id]: [] }))
-    try {
-      const r = await fetch('/api/meeting-items?history=' + encodeURIComponent(id))
-      const d = await readJson(r)
-      if (r.ok) setIssueExpanded(s => ({ ...s, [id]: d.history ?? [] }))
-    } catch { /* 讀不到就顯示空的 */ }
-  }
-  async function submitIssue(form: HTMLFormElement) {
-    const f = new FormData(form)
-    setIssueBusy(true); setIssueErr('')
-    try {
-      const r = await fetch('/api/meeting-items', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          meetDate: f.get('meetDate'), category: f.get('category'), issue: f.get('issue'),
-          proposer: f.get('proposer'), owner: f.get('owner'), due: f.get('due'),
-        }),
-      })
-      const d = await readJson(r)
-      if (!r.ok) { setIssueErr(d.error ?? '新增失敗'); return }
-      setIssueForm(false); form.reset(); fetchIssues('open')
-    } catch (e: any) { setIssueErr(e.message) }
-    finally { setIssueBusy(false) }
-  }
-  // 預計日直接在表格上改。日期本來就常常要動（延期、對外約好時間），
-  // 為了改一個日期還要展開「更新進度」表單、又逼著寫一段進度，太重了。
-  async function updateIssueDue(id: string, due: string) {
-    setIssueBusy(true)
-    try {
-      const r = await fetch('/api/meeting-items', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, due }),
-      })
-      const d = await readJson(r)
-      if (!r.ok) { setIssueErr(d.error ?? '更新失敗'); return }
-      // 只改本機那一筆就好，不整份重抓——重抓會把展開中的卡片收起來
-      const patch = (list: MeetingItem[]) => list.map(x => x.id === id ? { ...x, due } : x)
-      issueTab === 'closed' ? setIssuesClosed(patch) : setIssues(patch)
-    } catch (e: any) { setIssueErr(e.message) }
-    finally { setIssueBusy(false) }
-  }
-
-  // 勾選／取消勾選某一條支線任務。做法是在該行前面加上或拿掉「✔」，
-  // 整欄回寫回去——支線任務本來就是一整段文字，沒有各自的資料列可以更新。
-  // 支線任務是一整欄文字（一行一筆），所以勾選、修改、刪除都是「改完整欄再整批回寫」。
-  // 三個動作共用這一支：先動畫面再送出，失敗就退回原本的內容。
-  async function writeSubtasks(it: MeetingItem, text: string) {
-    const apply = (v: string) => {
-      const upd = (arr: MeetingItem[]) => arr.map(x => x.id === it.id ? { ...x, subtasks: v } : x)
-      setIssues(upd); setIssuesClosed(upd)
-    }
-    apply(text)
-    try {
-      const r = await fetch('/api/meeting-items', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: it.id, subtasks: text }),
-      })
-      if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
-    } catch (e: any) {
-      apply(it.subtasks)
-      setIssueErr(e.message)
-    }
-  }
-  // 晨會第二步「當場開一條支線任務」。跟表格那邊一樣是整欄覆寫，
-  // 但錯誤要往外丟——表單得知道成功沒有，不能像 writeSubtasks 那樣默默吞掉。
-  async function addFlowSubtask(itemId: string, who: string, what: string, when: string) {
-    const it = issues.find(x => x.id === itemId)
-    if (!it) throw new Error('找不到這個議題，請按重新整理')
-    const lines = (it.subtasks || '').split('\n').filter(l => l.trim())
-    lines.push([who, what, when].join('｜'))
-    const text = lines.join('\n')
-    const r = await fetch('/api/meeting-items', {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: itemId, subtasks: text }),
-    })
-    if (!r.ok) throw new Error((await readJson(r)).error ?? '更新失敗')
-    setIssues(prev => prev.map(x => x.id === itemId ? { ...x, subtasks: text } : x))
-  }
-  // 只取有內容的行；顯示、編輯、刪除都用同一組索引，才不會對到別行
-  const subLines = (it: MeetingItem) => (it.subtasks || '').split('\n').filter(l => l.trim())
-
-  function toggleSubtask(it: MeetingItem, lineIndex: number) {
-    const lines = subLines(it)
-    const raw = lines[lineIndex]
-    if (raw === undefined) return
-    lines[lineIndex] = raw.trimStart().startsWith('✔')
-      ? raw.replace(/^\s*✔\s*/, '')
-      : '✔' + raw.trimStart()
-    return writeSubtasks(it, lines.join('\n'))
-  }
-
-  function saveSubtask(it: MeetingItem, lineIndex: number, who: string, what: string, when: string) {
-    const lines = subLines(it)
-    if (lines[lineIndex] === undefined) return
-    const done = lines[lineIndex].trimStart().startsWith('✔')
-    lines[lineIndex] = (done ? '✔' : '') + [who.trim(), what.trim(), when.trim()].join('｜')
-    setEditSub(null)
-    return writeSubtasks(it, lines.join('\n'))
-  }
-
-  function deleteSubtask(it: MeetingItem, lineIndex: number) {
-    const lines = subLines(it)
-    const raw = lines[lineIndex]
-    if (raw === undefined) return
-    const what = raw.replace(/^\s*✔\s*/, '').split('｜')[1] || raw
-    if (!confirm(`確定刪除這條支線任務？\n\n${what}`)) return
-    lines.splice(lineIndex, 1)
-    setEditSub(null)
-    return writeSubtasks(it, lines.join('\n'))
-  }
-
-  async function submitIssueProgress(id: string, form: HTMLFormElement, close = false, reopen = false) {
-    const f = new FormData(form)
-    const progress = String(f.get('progress') ?? '').trim()
-    // 問題本文與類別：只有真的改過才送，沒動就不要覆寫
-    const cur = [...issues, ...issuesClosed].find(x => x.id === id)
-    const issueRaw = String(f.get('issue') ?? '').trim()
-    const issue = issueRaw && issueRaw !== (cur?.issue ?? '') ? issueRaw : undefined
-    const catRaw = String(f.get('category') ?? '').trim()
-    const category = catRaw && catRaw !== (cur?.category ?? '') ? catRaw : undefined
-    // 結案可以不寫進度；一般更新則至少要有一項變動，不然是空按
-    const due = String(f.get('due') ?? '').trim()
-    const owner = String(f.get('owner') ?? '').trim()
-    // 支線任務是「加一筆」，但送給後端的是整份清單——合併規則放在前端才看得懂目前有幾筆
-    const subWho = String(f.get('subWho') ?? '').trim()
-    const subWhat = String(f.get('subWhat') ?? '').trim()
-    const subWhen = String(f.get('subWhen') ?? '').trim()
-    let subtasks: string | undefined
-    if (subWhat || subWho) {
-      const cur = (issues.find(x => x.id === id)?.subtasks ?? '').split('\n').filter(l => l.trim())
-      cur.push([subWho, subWhat, subWhen].join('｜'))
-      subtasks = cur.join('\n')
-    }
-    if (!close && !reopen && !progress && !due && !owner && !subtasks && !issue && !category) {
-      setIssueErr('請至少填一項'); return
-    }
-    setIssueBusy(true); setIssueErr('')
-    try {
-      const r = await fetch('/api/meeting-items', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, progress, close, reopen,
-          ...(due ? { due } : {}), ...(owner ? { owner } : {}),
-          ...(subtasks !== undefined ? { subtasks } : {}),
-          ...(issue ? { issue } : {}), ...(category ? { category } : {}) }),
-      })
-      const d = await readJson(r)
-      if (!r.ok) { setIssueErr(d.error ?? '更新失敗'); return }
-      setIssueProgressId(null)
-      // 卡片正展開時，剛加的那行也要出現在歷程裡；不重抓的話畫面上「最新」變了、
-      // 底下的歷程還是舊的，看起來像沒存進去
-      if (issueExpanded[id]) {
-        try {
-          const h = await fetch('/api/meeting-items?history=' + encodeURIComponent(id))
-          const hd = await readJson(h)
-          if (h.ok) setIssueExpanded(st => ({ ...st, [id]: hd.history ?? [] }))
-        } catch { /* 抓不到就維持原本歷程 */ }
-      }
-      // 結案的那筆會從進行中消失，所以兩邊都重抓
-      fetchIssues('open')
-      if (close) setIssuesClosed([])
-    } catch (e: any) { setIssueErr(e.message) }
-    finally { setIssueBusy(false) }
-  }
 
   // 導覽項目：電腦版側欄與手機版底部導覽共用（label 給側欄、short 給底部列）。
   // 分成兩區：接案／管理是一區，工廠自己用的製圖工具是另一區，不要混在一起——
@@ -2425,7 +2220,6 @@ export default function Page() {
         { v: 'daily', icon: '✅', label: '今日工作', short: '今日', onClick: () => { setView('daily'); fetchDailyTasks() } },
         { v: 'search', icon: '🔍', label: '任務查詢', short: '查詢', onClick: () => { setView('search'); fetchInProgress() } },
         { v: 'chat', icon: '💬', label: 'AI 助理', short: 'AI', onClick: () => setView('chat') },
-        { v: 'issues', icon: '🔧', label: '會議事項', short: '議題', onClick: () => { setView('issues'); fetchIssues('open') } },
         ...(isAdmin ? [
           { v: 'meeting' as View, icon: '📋', label: '會議模式', short: '會議', onClick: () => { setView('meeting'); fetchInProgress(); fetchPrivatePersonTasks() } },
           { v: 'private' as View, icon: '🔐', label: '私人行事曆', short: '私人', onClick: () => { setView('private'); fetchPrivateEvents(); fetchPrivatePersonTasks() } },
@@ -3116,7 +2910,7 @@ export default function Page() {
       )}
 
       <div className="md:pl-[246px]">
-      <main className={`relative z-10 mx-auto p-4 pb-24 md:px-[34px] md:pt-[26px] md:pb-10 animate-fade-in ${view === 'meeting' || view === 'issues' ? 'max-w-none' : view === 'dashboard' || view === 'private' || view === 'daily' || view === 'doors' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : view === 'report' ? 'max-w-[1250px]' : 'max-w-2xl'}`}>
+      <main className={`relative z-10 mx-auto p-4 pb-24 md:px-[34px] md:pt-[26px] md:pb-10 animate-fade-in ${view === 'meeting' ? 'max-w-none' : view === 'dashboard' || view === 'private' || view === 'daily' || view === 'doors' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : view === 'report' ? 'max-w-[1250px]' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
@@ -4696,382 +4490,6 @@ export default function Page() {
 
         {/* PRIVATE CALENDAR（僅管理者） */}
         {/* 會議模式（僅管理者）：全員任務一次攤開，開會照著逐項說明 */}
-        {view === 'issues' && (() => {
-          const list = issueTab === 'closed' ? issuesClosed : issues
-          const q = issueSearch.trim().toLowerCase()
-          // 搜尋掃「編號＋問題＋討論＋支線任務＋進度＋負責人＋類別」——
-          // 查舊案時記得的往往是現象或人，不是編號
-          const hit = (it: MeetingItem) => !q || [it.no, it.issue, it.discussion, it.subtasks, it.progress, it.owner, it.category]
-            .some(v => (v ?? '').toLowerCase().includes(q))
-          const shown = list
-            .filter(hit)
-            .filter(it => !issueCatFilter || it.category === issueCatFilter)
-            .filter(it => !issueOwnerFilter || it.owner === issueOwnerFilter)
-          const owners = Array.from(new Set(list.map(it => it.owner).filter(Boolean))).sort()
-          // 依類別分組。順序照 ISSUE_CATEGORIES，沒有項目的類別不出現；
-          // 沒填類別的收在最後，才不會整批混在最前面看不出是漏填的。
-          const grouped = [
-            ...ISSUE_CATEGORIES.map(c => ({ cat: c, items: shown.filter(it => it.category === c) })),
-            { cat: '未分類', items: shown.filter(it => !ISSUE_CATEGORIES.includes(it.category)) },
-          ].filter(g => g.items.length > 0)
-          const isOverdue = (d: string) => !!d && d < todayISO()
-          const CAT_COLOR: Record<string, string> = {
-            前處理: 'bg-gray-100 text-gray-700', 底漆: 'bg-amber-100 text-amber-800',
-            噴印: 'bg-orange-100 text-orange-800', 面漆: 'bg-yellow-100 text-yellow-800',
-            包裝: 'bg-green-100 text-green-800', 施工: 'bg-blue-100 text-blue-800',
-            品管: 'bg-purple-100 text-purple-800', 研發: 'bg-pink-100 text-pink-800',
-            廠務: 'bg-red-100 text-red-800',
-            官網: 'bg-sky-100 text-sky-800', 行銷: 'bg-emerald-100 text-emerald-800',
-            業務: 'bg-orange-100 text-orange-800', 樣品: 'bg-amber-100 text-amber-800',
-            其他: 'bg-gray-100 text-gray-600',
-          }
-          // 晨會流程模式：同一份議題資料，換成「照流程一步一步跑」的排法
-          if (issueView === 'flow') return (
-            <div className="max-w-none">
-              <button onClick={() => setIssueView('list')}
-                className="mb-2 text-sm text-gray-500 hover:text-indigo-600 border border-gray-200 rounded-lg px-3 py-1.5">
-                ← 回議題清單
-              </button>
-              <MeetingFlow
-                open={issues}
-                catColor={CAT_COLOR}
-                loading={issuesLoading}
-                onRefresh={() => fetchIssues('open')}
-                onAddSubtask={addFlowSubtask}
-                onAddIssue={() => {
-                  // 第三步按「當場新增議題」→ 回清單、開表單、捲到最上面
-                  setIssueView('list'); setIssueForm(true); setIssueErr('')
-                  window.scrollTo({ top: 0, behavior: 'smooth' })
-                }}
-              />
-            </div>
-          )
-          return (
-            <div className="max-w-none">
-              <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-                <h2 className="text-xl font-bold text-gray-900">🔧 會議事項</h2>
-                <div className="flex items-center gap-2" data-tour="issue-actions">
-                  <button onClick={() => { setIssueView('flow'); fetchIssues('open') }}
-                    className="bg-white border border-indigo-300 text-indigo-700 rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-50">
-                    📅 週一晨會流程
-                  </button>
-                  <button onClick={() => { setIssueForm(v => !v); setIssueErr('') }}
-                    className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700">
-                    {issueForm ? '取消' : '＋ 新增項目'}
-                  </button>
-                </div>
-              </div>
-              <p className="text-xs text-gray-400 mb-4">品質會議的問題追蹤，跟「今日工作」是分開的兩套資料。每週一開會按「📅 週一晨會流程」，會照標準步驟帶著跑。</p>
-
-              {issueForm && (
-                <form onSubmit={e => { e.preventDefault(); submitIssue(e.currentTarget) }}
-                  className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
-                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
-                    <label className="block">
-                      <span className="text-xs font-medium text-gray-600">會議日期</span>
-                      <input name="meetDate" type="date" defaultValue={todayISO()} required
-                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-medium text-gray-600">類別 *</span>
-                      <select name="category" required defaultValue=""
-                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                        <option value="" disabled>請選擇</option>
-                        {ISSUE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-medium text-gray-600">負責人</span>
-                      <input name="owner" className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-medium text-gray-600">預計日</span>
-                      <input name="due" type="date" className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                    </label>
-                  </div>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-600">檢討及提案項目 *（遇到的問題）</span>
-                    <textarea name="issue" required rows={2}
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-600">提案人</span>
-                    <input name="proposer" className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  </label>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <button type="submit" disabled={issueBusy}
-                      className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
-                      {issueBusy ? '新增中…' : '新增'}
-                    </button>
-                    <span className="text-xs text-gray-400">編號與狀態由系統自動填</span>
-                    {issueErr && <span className="text-xs text-red-500">{issueErr}</span>}
-                  </div>
-                </form>
-              )}
-
-              <div className="flex items-center gap-2 flex-wrap mb-3">
-                <button onClick={() => { setIssueSearch(''); fetchIssues('open') }}
-                  className={`px-4 py-1.5 rounded-full text-sm font-medium border ${issueTab === 'open'
-                    ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-                  進行中{issueTab === 'open' ? `（${shown.length}）` : ''}
-                </button>
-                <button onClick={() => { setIssueSearch(''); fetchIssues('closed') }}
-                  className={`px-4 py-1.5 rounded-full text-sm font-medium border ${issueTab === 'closed'
-                    ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-                  已結案{issueTab === 'closed' ? `（${shown.length}）` : ''}
-                </button>
-                <input value={issueSearch} onChange={e => setIssueSearch(e.target.value)}
-                  placeholder={issueTab === 'closed' ? '搜尋舊案（橘皮、斷墨、Z字…）' : '搜尋'}
-                  className="flex-1 min-w-[180px] border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
-                <select value={issueCatFilter} onChange={e => setIssueCatFilter(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white">
-                  <option value="">全部類別</option>
-                  {ISSUE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-                {owners.length > 0 && (
-                  <select value={issueOwnerFilter} onChange={e => setIssueOwnerFilter(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white">
-                    <option value="">全部負責人</option>
-                    {owners.map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                )}
-              </div>
-
-              {issuesLoading ? (
-                <p className="text-sm text-gray-400 py-6">讀取中…</p>
-              ) : shown.length === 0 ? (
-                <p className="text-sm text-gray-400 py-6">
-                  {issueTab === 'closed'
-                    ? '還沒有結案的項目。結案後會累積到這裡，之後可以搜尋。'
-                    : '目前沒有進行中的項目，按右上角「＋ 新增項目」開始。'}
-                </p>
-              ) : (
-                /* 表格用格狀排版做，不用 <table>：<table> 的欄寬撐不下就會逼出橫向捲軸，
-                   而開會時要能一眼看完，左右拉就失去意義。
-                   寬螢幕照樣是對齊的表格，窄螢幕自動變成一項一塊、每格帶標籤。 */
-                <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden" data-tour="issue-list">
-                  <div className="hidden lg:grid gap-x-3 px-3 py-2 bg-gray-50 text-xs text-gray-500 font-semibold"
-                    style={{ gridTemplateColumns: 'minmax(4.5rem,6rem) minmax(9rem,3fr) minmax(3.5rem,4.5rem) minmax(6.5rem,8.5rem) minmax(4.5rem,6rem) minmax(3rem,4rem)' }}>
-                    <div>編號</div><div>檢討及提案項目（問題）</div>
-                    <div>負責人</div><div>預計日</div><div>狀態</div><div />
-                  </div>
-                  {grouped.map(g => (
-                  <div key={g.cat}>
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100/80 border-t border-gray-200">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAT_COLOR[g.cat] ?? 'bg-gray-200 text-gray-600'}`}>
-                        {g.cat}
-                      </span>
-                      <span className="text-xs text-gray-400">{g.items.length} 筆</span>
-                    </div>
-                  {g.items.map(it => {
-                    const od = isOverdue(it.due)
-                    const subs = (it.subtasks || '').split('\n').map(l => l.trim()).filter(Boolean)
-                    const prog = (it.progress || '').split('\n').map(l => l.trim()).filter(Boolean)
-                    const L = 'lg:hidden text-xs text-gray-400 mr-1'   // 窄螢幕才出現的欄位標籤
-                    return (
-                      <div key={it.id} className="border-t border-gray-200">
-                        <div className="grid gap-x-3 gap-y-1 px-3 py-2.5 lg:items-start"
-                          style={{ gridTemplateColumns: '1fr' }}>
-                          <div className="contents lg:hidden" />
-                          <div className="lg:grid lg:gap-x-3" style={{ gridTemplateColumns: 'minmax(4.5rem,6rem) minmax(9rem,3fr) minmax(3.5rem,4.5rem) minmax(6.5rem,8.5rem) minmax(4.5rem,6rem) minmax(3rem,4rem)' }}>
-                            <div className="font-mono text-xs text-gray-500 py-0.5"><span className={L}>編號</span>{it.no}</div>
-                            <div className="py-0.5 text-gray-900 font-medium leading-snug break-words">{it.issue}</div>
-                            <div className="py-0.5 text-sm">
-                              <span className={L}>負責人</span>
-                              {it.owner
-                                ? <span className="text-gray-900 font-semibold break-words">{it.owner}</span>
-                                : <span className="text-xs text-amber-600">未指定</span>}
-                            </div>
-                            <div className="py-0.5 text-xs">
-                              <span className={L}>預計日</span>
-                              <input type="date" defaultValue={it.due || ''} disabled={issueBusy}
-                                onChange={e => updateIssueDue(it.id, e.target.value)}
-                                title="直接改就會存檔"
-                                className={`w-full min-w-0 bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-400 rounded px-1 py-0.5 cursor-pointer
-                                  ${od ? 'text-red-600 font-semibold' : it.due ? 'text-gray-700' : 'text-gray-300'}`} />
-                              {od && <span className="text-red-600 font-semibold lg:block"> 🔴 逾期</span>}
-                            </div>
-                            <div className="py-0.5">
-                              <span className={L}>狀態</span>
-                              {it.status === '已結案'
-                                ? <span className="inline-block whitespace-nowrap text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">已結案</span>
-                                : <span className="inline-block whitespace-nowrap text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">持續進行</span>}
-                              {it.closedDate && <span className="text-xs text-gray-400 ml-1 lg:block lg:ml-0 whitespace-nowrap">{it.closedDate}</span>}
-                            </div>
-                            <div className="py-0.5">
-                              {/* 已結案的也要能開——結錯案要能重開，內容打錯也要能改 */}
-                              <button onClick={() => { setIssueProgressId(issueProgressId === it.id ? null : it.id); setIssueErr('') }}
-                                className="text-xs whitespace-nowrap bg-white border border-indigo-300 text-indigo-700 rounded-lg px-2 py-1.5 font-medium hover:bg-indigo-50">
-                                {issueProgressId === it.id ? '關閉' : '更新'}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="px-3 pb-3 bg-gray-50/60">
-                          {(it.meetDate || it.proposer) && (
-                            <p className="text-xs text-gray-400 pb-1.5">
-                              {it.meetDate && <>會議 {it.meetDate}　</>}
-                              {it.proposer && <>提案 {it.proposer}</>}
-                            </p>
-                          )}
-                          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
-                            <div>
-                              <p className="text-xs font-semibold text-gray-400 mb-1">支線任務／執行人</p>
-                              {subs.length === 0 ? (
-                                <p className="text-xs text-gray-300">討論後分派的子任務會列在這裡</p>
-                              ) : (
-                                <ul className="space-y-1">
-                                  {subs.map((l, li) => {
-                                    const done = l.trimStart().startsWith('✔')
-                                    const parts = l.replace(/^\s*✔\s*/, '').split('｜').map(x => (x ?? '').trim())
-                                    const who = parts[0], what = parts[1], when = parts[2]
-                                    const sOd = !done && isOverdue(when)   // 做完了就不再算逾期
-                                    const key = `${it.id}:${li}`
-                                    if (editSub === key) {
-                                      return (
-                                        <li key={li} className="rounded-lg border border-indigo-200 bg-white p-2">
-                                          <div className="flex gap-1.5 flex-wrap">
-                                            <input id={`sw-${key}`} defaultValue={who} placeholder="執行人"
-                                              className="w-20 border border-gray-300 rounded px-2 py-1 text-sm" />
-                                            <input id={`st-${key}`} defaultValue={what} placeholder="要做什麼" autoFocus
-                                              className="flex-1 min-w-[120px] border border-gray-300 rounded px-2 py-1 text-sm" />
-                                            <input id={`sd-${key}`} type="date" defaultValue={when}
-                                              className="border border-gray-300 rounded px-2 py-1 text-sm" />
-                                          </div>
-                                          <div className="flex gap-2 mt-1.5">
-                                            <button onClick={() => saveSubtask(it, li,
-                                                (document.getElementById(`sw-${key}`) as HTMLInputElement).value,
-                                                (document.getElementById(`st-${key}`) as HTMLInputElement).value,
-                                                (document.getElementById(`sd-${key}`) as HTMLInputElement).value)}
-                                              className="text-xs bg-indigo-600 text-white rounded px-3 py-1 font-medium hover:bg-indigo-700">儲存</button>
-                                            <button onClick={() => setEditSub(null)}
-                                              className="text-xs text-gray-500 px-2 hover:text-gray-700">取消</button>
-                                          </div>
-                                        </li>
-                                      )
-                                    }
-                                    return (
-                                      <li key={li} className="group text-sm leading-snug flex items-start gap-1.5 flex-wrap">
-                                        <input type="checkbox" checked={done} onChange={() => toggleSubtask(it, li)}
-                                          className="mt-1 shrink-0 w-4 h-4 accent-emerald-600 cursor-pointer" />
-                                        <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${done ? 'bg-gray-100 text-gray-400' : 'bg-indigo-100 text-indigo-800'}`}>{who || '待指定'}</span>
-                                        <span className={`break-words ${done ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{what}</span>
-                                        {when && <span className={`shrink-0 text-xs ${sOd ? 'text-red-600 font-semibold' : done ? 'text-gray-300' : 'text-gray-400'}`}>{when}</span>}
-                                        {/* 手機沒有滑鼠不會 hover，所以按鈕一直都在，只是平常淡一點 */}
-                                        <span className="shrink-0 ml-auto flex gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
-                                          <button onClick={() => setEditSub(key)} title="修改"
-                                            className="text-xs text-gray-500 hover:text-indigo-600 px-1">✎</button>
-                                          <button onClick={() => deleteSubtask(it, li)} title="刪除"
-                                            className="text-xs text-gray-400 hover:text-red-600 px-1">✕</button>
-                                        </span>
-                                      </li>
-                                    )
-                                  })}
-                                </ul>
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-xs font-semibold text-gray-400 mb-1">進度歷程</p>
-                              {(() => {
-                                const full = issueExpanded[it.id]
-                                const lines = full && full.length ? full : prog
-                                if (lines.length === 0) return <p className="text-xs text-gray-300">還沒有進度記錄</p>
-                                return (
-                                  <div className="space-y-1">
-                                    {lines.map((l, li) => (
-                                      <p key={li} className={`text-sm leading-snug break-words ${li === 0 ? 'text-gray-800' : 'text-gray-500'}`}>{l}</p>
-                                    ))}
-                                    {!full && (it.progress || '').length > 1700 && (
-                                      <button onClick={() => loadIssueHistory(it.id)}
-                                        className="text-xs text-indigo-600 hover:underline">載入更早的歷程</button>
-                                    )}
-                                  </div>
-                                )
-                              })()}
-                            </div>
-                          </div>
-
-                          {issueProgressId === it.id && (
-                            <form onSubmit={e => { e.preventDefault(); submitIssueProgress(it.id, e.currentTarget) }}
-                              className="mt-3 pt-3 border-t border-gray-200">
-                              <div className="mb-3 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-                                <label className="block lg:col-span-2">
-                                  <span className="text-xs font-medium text-gray-600">檢討及提案項目（問題）</span>
-                                  <textarea name="issue" rows={2} defaultValue={it.issue}
-                                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-gray-600">類別</span>
-                                  <select name="category" defaultValue={it.category}
-                                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                                    {ISSUE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                                  </select>
-                                </label>
-                              </div>
-                              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-gray-600">本次進度</span>
-                                  <textarea name="progress" rows={2} autoFocus
-                                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                                </label>
-                                <div>
-                                  <span className="text-xs font-medium text-gray-600">新增支線任務（討論後分派）</span>
-                                  <div className="mt-1 flex gap-2 flex-wrap">
-                                    <input name="subWho" placeholder="執行人"
-                                      className="w-24 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
-                                    <input name="subWhat" placeholder="要做什麼"
-                                      className="flex-1 min-w-[120px] border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
-                                    <input name="subWhen" type="date"
-                                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex gap-3 flex-wrap mt-2">
-                                <label className="block">
-                                  <span className="text-xs text-gray-500">改預計日（不改就留空）</span>
-                                  <input name="due" type="date"
-                                    className="mt-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs text-gray-500">改負責人（不改就留空）</span>
-                                  <input name="owner"
-                                    className="mt-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
-                                </label>
-                              </div>
-                              <div className="flex items-center gap-2 flex-wrap mt-3">
-                                <button type="submit" disabled={issueBusy}
-                                  className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
-                                  {issueBusy ? '送出中…' : '送出'}
-                                </button>
-                                {it.status === '已結案' ? (
-                                  <button type="button" disabled={issueBusy}
-                                    onClick={e => submitIssueProgress(it.id, e.currentTarget.closest('form') as HTMLFormElement, false, true)}
-                                    className="bg-amber-500 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-amber-600 disabled:opacity-40">
-                                    ↩ 重新開啟
-                                  </button>
-                                ) : (
-                                  <button type="button" disabled={issueBusy}
-                                    onClick={e => submitIssueProgress(it.id, e.currentTarget.closest('form') as HTMLFormElement, true)}
-                                    className="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
-                                    ✓ 結案
-                                  </button>
-                                )}
-                                {issueErr && <span className="text-xs text-red-500">{issueErr}</span>}
-                              </div>
-                            </form>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                  </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )
-        })()}
 
         {view === 'meeting' && isAdmin && (() => {
           const today = todayISO()
