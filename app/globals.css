@@ -190,5 +190,9 @@ body { background: var(--surface); }
 button, select, input[type="date"], input[type="number"], input[type="text"], textarea {
   min-height: 40px;
 }
-/* 純圖示的小按鈕（✕、🚩、↻）例外：它們用 leading-none，撐高會破版 */
+/* 例外一：純圖示的小按鈕（✕、🚩、↻），它們用 leading-none，撐高會破版。
+   例外二：作者已經明講高度的按鈕（h-5、h-9…）。顏色圓點是 w-5 h-5，
+   被 min-height:40px 一撐就從圓形變成膠囊——設計者指定過尺寸就不要蓋掉。 */
 button.leading-none, button.px-1 { min-height: 0; }
+button[class*="h-5"], button[class*="h-6"], button[class*="h-7"],
+button[class*="h-8"], button[class*="h-9"], button[class*="h-10"] { min-height: 0; }

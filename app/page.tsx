@@ -2926,7 +2926,7 @@ export default function Page() {
                       style={p.color ? { borderLeftWidth: 4, borderLeftColor: p.color } : {}}>
                       {/* 圓點＋文字綁成一組，手機上整組佔滿第一行，負責人和狀態才會被擠到第二行。
                           （只靠 flex-wrap 不會換行——中間那塊是 flex-1 min-w-0，會一直縮而不是換行） */}
-                      <div className="flex items-center gap-3 w-full min-w-0 md:w-auto md:flex-1">
+                      <div className="flex items-start gap-3 w-full min-w-0 md:items-center md:w-auto md:flex-1">
                       {/* 顏色圓點 + picker */}
                       <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
                         <button
