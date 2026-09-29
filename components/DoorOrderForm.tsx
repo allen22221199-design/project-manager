@@ -482,7 +482,7 @@ export default function DoorOrderForm() {
   const 像的 = 開新案 ? 像哪一個(新案名, 工單清單) : null
 
   return (
-    <div className="pb-4" ref={表單頂}>
+    <div className="pb-4" ref={表單頂} data-tour="doors-form">
       <p className="text-xl font-bold text-gray-900">🚪 製圖</p>
       <p className="text-xs text-gray-400 mb-4">
         防火門雷切尺寸。一次填一樘，填了哪幾格就畫哪幾格，沒有的件整組留空。單位 mm，全部填「攤平之後」的尺寸。<br />
