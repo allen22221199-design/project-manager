@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
     const out = await listFiles({
       q: (p.get('q') || '').trim().slice(0, 100),
       category: (p.get('category') || '').trim().slice(0, 50),
+      project: (p.get('project') || '').trim().slice(0, 64) || undefined,
       cursor: p.get('cursor') || undefined,
       limit: Number(p.get('limit')) || 30,
     })

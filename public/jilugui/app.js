@@ -4,8 +4,9 @@
   'use strict';
 
   const API = '/api/jilugui';
-  const LABEL = { home: '首頁', records: '紀錄', files: '檔案' };
+  const LABEL = { home: '首頁', projects: '專案', records: '紀錄', files: '檔案' };
   const STATUS = ['進行中', '已完成', '待追蹤', '取消'];
+  const PROJECT_STATUS = ['進行中', '暫停', '已完成'];
   const STATUS_CLASS = { '進行中': 'blue', '已完成': 'green', '待追蹤': 'yellow', '取消': 'gray' };
   const CATEGORY = ['工程', '業務', '會議', '採購', '行政', '系統開發', '其他'];
   const FILE_CATEGORY = ['文件', '照片', '合約', '報價與發票', '圖面', '影片', '其他'];
@@ -16,6 +17,7 @@
     home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5h4v5"/></svg>',
     records: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>',
     files: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    projects: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg>',
     ask: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>',
     plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
     close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
@@ -23,7 +25,8 @@
 
   const state = {
     user: null, mode: 'notion', ai: false, appName: '紀錄櫃', view: 'home', painter: null,
-    records: freshList(), files: freshList(), active: freshList(), chat: { messages: [], busy: false, open: false }, chatPainter: null,
+    records: freshList(), files: freshList(), active: freshList(), projects: freshList(), covers: {},
+    chat: { messages: [], busy: false, open: false }, chatPainter: null,
   };
   function freshList() { return { items: [], cursor: null, loaded: false, loading: false, q: '', filter: '', seq: 0 }; }
 
@@ -156,7 +159,7 @@
   }
   async function logout() {
     try { await api('POST', '/logout'); } catch (e) { /* 忽略 */ }
-    state.user = null; state.records = freshList(); state.files = freshList(); state.active = freshList(); state.chat = { messages: [], busy: false, open: false }; state.view = 'home';
+    state.user = null; state.records = freshList(); state.files = freshList(); state.active = freshList(); state.projects = freshList(); state.covers = {}; state.chat = { messages: [], busy: false, open: false }; state.view = 'home';
     render();
   }
 
@@ -214,7 +217,7 @@
     window.scrollTo(0, 0);
   }
   function renderView() {
-    $main.replaceChildren(state.view === 'home' ? homeView() : state.view === 'records' ? recordsView() : filesView());
+    $main.replaceChildren(state.view === 'home' ? homeView() : state.view === 'projects' ? projectsView() : state.view === 'records' ? recordsView() : filesView());
   }
   function repaint() { if (state.painter) state.painter(); }
   function ensureLoaded(s, loader) { if (!s.loaded && !s.loading) loader(true); }
@@ -243,6 +246,7 @@
     state.painter = paint;
     paint();
     loadActive();   // 每次回到首頁都重抓，狀態改了馬上反映
+    ensureLoaded(state.projects, loadProjects);   // 看板要按專案分組，需要專案名稱
     ensureLoaded(state.records, loadRecords);
     ensureLoaded(state.files, loadFiles);
     return wrap;
@@ -270,14 +274,18 @@
     if (!s.loaded && s.loading) { el.replaceChildren(h('div', { class: 'muted', text: '載入中…' })); countEl.textContent = ''; return; }
     if (!s.items.length) { el.replaceChildren(h('div', { class: 'empty', text: s.loaded ? '目前沒有進行中或待追蹤的項目。' : '' })); countEl.textContent = ''; return; }
     countEl.textContent = s.items.length + ' 項';
-    // 照分類分組，順序照表單的分類順序；沒填分類的排最後
+    // 有掛專案的照專案分組（專案在前，照專案清單的順序）；沒掛專案的照分類分組排在後面
     const groups = new Map();
     for (const r of s.items) {
-      const k = r.category || '未分類';
+      const pn = r.projectId ? projectName(r.projectId) : '';
+      const k = pn ? '📁 ' + pn : (r.category || '未分類');
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k).push(r);
     }
-    const order = CATEGORY.concat(['未分類']).filter((k) => groups.has(k)).concat(Array.from(groups.keys()).filter((k) => CATEGORY.indexOf(k) < 0 && k !== '未分類'));
+    const projKeys = state.projects.items.map((p) => '📁 ' + p.name).filter((k) => groups.has(k));
+    for (const k of Array.from(groups.keys())) if (k.indexOf('📁 ') === 0 && projKeys.indexOf(k) < 0) projKeys.push(k);
+    const catKeys = CATEGORY.concat(['未分類']).filter((k) => groups.has(k)).concat(Array.from(groups.keys()).filter((k) => k.indexOf('📁 ') !== 0 && CATEGORY.indexOf(k) < 0 && k !== '未分類'));
+    const order = projKeys.concat(catKeys);
     el.replaceChildren.apply(el, order.map((k) => {
       const rows = groups.get(k);
       return h('div', { class: 'board-group' },
@@ -332,7 +340,7 @@
       h('div', { class: 'card-body' },
         h('div', { class: 'card-title', text: r.title || '（無標題）' }),
         r.note ? h('div', { class: 'card-note', text: clip(r.note, 90) }) : null,
-        h('div', { class: 'chips' }, r.status ? chip(r.status, STATUS_CLASS[r.status] || 'gray') : null, r.category ? chip(r.category) : null, r.tags.map((t) => chip('#' + t, 'tag')), r.fileIds.length ? chip('附件 ' + r.fileIds.length) : null, r.link ? chip('連結') : null),
+        h('div', { class: 'chips' }, r.projectId && projectName(r.projectId) ? chip('📁 ' + projectName(r.projectId), 'proj') : null, r.status ? chip(r.status, STATUS_CLASS[r.status] || 'gray') : null, r.category ? chip(r.category) : null, r.tags.map((t) => chip('#' + t, 'tag')), r.fileIds.length ? chip('附件 ' + r.fileIds.length) : null, r.link ? chip('連結') : null),
         h('div', { class: 'card-meta', text: [r.by, r.code].filter(Boolean).join(' · ') })));
   }
 
@@ -340,7 +348,9 @@
     const sh = openSheet(r.title || '（無標題）');
     const b = sh.body;
     b.appendChild(h('div', { class: 'meta', text: [fmtDate(r.date), r.code, r.by ? '記錄者 ' + r.by : ''].filter(Boolean).join(' · ') }));
-    b.appendChild(h('div', { class: 'chips' }, r.status ? chip(r.status, STATUS_CLASS[r.status] || 'gray') : null, r.category ? chip(r.category) : null, r.tags.map((t) => chip('#' + t, 'tag'))));
+    const proj = r.projectId ? state.projects.items.find((x) => x.id === r.projectId) : null;
+    b.appendChild(h('div', { class: 'chips' }, proj ? chip('📁 ' + proj.name, 'proj') : null, r.status ? chip(r.status, STATUS_CLASS[r.status] || 'gray') : null, r.category ? chip(r.category) : null, r.tags.map((t) => chip('#' + t, 'tag'))));
+    if (proj) b.appendChild(h('button', { class: 'linkbtn', type: 'button', text: '看這個專案的全部紀錄與檔案 →', onclick: () => { sh.close(); openProject(proj); } }));
     if (r.link) b.appendChild(h('div', { class: 'linkbox' }, h('a', { class: 'btn primary', href: r.link, target: '_blank', rel: 'noopener', text: '開啟連結' }), h('a', { class: 'link-url', href: r.link, target: '_blank', rel: 'noopener', text: r.link })));
     if (r.note) b.appendChild(linkified(r.note, 'note'));
     const filesEl = h('div', { class: 'grid small' });
@@ -368,7 +378,9 @@
     filesEl.replaceChildren.apply(filesEl, ok.length ? ok.map(fileTile) : [h('div', { class: 'muted', text: '相關檔案已被刪除' })]);
   }
 
-  function openRecordForm(existing, parentSheet) {
+  // opts.projectId：從專案頁新增時預選專案；opts.afterSave：存完要做的事（例如重新整理專案頁）
+  function openRecordForm(existing, parentSheet, opts) {
+    opts = opts || {};
     const sh = openSheet(existing ? '編輯紀錄' : '新增紀錄', { wide: true });
     const f = {
       date: h('input', { type: 'date', id: 'f-date', value: existing ? (existing.date || '') : today(), required: true }),
@@ -376,6 +388,7 @@
       note: h('textarea', { id: 'f-note', rows: 4, placeholder: '過程、結果、之後要接著做的事', value: existing ? existing.note : '' }),
       status: select('f-status', STATUS, existing ? existing.status : '進行中'),
       category: select('f-category', CATEGORY, existing ? existing.category : ''),
+      project: projectSelect('f-project', existing ? existing.projectId : (opts.projectId || '')),
       tags: h('input', { type: 'text', id: 'f-tags', placeholder: '用逗號分開，例如：客戶, 重要', value: existing ? existing.tags.join(', ') : '' }),
       link: h('input', { type: 'url', id: 'f-link', placeholder: 'https://…（網站、APP 或相關頁面，選填）', value: existing ? (existing.link || '') : '' }),
     };
@@ -386,8 +399,8 @@
       h('div', { class: 'row' }, field('日期', f.date), field('狀態', f.status)),
       field('做了什麼', f.title),
       field('細節', f.note),
-      h('div', { class: 'row' }, field('分類', f.category), field('標籤', f.tags)),
-      field('連結', f.link),
+      h('div', { class: 'row' }, field('專案', f.project), field('分類', f.category)),
+      h('div', { class: 'row' }, field('標籤', f.tags), field('連結', f.link)),
       field(existing ? '再附加檔案' : '附加檔案', picker.el),
       err,
       h('div', { class: 'actions' }, submit, h('button', { class: 'btn', type: 'button', text: '取消', onclick: () => sh.close() })));
@@ -398,7 +411,7 @@
       err.textContent = ''; submit.disabled = true; sh.lock(true);
       try {
         const newIds = await picker.uploadAll((file) => ({ category: guessCategory(file) }));
-        const data = { title, date: f.date.value, note: f.note.value.trim(), status: f.status.value, category: f.category.value, tags: parseTags(f.tags.value), link: f.link.value.trim() };
+        const data = { title, date: f.date.value, note: f.note.value.trim(), status: f.status.value, category: f.category.value, tags: parseTags(f.tags.value), link: f.link.value.trim(), projectId: f.project.value };
         let saved;
         if (existing) {
           if (newIds.length) data.fileIds = existing.fileIds.concat(newIds);
@@ -414,7 +427,9 @@
         sh.lock(false); sh.close(); if (parentSheet) parentSheet.close();
         repaint();
         loadActive();
+        if (data.projectId || (existing && existing.projectId)) loadProjects();   // 專案的筆數變了
         if (newIds.length) loadFiles(true);
+        if (opts.afterSave) opts.afterSave(saved);
       } catch (ex) { err.textContent = ex.message; submit.disabled = false; sh.lock(false); }
     });
     sh.body.appendChild(form);
@@ -444,6 +459,7 @@
     };
     state.painter = paint; paint(); ensureLoaded(s, loadFiles);
     ensureLoaded(state.records, loadRecords);   // 檔案格要標示「屬於哪一筆紀錄」，需要紀錄的標題
+    ensureLoaded(state.projects, loadProjects);
     return wrap;
   }
   // 幫舊檔案補縮圖：一次處理目前已載入、還沒有縮圖的 PDF／影片／照片。
@@ -509,8 +525,13 @@
     }
     return '';
   }
+  // 檔案格上的「📌」：直接掛在專案就顯示專案名，不然顯示它屬於哪一筆紀錄
+  function pinLabel(f) {
+    if (f.projectId) return projectName(f.projectId) || '';
+    return relatedTitle(f);
+  }
   function fileTile(f) {
-    const rec = relatedTitle(f);
+    const rec = pinLabel(f);
     return h('article', { class: 'tile', tabindex: 0, role: 'button', onclick: () => openFile(f), onkeydown: (e) => { if (e.key === 'Enter') openFile(f); } },
       thumbFor(f, false),
       h('div', { class: 'tile-body' },
@@ -559,14 +580,16 @@
     const date = h('input', { type: 'date', id: 'e-date', value: f.date || '' });
     const note = h('textarea', { id: 'e-note', rows: 3, value: f.note });
     const tags = h('input', { type: 'text', id: 'e-tags', value: f.tags.join(', '), placeholder: '用逗號分開' });
+    const project = projectSelect('e-project', f.projectId || '');
     const err = h('div', { class: 'form-error' });
     const submit = h('button', { class: 'btn primary', type: 'submit', text: '儲存變更' });
-    const form = h('form', { class: 'form' }, field('檔名', name), h('div', { class: 'row' }, field('分類', category), field('日期（檔案完成的日子）', date)), field('標籤', tags), field('說明', note), err,
+    const form = h('form', { class: 'form' }, field('檔名', name), h('div', { class: 'row' }, field('分類', category), field('日期（檔案完成的日子）', date)), field('專案', project), field('標籤', tags), field('說明', note), err,
       h('div', { class: 'actions' }, submit, h('button', { class: 'btn', type: 'button', text: '取消', onclick: () => sh.close() })));
     form.addEventListener('submit', async (e) => {
       e.preventDefault(); submit.disabled = true; err.textContent = '';
       try {
-        const saved = await api('PATCH', '/files/' + f.id, { name: name.value.trim() || f.name, category: category.value, date: date.value, note: note.value.trim(), tags: parseTags(tags.value) });
+        const saved = await api('PATCH', '/files/' + f.id, { name: name.value.trim() || f.name, category: category.value, date: date.value, note: note.value.trim(), tags: parseTags(tags.value), projectId: project.value });
+        if (project.value !== (f.projectId || '')) loadProjects();
         replaceItem(state.files, saved);
         toast('已儲存'); sh.close(); if (parentSheet) parentSheet.close(); repaint();
       } catch (ex) { err.textContent = ex.message; submit.disabled = false; }
@@ -574,9 +597,12 @@
     sh.body.appendChild(form);
   }
 
-  function openFileForm() {
+  // opts.projectId：從專案頁上傳時預選專案；opts.afterSave：傳完要做的事
+  function openFileForm(opts) {
+    opts = opts || {};
     const sh = openSheet('上傳檔案', { wide: true });
     const picker = filePicker();
+    const projectSel = projectSelect('u-project', opts.projectId || '');
     const category = select('u-category', FILE_CATEGORY, '', '自動判斷');
     const date = h('input', { type: 'date', id: 'u-date', value: today() });
     const note = h('textarea', { id: 'u-note', rows: 3, placeholder: '這是什麼、給誰用' });
@@ -592,7 +618,7 @@
       h('div', { class: 'row' }, field('分類', category), field('日期（檔案完成的日子，不是上傳日）', date)),
       field('標籤', tags),
       field('說明', note),
-      field('屬於哪一筆紀錄（選填）', recordSel),
+      h('div', { class: 'row' }, field('屬於哪個專案（選填）', projectSel), field('屬於哪一筆紀錄（選填）', recordSel)),
       err,
       h('div', { class: 'actions' }, submit, h('button', { class: 'btn', type: 'button', text: '取消', onclick: () => sh.close() })));
     form.addEventListener('submit', async (e) => {
@@ -601,14 +627,171 @@
       err.textContent = ''; submit.disabled = true; sh.lock(true);
       try {
         const rid = recordSel.value;
-        const ids = await picker.uploadAll((file) => ({ category: category.value || guessCategory(file), date: date.value, note: note.value.trim(), tags: parseTags(tags.value), recordIds: rid ? [rid] : [] }));
+        const ids = await picker.uploadAll((file) => ({ category: category.value || guessCategory(file), date: date.value, note: note.value.trim(), tags: parseTags(tags.value), recordIds: rid ? [rid] : [], projectId: projectSel.value }));
         toast('已上傳 ' + ids.length + ' 個檔案');
         sh.lock(false); sh.close();
         state.files.loaded = true; repaint();
         if (rid) loadRecords(true);
+        if (projectSel.value) loadProjects();
+        if (opts.afterSave) opts.afterSave();
       } catch (ex) { err.textContent = ex.message; submit.disabled = false; sh.lock(false); }
     });
     sh.body.appendChild(form);
+  }
+
+  // ---------- 專案 ----------
+  // 專案是紀錄和檔案的上一層：點進一個專案，看它的紀錄時間軸、檔案牆、連結。
+  function projectName(id) { const p = state.projects.items.find((x) => x.id === id); return p ? p.name : ''; }
+  function sortProjects(items) {
+    const rank = (p) => (PROJECT_STATUS.indexOf(p.status) < 0 ? 9 : PROJECT_STATUS.indexOf(p.status));
+    return items.slice().sort((a, b) => rank(a) - rank(b) || (b.lastDate || '').localeCompare(a.lastDate || '') || (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+  }
+  let projectsPromise = null;
+  function loadProjects() {
+    const s = state.projects;
+    if (s.loading && projectsPromise) return projectsPromise;
+    s.loading = true; s.seq++;
+    const seq = s.seq;
+    projectsPromise = (async () => {
+      try {
+        const r = await api('GET', '/projects');
+        if (seq !== s.seq) return;
+        s.items = sortProjects(r.items || []); s.loaded = true;
+      } catch (e) {
+        if (seq === s.seq) { s.loaded = true; toast(e.message, 'err'); }
+      } finally {
+        if (seq === s.seq) { s.loading = false; repaint(); }
+      }
+    })();
+    return projectsPromise;
+  }
+  // 專案下拉：第一個選項是「不屬於專案」；專案清單還沒載入就先載
+  function projectSelect(id, value) {
+    const sel = h('select', { id }, h('option', { value: '', text: '（不屬於專案）' }));
+    const fill = () => {
+      for (const p of state.projects.items) sel.appendChild(h('option', { value: p.id, text: p.name + (p.status && p.status !== '進行中' ? '（' + p.status + '）' : '') }));
+      sel.value = value || '';
+    };
+    if (state.projects.loaded) fill(); else loadProjects().then(fill);
+    return sel;
+  }
+  // 專案卡片的封面：開過專案頁就記住它第一個有縮圖的檔案；沒開過就從已載入的檔案裡找一張屬於它的
+  function coverFor(p) {
+    if (state.covers[p.id]) return state.covers[p.id];
+    for (const f of state.files.items) {
+      if (!f.thumb) continue;
+      if (f.projectId === p.id) return f.thumb;
+      for (const rid of f.recordIds || []) {
+        const r = state.records.items.find((x) => x.id === rid) || state.active.items.find((x) => x.id === rid);
+        if (r && r.projectId === p.id) return f.thumb;
+      }
+    }
+    return '';
+  }
+  function projectsView() {
+    const s = state.projects;
+    const wrap = h('div', { class: 'view' });
+    wrap.appendChild(h('div', { class: 'section-head' }, h('h1', { class: 'page-title', text: '專案' }),
+      h('button', { class: 'btn small primary', type: 'button', text: '＋ 新增專案', onclick: () => openProjectForm(null) })));
+    const search = h('input', { type: 'search', class: 'search', id: 'search-projects', placeholder: '搜尋專案名稱、說明', value: s.q, 'aria-label': '搜尋專案',
+      oninput: debounce((e) => { s.q = e.target.value.trim(); paint(); }, 200) });
+    const chips = h('div', { class: 'chips scroll' }, [''].concat(PROJECT_STATUS).map((st) => h('button', { type: 'button', class: 'chip' + (s.filter === st ? ' active' : ''), 'data-v': st, text: st || '全部',
+      onclick: () => { s.filter = st; chips.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c.dataset.v === st)); paint(); } })));
+    const gridEl = h('div', { class: 'pgrid' });
+    wrap.appendChild(search); wrap.appendChild(chips); wrap.appendChild(gridEl);
+    const paint = () => {
+      if (state.view !== 'projects') return;
+      if (!s.loaded && s.loading) { gridEl.replaceChildren(h('div', { class: 'muted', text: '載入中…' })); return; }
+      const q = s.q.toLowerCase();
+      const items = s.items.filter((p) => (!s.filter || p.status === s.filter) && (!q || (p.name + ' ' + p.note + ' ' + p.category).toLowerCase().indexOf(q) >= 0));
+      if (!items.length) { gridEl.replaceChildren(h('div', { class: 'empty', text: s.loaded ? (s.items.length ? '沒有符合的專案。' : '還沒有專案。按「＋ 新增專案」建立第一個。') : '' })); return; }
+      gridEl.replaceChildren.apply(gridEl, items.map(projectCard));
+    };
+    state.painter = paint; paint();
+    loadProjects();
+    ensureLoaded(state.files, loadFiles);       // 封面縮圖要靠檔案
+    ensureLoaded(state.records, loadRecords);
+    return wrap;
+  }
+  function projectCard(p) {
+    const cover = coverFor(p);
+    return h('article', { class: 'pcard', tabindex: 0, role: 'button', onclick: () => openProject(p), onkeydown: (e) => { if (e.key === 'Enter') openProject(p); } },
+      h('div', { class: 'pcover' }, cover ? h('img', { src: cover, alt: '', loading: 'lazy' }) : h('span', { class: 'pinitial', text: (p.name || '?').slice(0, 1) })),
+      h('div', { class: 'pbody' },
+        h('div', { class: 'chips' }, p.status ? chip(p.status, STATUS_CLASS[p.status] || 'gray') : null, p.category ? chip(p.category) : null),
+        h('div', { class: 'ptitle', text: p.name || '（未命名）' }),
+        p.note ? h('div', { class: 'pnote', text: firstLine(p.note, 70) }) : null,
+        h('div', { class: 'pmeta', text: ['紀錄 ' + p.recordCount, '檔案 ' + p.fileCount, p.lastDate ? '最近 ' + fmtDate(p.lastDate) : ''].filter(Boolean).join(' · ') })));
+  }
+  async function openProject(p) {
+    const sh = openSheet(p.name || '專案', { wide: true });
+    const b = sh.body;
+    b.appendChild(h('div', { class: 'chips' }, p.status ? chip(p.status, STATUS_CLASS[p.status] || 'gray') : null, p.category ? chip(p.category) : null, p.code ? h('span', { class: 'meta', text: p.code }) : null));
+    if (p.note) b.appendChild(linkified(p.note, 'note'));
+    const refresh = () => { sh.close(); openProject(p); };
+    const actions = h('div', { class: 'actions' },
+      h('button', { class: 'btn primary', type: 'button', text: '＋ 新增紀錄', onclick: () => openRecordForm(null, null, { projectId: p.id, afterSave: refresh }) }),
+      h('button', { class: 'btn', type: 'button', text: '上傳檔案', onclick: () => openFileForm({ projectId: p.id, afterSave: refresh }) }),
+      h('button', { class: 'btn', type: 'button', text: '編輯專案', onclick: () => openProjectForm(p, sh) }),
+      state.user.role === 'admin' ? h('button', { class: 'btn danger', type: 'button', text: '刪除', onclick: () => confirmBox(actions, '刪除這個專案？底下的紀錄和檔案都會留著，只是不再掛在這個專案上。', async () => {
+        await api('DELETE', '/projects/' + p.id);
+        state.projects.items = state.projects.items.filter((x) => x.id !== p.id);
+        toast('已刪除專案'); sh.close(); repaint();
+      }) }) : null);
+    b.appendChild(actions);
+    const linksHead = h('h3', { class: 'sub', text: '連結' });
+    const linksEl = h('div', { class: 'linklist' });
+    const recHead = h('h3', { class: 'sub', text: '紀錄' });
+    const recsEl = h('div', { class: 'list' });
+    const fileHead = h('h3', { class: 'sub', text: '檔案' });
+    const filesEl = h('div', { class: 'grid small' });
+    b.appendChild(linksHead); b.appendChild(linksEl); b.appendChild(recHead); b.appendChild(recsEl); b.appendChild(fileHead); b.appendChild(filesEl);
+    recsEl.appendChild(h('div', { class: 'muted', text: '載入中…' }));
+    let data;
+    try { data = await api('GET', '/projects/' + p.id); }
+    catch (e) { recsEl.replaceChildren(h('div', { class: 'muted', text: e.message })); return; }
+    // 連結：專案自己的，加上每一筆紀錄填的連結
+    const links = [];
+    if (data.project.link) links.push({ url: data.project.link, label: '專案連結' });
+    for (const r of data.records) if (r.link) links.push({ url: r.link, label: r.title || '（無標題）' });
+    linksEl.replaceChildren.apply(linksEl, links.length
+      ? links.map((l) => h('a', { class: 'filelink', href: l.url, target: '_blank', rel: 'noopener' }, h('span', { text: '↗ ' + l.label }), h('div', { class: 'link-url', text: l.url })))
+      : [h('div', { class: 'muted', text: '沒有連結' })]);
+    recHead.textContent = '紀錄（' + data.records.length + '）';
+    recsEl.replaceChildren.apply(recsEl, data.records.length ? data.records.map(recordCard) : [h('div', { class: 'muted', text: '還沒有紀錄，按上面「＋ 新增紀錄」' })]);
+    fileHead.textContent = '檔案（' + data.files.length + '）';
+    filesEl.replaceChildren.apply(filesEl, data.files.length ? data.files.map(fileTile) : [h('div', { class: 'muted', text: '還沒有檔案' })]);
+    const cov = data.files.find((f) => f.thumb);
+    if (cov) state.covers[p.id] = cov.thumb;
+    replaceItem(state.projects, data.project);   // 筆數可能變了
+  }
+  function openProjectForm(existing, parentSheet) {
+    const sh = openSheet(existing ? '編輯專案' : '新增專案');
+    const name = h('input', { type: 'text', id: 'p-name', maxlength: 200, placeholder: '例如：台中建設公司大廳案、官網改版', value: existing ? existing.name : '', required: true });
+    const status = select('p-status', PROJECT_STATUS, existing ? existing.status : '進行中');
+    const category = select('p-category', CATEGORY, existing ? existing.category : '');
+    const note = h('textarea', { id: 'p-note', rows: 3, placeholder: '這個專案在做什麼、目標、注意事項', value: existing ? existing.note : '' });
+    const link = h('input', { type: 'url', id: 'p-link', placeholder: 'https://…（專案的網站或主要頁面，選填）', value: existing ? (existing.link || '') : '' });
+    const err = h('div', { class: 'form-error' });
+    const submit = h('button', { class: 'btn primary', type: 'submit', text: existing ? '儲存變更' : '建立專案' });
+    const form = h('form', { class: 'form' }, field('專案名稱', name), h('div', { class: 'row' }, field('狀態', status), field('分類', category)), field('說明', note), field('連結', link), err,
+      h('div', { class: 'actions' }, submit, h('button', { class: 'btn', type: 'button', text: '取消', onclick: () => sh.close() })));
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!name.value.trim()) { err.textContent = '請填「專案名稱」'; name.focus(); return; }
+      err.textContent = ''; submit.disabled = true;
+      try {
+        const data = { name: name.value.trim(), status: status.value, category: category.value, note: note.value.trim(), link: link.value.trim() };
+        const saved = existing ? await api('PATCH', '/projects/' + existing.id, data) : await api('POST', '/projects', data);
+        replaceItem(state.projects, saved); state.projects.items = sortProjects(state.projects.items); state.projects.loaded = true;
+        toast(existing ? '已儲存' : '已建立專案');
+        sh.close(); if (parentSheet) parentSheet.close();
+        repaint();
+        openProject(saved);
+      } catch (ex) { err.textContent = ex.message; submit.disabled = false; }
+    });
+    sh.body.appendChild(form);
+    setTimeout(() => name.focus(), 60);
   }
 
   // ---------- 問紀錄櫃（右下角小視窗）----------
