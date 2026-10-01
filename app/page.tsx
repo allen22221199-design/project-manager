@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Tour, { type TourStep } from './tour'
 import RichText, { MediaGroup } from './richtext'
 import DoorOrderForm from '@/components/DoorOrderForm'
+import AdminHub from '@/components/AdminHub'
 import { catOf, buildingsOf, monthKey, monthLabel, shortDate, sortKey, itemVocabulary, itemsOf } from '@/lib/progressTags'
 import { missingOf, hasPhone } from '@/lib/projectChecks'
 
@@ -166,7 +167,7 @@ const PROJECT_COLORS_LIST = [
 type Project = { id: string; name: string; status: string; contact: string; address: string; url: string; assignee?: string; color?: string; ganttStart?: string; ganttEnd?: string; schedule?: string; latestProgress?: string; latestProgressDate?: string }
 type Task = { type: 'task'; id: string; taskName: string; status: string; assignees: string; helpers: string; dueDate: string; priority: string; note: string; url: string }
 type ReportTab = 'progress' | 'item'
-type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private' | 'meeting' | 'doors'
+type View = 'list' | 'report' | 'search' | 'create' | 'daily' | 'chat' | 'dashboard' | 'private' | 'meeting' | 'doors' | 'admin'
 // 會議事項（品質會議的問題追蹤）。跟每日工作是兩套獨立資料，欄位也不一樣。
 type PrivateEvent = { id: string; title: string; date: string; note?: string; time?: string; endTime?: string; allDay?: boolean }
 type FileResult = { title: string; name: string; url: string }
@@ -670,7 +671,7 @@ export default function Page() {
   async function doLogout() {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
     setIsAdmin(false); setPrivateEvents([]); setGcalConnected(null)
-    if (view === 'private') setView('dashboard')
+    if (view === 'private' || view === 'admin') setView('dashboard')
   }
   // 私人行事曆＝直接讀寫 Google 日曆
   async function fetchPrivateEvents() {
@@ -2101,6 +2102,14 @@ export default function Page() {
         { v: 'doors', icon: '🚪', label: '製圖', short: '製圖', onClick: () => setView('doors') },
       ],
     },
+    // 公司其他後台的入口（客服、紀錄櫃、LINE/Meta 官方後台）。
+    // 只有登入管理者才看得到——一般同事用不到，也不該看到客服名單。
+    ...(isAdmin ? [{
+      title: '管理',
+      items: [
+        { v: 'admin' as View, icon: '🗂️', label: '管理', short: '管理', onClick: () => setView('admin') },
+      ],
+    }] : []),
   ]
   const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap(g => g.items)
 
@@ -2779,7 +2788,7 @@ export default function Page() {
       )}
 
       <div className="md:pl-[246px]">
-      <main className={`relative z-10 mx-auto p-4 pb-24 md:px-[34px] md:pt-[26px] md:pb-10 animate-fade-in ${view === 'meeting' ? 'max-w-none' : view === 'dashboard' || view === 'private' || view === 'daily' || view === 'doors' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : view === 'report' ? 'max-w-[1250px]' : 'max-w-2xl'}`}>
+      <main className={`relative z-10 mx-auto p-4 pb-24 md:px-[34px] md:pt-[26px] md:pb-10 animate-fade-in ${view === 'meeting' ? 'max-w-none' : view === 'dashboard' || view === 'private' || view === 'daily' || view === 'doors' || view === 'admin' ? 'max-w-[1300px]' : view === 'search' ? 'max-w-4xl' : view === 'chat' ? 'max-w-3xl' : view === 'report' ? 'max-w-[1250px]' : 'max-w-2xl'}`}>
 
         {/* DASHBOARD */}
         {view === 'dashboard' && (() => {
@@ -4465,6 +4474,9 @@ export default function Page() {
         {/* 門單（防火門訂料尺寸）。整包在 components/DoorOrderForm.tsx 裡，
             page.tsx 已經五千多行了，不要再往裡面塞。 */}
         {view === 'doors' && <DoorOrderForm />}
+
+        {/* 管理：公司各後台的入口頁。只給管理者，登出後這一頁會自動退回總覽。 */}
+        {view === 'admin' && isAdmin && <AdminHub />}
 
       </main>
       </div>
