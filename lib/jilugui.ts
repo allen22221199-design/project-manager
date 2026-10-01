@@ -272,6 +272,7 @@ export async function deleteRecord(id: string): Promise<void> {
 export type JFile = {
   id: string; name: string; files: { name: string; index: number; url?: string }[]; category: string; date: string
   note: string; tags: string[]; by: string; code: string; recordIds: string[]; notionUrl: string; createdAt: string
+  thumb: string   // 縮圖網址（瀏覽器上傳時產生、放在 Vercel Blob）；沒有就空字串
 }
 const isBlobUrl = (u: string) => { try { return new URL(u).hostname.endsWith('blob.vercel-storage.com') } catch { return false } }
 function toFile(p: any): JFile {
@@ -290,10 +291,11 @@ function toFile(p: any): JFile {
     recordIds: (pr['相關紀錄']?.relation ?? []).map((r: any) => r.id),
     notionUrl: p.url ?? '',
     createdAt: p.created_time ?? '',
+    thumb: pr['縮圖']?.url ?? '',
   }
 }
 export type Upload = { url: string; name: string; size?: number; type?: string }
-export type FileInput = { name: string; uploads: Upload[]; category: string; date: string; note: string; tags: string[]; recordIds: string[] }
+export type FileInput = { name: string; uploads: Upload[]; category: string; date: string; note: string; tags: string[]; recordIds: string[]; thumb?: string }
 export function cleanFileInput(v: any): FileInput | null {
   if (!v || typeof v !== 'object') return null
   const uploads: Upload[] = []
@@ -305,14 +307,30 @@ export function cleanFileInput(v: any): FileInput | null {
   if (!uploads.length) return null
   const date = s(v.date, 10)
   if (date && !isDate(date)) return null
-  return { name: s(v.name, 200) || uploads[0].name, uploads, category: s(v.category, 50), date, note: s(v.note, 20000), tags: cleanTags(v.tags), recordIds: cleanIds(v.recordIds) }
+  const thumb = s(v.thumb, 2000)
+  return { name: s(v.name, 200) || uploads[0].name, uploads, category: s(v.category, 50), date, note: s(v.note, 20000), tags: cleanTags(v.tags), recordIds: cleanIds(v.recordIds), ...(/^https?:\/\//i.test(thumb) ? { thumb } : {}) }
 }
-export type FileEdit = { name: string; category: string; date: string; note: string; tags: string[] }
+// 只改有送來的欄位：編輯表單會送全部，「補縮圖」只送 thumb
+export type FileEdit = { name?: string; category?: string; date?: string; note?: string; tags?: string[]; thumb?: string }
 export function cleanFileEdit(v: any): FileEdit | null {
   if (!v || typeof v !== 'object') return null
-  const date = s(v.date, 10)
-  if (date && !isDate(date)) return null
-  return { name: s(v.name, 200), category: s(v.category, 50), date, note: s(v.note, 20000), tags: cleanTags(v.tags) }
+  const out: FileEdit = {}
+  if (v.name !== undefined) out.name = s(v.name, 200)
+  if (v.category !== undefined) out.category = s(v.category, 50)
+  if (v.date !== undefined) {
+    const date = s(v.date, 10)
+    if (date && !isDate(date)) return null
+    out.date = date
+  }
+  if (v.note !== undefined) out.note = s(v.note, 20000)
+  if (v.tags !== undefined) out.tags = cleanTags(v.tags)
+  if (v.thumb !== undefined) {
+    const t = s(v.thumb, 2000)
+    if (t && !/^https?:\/\//i.test(t)) return null
+    out.thumb = t
+  }
+  if (!Object.keys(out).length) return null
+  return out
 }
 function fileFilter(q?: string, category?: string): any {
   const parts: any[] = []
@@ -355,19 +373,20 @@ export async function createFile(f: FileInput, by: string): Promise<JFile> {
       標籤: { multi_select: f.tags.map(name => ({ name })) },
       相關紀錄: { relation: f.recordIds.map(id => ({ id })) },
       上傳者: { rich_text: rich(by) },
+      縮圖: { url: f.thumb || null },
     },
   })
   return toFile(p)
 }
 export async function updateFile(id: string, f: FileEdit): Promise<JFile | null> {
   try {
-    const props: any = {
-      分類: f.category ? { select: { name: f.category } } : { select: null },
-      日期: f.date ? { date: { start: f.date } } : { date: null },
-      說明: { rich_text: rich(f.note) },
-      標籤: { multi_select: f.tags.map(name => ({ name })) },
-    }
+    const props: any = {}
     if (f.name) props['檔名'] = { title: rich(f.name) }
+    if (f.category !== undefined) props['分類'] = f.category ? { select: { name: f.category } } : { select: null }
+    if (f.date !== undefined) props['日期'] = f.date ? { date: { start: f.date } } : { date: null }
+    if (f.note !== undefined) props['說明'] = { rich_text: rich(f.note) }
+    if (f.tags !== undefined) props['標籤'] = { multi_select: f.tags.map(name => ({ name })) }
+    if (f.thumb !== undefined) props['縮圖'] = { url: f.thumb || null }
     const p: any = await notion.pages.update({ page_id: id, properties: props })
     return toFile(p)
   } catch (e) { if (isGone(e)) return null; throw e }
@@ -377,7 +396,9 @@ export async function deleteFile(id: string): Promise<{ blobUrls: string[] }> {
   let blobUrls: string[] = []
   try {
     const p: any = await notion.pages.retrieve({ page_id: id })
-    blobUrls = (p.properties?.['檔案']?.files ?? []).map((f: any) => f?.external?.url).filter((u: any) => typeof u === 'string' && isBlobUrl(u))
+    const urls: any[] = (p.properties?.['檔案']?.files ?? []).map((f: any) => f?.external?.url)
+    urls.push(p.properties?.['縮圖']?.url)   // 縮圖也在 Blob 上，一起刪
+    blobUrls = urls.filter((u: any) => typeof u === 'string' && isBlobUrl(u))
   } catch { /* 讀不到就只封存 */ }
   try { await notion.pages.update({ page_id: id, archived: true }) } catch (e) { if (!isGone(e)) throw e }
   return { blobUrls }

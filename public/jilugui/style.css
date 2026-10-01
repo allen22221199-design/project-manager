@@ -165,8 +165,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .grid.small { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 .tile { background: var(--sheet); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
 .tile:hover { border-color: var(--ink-2); }
-.thumb { aspect-ratio: 4 / 3; width: 100%; max-width: 100%; background: var(--paper); display: grid; place-items: center; overflow: hidden; }
+.thumb { aspect-ratio: 4 / 3; width: 100%; max-width: 100%; background: var(--paper); display: grid; place-items: center; overflow: hidden; position: relative; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-badge { position: absolute; right: 6px; bottom: 6px; font-family: var(--font-mono); font-size: 10px; letter-spacing: .06em; padding: 2px 6px; border-radius: 4px; background: rgba(27, 34, 48, .78); color: #fff; }
+.tile-rec { font-size: 12px; color: var(--seal); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ext { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; border: 1px solid var(--ink-2); color: var(--ink-2); padding: 4px 10px; border-radius: 4px; }
 .ext.big { font-size: 18px; padding: 10px 18px; }
 .tile-body { padding: 8px 10px 10px; display: grid; gap: 2px; }

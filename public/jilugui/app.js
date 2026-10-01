@@ -431,7 +431,9 @@
       onclick: () => { s.filter = c; chips.querySelectorAll('.chip').forEach((x) => x.classList.toggle('active', x.dataset.v === c)); loadFiles(true); } })));
     const gridEl = h('div', { class: 'grid' });
     const more = h('button', { type: 'button', class: 'btn block more', text: '載入更多', onclick: () => loadFiles(false) });
-    wrap.appendChild(h('h1', { class: 'page-title', text: '檔案' }));
+    // 管理者可以幫舊檔案（Cloudflare 版時期上傳、沒有縮圖的）一次補縮圖
+    const fillBtn = h('button', { class: 'btn small', type: 'button', text: '產生縮圖', title: '幫還沒有縮圖的 PDF、影片、照片補上縮圖', onclick: () => backfillThumbs(fillBtn) });
+    wrap.appendChild(h('div', { class: 'section-head' }, h('h1', { class: 'page-title', text: '檔案' }), state.user.role === 'admin' ? fillBtn : null));
     wrap.appendChild(search); wrap.appendChild(chips); wrap.appendChild(gridEl); wrap.appendChild(more);
     const paint = () => {
       if (state.view !== 'files') return;
@@ -441,13 +443,47 @@
       more.hidden = !s.cursor; more.disabled = s.loading; more.textContent = s.loading ? '載入中…' : '載入更多';
     };
     state.painter = paint; paint(); ensureLoaded(s, loadFiles);
+    ensureLoaded(state.records, loadRecords);   // 檔案格要標示「屬於哪一筆紀錄」，需要紀錄的標題
     return wrap;
+  }
+  // 幫舊檔案補縮圖：一次處理目前已載入、還沒有縮圖的 PDF／影片／照片。
+  // 存在 Notion 的檔案經 ?raw=1 同網域轉一手再下載（Notion 的網址沒有 CORS，瀏覽器直接抓會被擋）。
+  async function backfillThumbs(btn) {
+    const todo = state.files.items.filter((f) => !f.thumb && f.files[0] && ['image', 'pdf', 'video'].indexOf(kindOf(f.files[0].name, '')) >= 0);
+    if (!todo.length) { toast('目前載入的檔案都有縮圖了'); return; }
+    if (!confirm('要幫 ' + todo.length + ' 個檔案產生縮圖嗎？會逐一下載檔案來產生，檔案大的話要等一下。')) return;
+    btn.disabled = true;
+    let ok = 0, bad = 0;
+    for (let i = 0; i < todo.length; i++) {
+      const f = todo[i];
+      btn.textContent = '產生縮圖 ' + (i + 1) + '/' + todo.length;
+      try {
+        const first = f.files[0];
+        const src = first.url ? first.url : fileUrl(f.id, first.index) + '?raw=1';
+        const res = await fetch(src, { credentials: 'same-origin' });
+        if (!res.ok) throw new Error('下載失敗（' + res.status + '）');
+        const blob = await res.blob();
+        const jpeg = await makeThumb(blob, first.name, blob.type);
+        if (!jpeg) { bad++; continue; }
+        const url = await uploadThumb(jpeg, first.name);
+        const saved = await api('PATCH', '/files/' + f.id, { thumb: url });
+        replaceItem(state.files, saved); ok++; repaint();
+      } catch (e) { bad++; console.warn('補縮圖失敗', f.name, e); }
+    }
+    btn.disabled = false; btn.textContent = '產生縮圖';
+    toast('縮圖完成 ' + ok + ' 個' + (bad ? '，' + bad + ' 個失敗（格式不支援或下載失敗）' : ''), bad ? 'err' : '');
   }
   function fileUrl(id, idx, download) { return API + '/file/' + id + '/' + (idx || 0) + (download ? '?download=1' : ''); }
   function thumbFor(f, big) {
     const first = f.files[0];
     const kind = first ? kindOf(first.name, '') : 'other';
     const box = h('div', { class: big ? 'preview' : 'thumb' });
+    // 小格優先用自動產生的縮圖（PDF 第一頁、影片畫面、照片縮小版），右下角標示檔案種類
+    if (!big && f.thumb) {
+      box.appendChild(h('img', { src: f.thumb, alt: f.name, loading: 'lazy' }));
+      if (kind !== 'image') box.appendChild(h('span', { class: 'thumb-badge', text: kind === 'video' ? '▶ 影片' : kind === 'pdf' ? 'PDF' : (extOf(f.name) || 'FILE') }));
+      return box;
+    }
     if (first && kind === 'image') {
       const img = h('img', { src: first.url || fileUrl(f.id, first.index), alt: f.name, loading: 'lazy' });
       img.addEventListener('error', () => {
@@ -465,10 +501,22 @@
     }
     return box;
   }
+  // 這個檔案屬於哪一筆紀錄（哪個項目）：從已載入的紀錄裡找，找不到就不顯示
+  function relatedTitle(f) {
+    for (const id of f.recordIds || []) {
+      const r = state.records.items.find((x) => x.id === id) || state.active.items.find((x) => x.id === id);
+      if (r && r.title) return r.title;
+    }
+    return '';
+  }
   function fileTile(f) {
+    const rec = relatedTitle(f);
     return h('article', { class: 'tile', tabindex: 0, role: 'button', onclick: () => openFile(f), onkeydown: (e) => { if (e.key === 'Enter') openFile(f); } },
       thumbFor(f, false),
-      h('div', { class: 'tile-body' }, h('div', { class: 'tile-name', text: f.name }), h('div', { class: 'tile-meta', text: [f.category, fileDate(f), f.by].filter(Boolean).join(' · ') })));
+      h('div', { class: 'tile-body' },
+        h('div', { class: 'tile-name', text: f.name }),
+        rec ? h('div', { class: 'tile-rec', title: rec, text: '📌 ' + rec }) : null,
+        h('div', { class: 'tile-meta', text: [f.category, fileDate(f), f.by].filter(Boolean).join(' · ') })));
   }
   // 檔案顯示的日期是「完成日期」，舊資料沒填才退回上傳時間
   function fileDate(f) { return f.date ? fmtDate(f.date) : fmtTime(f.createdAt); }
@@ -669,7 +717,7 @@
     function paint() {
       listEl.replaceChildren.apply(listEl, chosen.map((c, i) => h('div', { class: 'picked-item' + (c.status === 'error' ? ' error' : '') },
         h('div', { class: 'picked-name', text: c.file.name + (c.reason ? '：' + c.reason : '') }),
-        h('div', { class: 'picked-meta', text: c.status === 'error' ? (c.reason ? '不能上傳' : '失敗') : c.status === 'done' ? '完成' : c.status === 'up' ? Math.round(c.progress * 100) + '%' : fmtBytes(c.file.size) }),
+        h('div', { class: 'picked-meta', text: c.status === 'error' ? (c.reason ? '不能上傳' : '失敗') : c.status === 'done' ? '完成' : c.status === 'thumb' ? '產生縮圖…' : c.status === 'up' ? Math.round(c.progress * 100) + '%' : fmtBytes(c.file.size) }),
         c.status === 'wait' || c.reason ? h('button', { type: 'button', class: 'iconbtn', 'aria-label': '移除', html: ICONS.close, onclick: () => { chosen.splice(i, 1); paint(); } }) : h('span'),
         c.status === 'up' ? h('div', { class: 'bar' }, h('div', { class: 'bar-fill', style: 'width:' + Math.round(c.progress * 100) + '%' })) : null)));
     }
@@ -682,8 +730,10 @@
         c.status = 'up'; c.progress = 0; paint();
         try {
           const up = await uploadFile(c.file, (p) => { c.progress = p; paint(); });
+          c.status = 'thumb'; paint();
+          const thumb = await tryThumb(c.file, c.file.name, c.file.type);
           const meta = metaFor ? metaFor(c.file) : {};
-          const entry = await api('POST', '/files', Object.assign({ name: c.file.name, uploads: [up] }, meta));
+          const entry = await api('POST', '/files', Object.assign({ name: c.file.name, uploads: [up], thumb }, meta));
           c.status = 'done'; c.entryId = entry.id; ids.push(entry.id);
           state.files.items.unshift(entry);
         } catch (e) {
@@ -726,6 +776,89 @@
     });
     onProgress(1);
     return { url: blob.url, name: file.name, size: file.size, type };
+  }
+
+  // ---------- 縮圖 ----------
+  // 上傳時在瀏覽器裡產生一張小圖（最長邊 480px 的 JPEG）：PDF 取第一頁、影片抓約第 1 秒的畫面、照片縮小。
+  // 其他格式（Office、XMind、DWG…）瀏覽器畫不出來，就維持顯示副檔名。
+  const THUMB_MAX = 480;
+  let pdfjsLib = null;
+  async function loadPdfJs() {
+    if (pdfjsLib) return pdfjsLib;
+    const base = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/';
+    const m = await import(base + 'pdf.min.mjs');
+    m.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
+    pdfjsLib = m;
+    return m;
+  }
+  function fitCanvas(w, h) {
+    const scale = Math.min(1, THUMB_MAX / Math.max(w || 1, h || 1));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round((w || 1) * scale)); c.height = Math.max(1, Math.round((h || 1) * scale));
+    return c;
+  }
+  function canvasToJpeg(c) { return new Promise((resolve) => c.toBlob((b) => resolve(b), 'image/jpeg', 0.82)); }
+  async function thumbFromImage(blob) {
+    const bmp = await createImageBitmap(blob);
+    const c = fitCanvas(bmp.width, bmp.height);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    if (bmp.close) bmp.close();
+    return canvasToJpeg(c);
+  }
+  async function thumbFromPdf(blob) {
+    const pdfjs = await loadPdfJs();
+    const doc = await pdfjs.getDocument({ data: await blob.arrayBuffer() }).promise;
+    const page = await doc.getPage(1);
+    const v1 = page.getViewport({ scale: 1 });
+    const vp = page.getViewport({ scale: Math.min(2, THUMB_MAX / Math.max(v1.width, v1.height)) });
+    const c = document.createElement('canvas');
+    c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    if (doc.destroy) doc.destroy();
+    return canvasToJpeg(c);
+  }
+  function thumbFromVideo(blob) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob);
+      const v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
+      let settled = false;
+      const finish = (b) => { if (settled) return; settled = true; URL.revokeObjectURL(url); resolve(b); };
+      const giveUp = (e) => { if (settled) return; settled = true; URL.revokeObjectURL(url); reject(e || new Error('影片無法解碼')); };
+      const timer = setTimeout(() => giveUp(new Error('影片讀取逾時')), 20000);
+      v.addEventListener('loadeddata', () => { try { v.currentTime = Math.min(1, (v.duration || 2) / 2); } catch (e) { clearTimeout(timer); giveUp(e); } });
+      v.addEventListener('seeked', async () => {
+        clearTimeout(timer);
+        try {
+          const c = fitCanvas(v.videoWidth || 320, v.videoHeight || 240);
+          c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+          finish(await canvasToJpeg(c));
+        } catch (e) { giveUp(e); }
+      });
+      v.addEventListener('error', () => { clearTimeout(timer); giveUp(v.error); });
+    });
+  }
+  async function makeThumb(blob, name, type) {
+    const kind = kindOf(name, type || blob.type);
+    const e = extOf(name).toLowerCase();
+    if (kind === 'image' && e !== 'heic' && e !== 'svg') return thumbFromImage(blob);
+    if (kind === 'pdf') return thumbFromPdf(blob);
+    if (kind === 'video') return thumbFromVideo(blob);
+    return null;
+  }
+  async function uploadThumb(jpeg, name) {
+    const client = await loadBlobClient();
+    const base = String(name || 'file').replace(/\.[^.]+$/, '');
+    const path = blobPath(base + '.jpg').replace('jilugui/', 'jilugui/thumbs/');
+    const blob = await client.upload(path, jpeg, { access: 'public', handleUploadUrl: API + '/upload', contentType: 'image/jpeg' });
+    return blob.url;
+  }
+  // 產生縮圖失敗不影響上傳，只是那個檔案格會顯示副檔名
+  async function tryThumb(blob, name, type) {
+    try { const j = await makeThumb(blob, name, type); return j ? await uploadThumb(j, name) : ''; }
+    catch (e) { console.warn('縮圖失敗', name, e); return ''; }
   }
 
   // ---------- 面板 ----------
