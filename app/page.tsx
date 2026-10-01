@@ -261,6 +261,10 @@ export default function Page() {
   const [reminderOk, setReminderOk] = useState(false)
   // 管理者登入 / 私人行事曆
   const [isAdmin, setIsAdmin] = useState(false)
+  // 登入角色。null＝沒登入。isAdmin 只在 role==='admin' 時為 true——
+  // 行銷帳號也會通過 /api/auth/me 的 authed，但不能因此拿到管理者的頁面。
+  const [role, setRole] = useState<'admin' | 'marketing' | null>(null)
+  const canSeeAdminHub = role === 'admin' || role === 'marketing'
   // 會議事項
   // 清單模式／週一晨會流程模式（同一份進行中的議題，換一種排法）
   const [editSub, setEditSub] = useState<string | null>(null)   // 正在編輯的支線任務：`${itemId}:${行號}`
@@ -579,14 +583,18 @@ export default function Page() {
   // 開站檢查是否已登入管理者（並檢查 Google 日曆連結狀態）
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
-      if (d.authed) { setIsAdmin(true); checkGcalStatus(); fetchPrivatePersonTasks() }
+      if (d.authed) {
+        const r: 'admin' | 'marketing' = d.role === 'marketing' ? 'marketing' : 'admin'
+        setRole(r)
+        if (r === 'admin') { setIsAdmin(true); checkGcalStatus(); fetchPrivatePersonTasks() }
+      }
     }).catch(() => {})
     // 記住上次登入帳號，自動帶入
     try { const u = localStorage.getItem('adminUser'); if (u) setLoginUser(u) } catch {}
     // OAuth 導回後的提示
     const p = new URLSearchParams(window.location.search).get('gcal')
     if (p) {
-      if (p === 'ok') { setIsAdmin(true); checkGcalStatus() }
+      if (p === 'ok') { setIsAdmin(true); setRole('admin'); checkGcalStatus() }
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [])
@@ -663,14 +671,17 @@ export default function Page() {
       const d = await r.json()
       if (!r.ok) { setLoginErr(d.error ?? '登入失敗'); return }
       try { localStorage.setItem('adminUser', user) } catch {}
-      setIsAdmin(true); setShowLogin(false); setLoginPass('')  // 保留帳號，只清密碼
-      checkGcalStatus(); fetchPrivatePersonTasks()
+      const r: 'admin' | 'marketing' = d.role === 'marketing' ? 'marketing' : 'admin'
+      setRole(r)
+      setShowLogin(false); setLoginPass('')  // 保留帳號，只清密碼
+      if (r === 'admin') { setIsAdmin(true); checkGcalStatus(); fetchPrivatePersonTasks() }
+      else setView('admin')  // 行銷登入後直接帶到他唯一多出來的那一頁
     } catch (e: any) { setLoginErr(e.message ?? '網路錯誤') }
     finally { setLoginLoading(false) }
   }
   async function doLogout() {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
-    setIsAdmin(false); setPrivateEvents([]); setGcalConnected(null)
+    setIsAdmin(false); setRole(null); setPrivateEvents([]); setGcalConnected(null)
     if (view === 'private' || view === 'admin') setView('dashboard')
   }
   // 私人行事曆＝直接讀寫 Google 日曆
@@ -2104,7 +2115,7 @@ export default function Page() {
     },
     // 公司其他後台的入口（客服、紀錄櫃、LINE/Meta 官方後台）。
     // 只有登入管理者才看得到——一般同事用不到，也不該看到客服名單。
-    ...(isAdmin ? [{
+    ...(canSeeAdminHub ? [{
       title: '管理',
       items: [
         { v: 'admin' as View, icon: '🗂️', label: '管理', short: '管理', onClick: () => setView('admin') },
@@ -4476,7 +4487,7 @@ export default function Page() {
         {view === 'doors' && <DoorOrderForm />}
 
         {/* 管理：公司各後台的入口頁。只給管理者，登出後這一頁會自動退回總覽。 */}
-        {view === 'admin' && isAdmin && <AdminHub />}
+        {view === 'admin' && canSeeAdminHub && <AdminHub role={role} />}
 
       </main>
       </div>

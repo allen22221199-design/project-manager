@@ -9,6 +9,8 @@
 // 用 iframe 包起來只會被對方的 X-Frame-Options 擋掉，或是 cookie 過不去變成白畫面。
 // 開新分頁最誠實，也不會讓人以為資料是從這裡來的。
 
+export type Role = 'admin' | 'marketing'
+
 type Link = {
   name: string
   desc: string
@@ -18,6 +20,8 @@ type Link = {
   internal?: boolean
   /** 需要另外登入的，先講清楚，不要讓人點進去才發現又要打密碼 */
   note?: string
+  /** 哪些角色看得到。沒寫＝兩種角色都看得到 */
+  roles?: Role[]
 }
 
 type Group = { title: string; hint: string; links: Link[] }
@@ -41,6 +45,7 @@ const GROUPS: Group[] = [
         icon: '🗄️',
         internal: true,
         note: '用登入碼進入',
+        roles: ['admin'],   // 公司內部文件，行銷用不到
       },
     ],
   },
@@ -78,17 +83,25 @@ const GROUPS: Group[] = [
   },
 ]
 
-export default function AdminHub() {
+export default function AdminHub({ role }: { role: Role | null }) {
+  // 沒拿到角色就當行銷（看得最少）。寧可少給，不要多給。
+  const r: Role = role === 'admin' ? 'admin' : 'marketing'
+  const groups = GROUPS
+    .map(g => ({ ...g, links: g.links.filter(l => !l.roles || l.roles.includes(r)) }))
+    .filter(g => g.links.length > 0)
+
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-1)' }}>管理</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-3)' }}>
-          公司各個後台的入口。點了會另開分頁，這一頁不會跑掉。
+          {r === 'marketing'
+            ? '行銷會用到的後台入口。點了會另開分頁，這一頁不會跑掉。'
+            : '公司各個後台的入口。點了會另開分頁，這一頁不會跑掉。'}
         </p>
       </div>
 
-      {GROUPS.map(g => (
+      {groups.map(g => (
         <section key={g.title}>
           <div className="flex items-baseline gap-2 mb-2 px-0.5">
             <h2 className="text-sm font-semibold" style={{ color: 'var(--text-2)' }}>{g.title}</h2>
