@@ -188,6 +188,7 @@ export default function Tour({ steps, step, onNext, onPrev, onJump, onClose, onG
 
   // ── 卡片放哪裡 ──────────────────────────────────────────────
   const th = Math.min(cardH, vp.h - 24)
+  let cardW = CARD_W
   let pos: { left: number; top: number } | null = null
   let side: Side = 'none'
   let sheet: 'bottom' | 'top' | 'center' = 'center'
@@ -196,31 +197,36 @@ export default function Tour({ steps, step, onNext, onPrev, onJump, onClose, onG
     if (box) {
       const below = vp.h - (box.top + box.height) - 16
       const above = box.top - 16
-      sheet = (below >= 260 || below >= above) ? 'bottom' : 'top'
-      innerMax = clamp((sheet === 'bottom' ? below : above) - 16, 220, vp.h * 0.6)
+      // 整頁高的重點（整張表單）怎麼擺都放不下：固定貼底部、面板縮到最小，露出重點的開頭（表單的開頭比結尾重要）
+      const tall = box.height > vp.h - 276
+      sheet = tall || below >= 260 || below >= above ? 'bottom' : 'top'
+      innerMax = tall ? 220 : clamp((sheet === 'bottom' ? below : above) - 16, 220, vp.h * 0.6)
     }
   } else if (box) {
-    // 右 → 下 → 上 → 左，第一個完全不會蓋到重點的位置就用。
+    // 右 → 下 → 上 → 左，第一個完全不會蓋到重點的位置就用。左右兩邊空間不夠寬時卡片可以縮到 300。
     // 重點太大（整張表單）時哪一邊都會蓋到，就挑蓋到最少的那一邊，而且不畫箭頭（會指到卡片自己身上）。
     const right = box.left + box.width
     const bottom = box.top + box.height
-    const cands: { side: Side; left: number; top: number }[] = [
-      { side: 'right', left: right + GAP, top: box.top },
-      { side: 'bottom', left: box.left, top: bottom + GAP },
-      { side: 'top', left: box.left, top: box.top - GAP - th },
-      { side: 'left', left: box.left - GAP - CARD_W, top: box.top },
+    const wR = clamp(vp.w - EDGE - (right + GAP), 300, CARD_W)
+    const wL = clamp(box.left - GAP - EDGE, 300, CARD_W)
+    const cands: { side: Side; left: number; top: number; w: number }[] = [
+      { side: 'right', left: right + GAP, top: box.top, w: wR },
+      { side: 'bottom', left: box.left, top: bottom + GAP, w: CARD_W },
+      { side: 'top', left: box.left, top: box.top - GAP - th, w: CARD_W },
+      { side: 'left', left: box.left - GAP - wL, top: box.top, w: wL },
     ]
-    let best = { side: 'none' as Side, left: EDGE, top: EDGE, area: Infinity }
+    let best = { side: 'none' as Side, left: EDGE, top: EDGE, w: CARD_W, area: Infinity }
     for (const c of cands) {
-      const left = clamp(c.left, EDGE, vp.w - CARD_W - EDGE)
+      const left = clamp(c.left, EDGE, vp.w - c.w - EDGE)
       const top = clamp(c.top, EDGE, vp.h - th - EDGE)
-      const ox = Math.max(0, Math.min(left + CARD_W, right) - Math.max(left, box.left))
+      const ox = Math.max(0, Math.min(left + c.w, right) - Math.max(left, box.left))
       const oy = Math.max(0, Math.min(top + th, bottom) - Math.max(top, box.top))
       const area = ox * oy
-      if (area < best.area) best = { side: c.side, left, top, area }
+      if (area < best.area) best = { side: c.side, left, top, w: c.w, area }
       if (area === 0) break
     }
     pos = { left: best.left, top: best.top }
+    cardW = best.w
     side = best.area === 0 ? best.side : 'none'
   } else {
     pos = { left: (vp.w - CARD_W) / 2, top: (vp.h - th) / 2 }
@@ -232,8 +238,8 @@ export default function Tour({ steps, step, onNext, onPrev, onJump, onClose, onG
     const cy = box.top + box.height / 2
     if (side === 'right') arrow = { left: -8, top: clamp(cy - pos.top, 24, th - 24) }
     else if (side === 'left') arrow = { right: -8, top: clamp(cy - pos.top, 24, th - 24) }
-    else if (side === 'bottom') arrow = { top: -8, left: clamp(cx - pos.left, 24, CARD_W - 24) }
-    else arrow = { bottom: -8, left: clamp(cx - pos.left, 24, CARD_W - 24) }
+    else if (side === 'bottom') arrow = { top: -8, left: clamp(cx - pos.left, 24, cardW - 24) }
+    else arrow = { bottom: -8, left: clamp(cx - pos.left, 24, cardW - 24) }
   }
 
   const contentIdx = step            // 第幾步（不含歡迎卡）
@@ -276,7 +282,7 @@ export default function Tour({ steps, step, onNext, onPrev, onJump, onClose, onG
       {/* 說明卡片 */}
       <div ref={cardRef} onClick={e => e.stopPropagation()}
         className={`tour-card ${mobile ? `sheet-${sheet}` : ''}`}
-        style={mobile ? undefined : { left: pos!.left, top: pos!.top, width: CARD_W }}>
+        style={mobile ? undefined : { left: pos!.left, top: pos!.top, width: cardW }}>
         {arrow && <span className={`tour-arrow ${side}`} style={arrow} />}
         {mobile && sheet !== 'center' && <span className="tour-handle" aria-hidden="true" />}
         <div className="tour-inner" style={innerMax ? { maxHeight: innerMax } : undefined}>
@@ -337,14 +343,17 @@ export default function Tour({ steps, step, onNext, onPrev, onJump, onClose, onG
               </div>
             )}
 
-            <div className="tour-foot">
-              {!isFirst && <button className="tour-btn ghost" onClick={onPrev}>← 上一步</button>}
-              <button ref={primaryRef} className="tour-btn primary" onClick={isLast ? finish : onNext}>
-                {isFirst ? '開始導覽（約 3 分鐘）' : isLast ? '完成' : '下一步 →'}
-              </button>
+            {/* 按鈕黏在卡片底部：內容太長要捲的時候，「下一步」也一直看得到 */}
+            <div className="tour-footer">
+              <div className="tour-foot">
+                {!isFirst && <button className="tour-btn ghost" onClick={onPrev}>← 上一步</button>}
+                <button ref={primaryRef} className="tour-btn primary" onClick={isLast ? finish : onNext}>
+                  {isFirst ? '開始導覽（約 3 分鐘）' : isLast ? '完成' : '下一步 →'}
+                </button>
+              </div>
+              {isFirst && <button className="tour-later" onClick={skip}>先自己摸索，之後再看</button>}
+              {!mobile && !isFirst && <p className="tour-keys">鍵盤 ← → 可翻頁，Esc 關閉</p>}
             </div>
-            {isFirst && <button className="tour-later" onClick={skip}>先自己摸索，之後再看</button>}
-            {!mobile && !isFirst && <p className="tour-keys">鍵盤 ← → 可翻頁，Esc 關閉</p>}
           </div>
         </div>
       </div>

@@ -142,7 +142,9 @@ body {
   transition: left .25s ease, top .25s ease;
   font-family: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
 }
-.tour-inner { max-height: calc(100vh - 24px); overflow-y: auto; padding: 16px 20px 18px; border-radius: 14px; }
+.tour-inner { max-height: calc(100vh - 24px); overflow-y: auto; padding: 16px 20px 0; border-radius: 14px; }
+/* 按鈕區黏在捲動區的底部：內容再長，「下一步」都看得到 */
+.tour-footer { position: sticky; bottom: 0; background: #fff; padding: 8px 0 18px; margin-top: 4px; }
 @keyframes tourFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .tour-body { animation: tourFade .22s ease both; }
 /* 箭頭：一個轉 45° 的小方塊，露出朝向重點的兩個邊 */
@@ -194,7 +196,7 @@ body {
 .tour-go button { min-height: 40px; padding: 4px 12px; border-radius: 10px; background: #F1F3F6; font-size: 15px; font-weight: 600; color: #14181F; border: 1px solid #C7CDD8; }
 .tour-go button:hover { border-color: #1D4ED8; color: #1D4ED8; }
 
-.tour-foot { display: flex; gap: 10px; margin-top: 4px; }
+.tour-foot { display: flex; gap: 10px; }
 .tour-btn  { min-height: 44px; border-radius: 10px; font-size: 16px; font-weight: 700; padding: 0 16px; }
 .tour-btn.primary { flex: 1; background: #1D4ED8; color: #fff; }
 .tour-btn.primary:hover { background: #1A43BA; }
@@ -215,8 +217,8 @@ body {
   .tour-card.sheet-center .tour-inner { max-height: 86vh; }
   .tour-handle { display: block; width: 40px; height: 4px; border-radius: 999px; background: #C7CDD8; margin: 8px auto 0; }
   .tour-title { font-size: 19px; }
-  .tour-chapters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
-  .tour-chap { flex: none; }
+  .tour-toc li { padding: 6px 10px; }
+  .tour-footer { border-top: 1px solid #E3E7EE; padding-top: 10px; }
   .tour-go button { flex: 1 1 45%; }
 }
 @media (prefers-reduced-motion: reduce) {
