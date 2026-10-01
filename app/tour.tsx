@@ -1,46 +1,160 @@
 'use client'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 
-export type TourStep = { view?: string; target?: string; title: string; body: string; demo?: { type: 'type' | 'click' | 'drag'; text?: string } }
+export type TourStep = {
+  view?: string            // 這一步要切到哪一頁
+  target?: string          // 要框起來的元素（CSS selector）；沒有就把卡片放正中央
+  chapter?: string         // 章節名；歡迎卡與結尾卡沒有
+  title: string
+  body: string | string[]  // 一段話，或條列
+  numbered?: boolean       // 條列要不要編號（講操作順序時用）
+  example?: string         // 「例如」可以輸入什麼，顯示在卡片裡
+  tip?: string             // 補充提醒
+  demo?: { type: 'click' | 'drag' | 'type'; text?: string }   // 電腦版的滑鼠示範；手機改成在重點區域中央閃一下
+}
 
-// 新手引導：背景變暗、框住(spotlight)重點區域、一步步說明每項功能
-export default function Tour({
-  steps, step, onNext, onPrev, onClose,
-}: {
+// 看過或按過「先自己摸索」就記在這台裝置上，之後不再自動跳出。
+// 中途關掉則記住看到第幾步，下次打開可以接著看。
+const DONE_KEY = 'hs_tour_done'
+const STEP_KEY = 'hs_tour_step'
+const ls = {
+  get: (k: string) => { try { return localStorage.getItem(k) } catch { return null } },
+  set: (k: string, v: string) => { try { localStorage.setItem(k, v) } catch {} },
+  del: (k: string) => { try { localStorage.removeItem(k) } catch {} },
+}
+export const tourSeen = () => ls.get(DONE_KEY) === '1'
+
+type Box = { top: number; left: number; width: number; height: number }
+type Chapter = { name: string; first: number; count: number }
+type Side = 'right' | 'bottom' | 'top' | 'left' | 'none'
+
+// 連續同名的步驟算同一章
+function chaptersOf(steps: TourStep[]): Chapter[] {
+  const out: Chapter[] = []
+  steps.forEach((s, i) => {
+    if (!s.chapter) return
+    const last = out[out.length - 1]
+    if (last && last.name === s.chapter) last.count += 1
+    else out.push({ name: s.chapter, first: i, count: 1 })
+  })
+  return out
+}
+
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(n, hi))
+const isFixed = (el: HTMLElement | null) => {
+  for (let n = el; n && n !== document.body; n = n.parentElement) if (getComputedStyle(n).position === 'fixed') return true
+  return false
+}
+
+const CARD_W = 380
+const GAP = 14   // 卡片與重點區域之間留給箭頭的距離
+const EDGE = 16  // 卡片離畫面邊緣至少這麼多
+
+// 新手教學：背景變暗、框住重點區域、一步一步講。
+// 電腦版是貼在重點旁邊、帶箭頭的卡片；手機版是從底部（或頂部）滑出來的面板，不蓋住重點。
+export default function Tour({ steps, step, onNext, onPrev, onJump, onClose, onGo }: {
   steps: TourStep[]
   step: number
   onNext: () => void
   onPrev: () => void
+  onJump: (n: number) => void
   onClose: () => void
+  onGo?: (view: string) => void   // 結尾卡的「接下來試試看」：關掉教學並切到那一頁
 }) {
-  const [box, setBox] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
-  const [typed, setTyped] = useState('')
-  const [cursor, setCursor] = useState<{ x: number; y: number; down: boolean } | null>(null)
-  const [paint, setPaint] = useState(0)   // 拖曳塗色示範：目前塗了幾格
-  const cardRef = useRef<HTMLDivElement>(null)
-  const [cardH, setCardH] = useState(250)  // 說明卡實際高度；用來定位，避免「下一步」被推出畫面而按不到
   const cur = steps[step]
+  const total = steps.length
+  const isFirst = step === 0
+  const isLast = step === total - 1
+  const chapters = chaptersOf(steps)
+  const curChapter = chapters.find(c => step >= c.first && step < c.first + c.count)
 
-  // 打字示範：一個字一個字打出，打完停一下再重來
+  const [box, setBox] = useState<Box | null>(null)
+  const [cursor, setCursor] = useState<{ x: number; y: number; down: boolean } | null>(null)
+  const [cardH, setCardH] = useState(320)   // 卡片實際高度（每步文字長短不一），定位時才能保證整張卡含按鈕都在畫面內
+  const [vp, setVp] = useState({ w: 1440, h: 900 })
+  const cardRef = useRef<HTMLDivElement>(null)
+  const primaryRef = useRef<HTMLButtonElement>(null)
+  // 上次中途關掉時看到第幾步；只在剛打開時讀一次
+  const [resumeAt] = useState(() => { const n = parseInt(ls.get(STEP_KEY) || '', 10); return n > 0 && n < total - 1 ? n : 0 })
+
+  const finish = () => { ls.set(DONE_KEY, '1'); ls.del(STEP_KEY); onClose() }
+  const skip = () => { ls.set(DONE_KEY, '1'); onClose() }
+  const go = (v: string) => { finish(); onGo?.(v) }
+
+  useEffect(() => { if (step > 0 && step < total - 1) ls.set(STEP_KEY, String(step)) }, [step, total])
+
   useEffect(() => {
-    const demo = cur?.demo
-    if (!demo || demo.type !== 'type' || !demo.text) { setTyped(''); return }
-    const full = demo.text
-    let i = 0
-    let timer: ReturnType<typeof setTimeout>
-    const tick = () => {
-      if (i <= full.length) { setTyped(full.slice(0, i)); i += 1; timer = setTimeout(tick, 115) }
-      else { timer = setTimeout(() => { i = 0; setTyped(''); timer = setTimeout(tick, 350) }, 1500) }
+    const upd = () => setVp({ w: window.innerWidth, h: window.innerHeight })
+    upd()
+    window.addEventListener('resize', upd)
+    return () => window.removeEventListener('resize', upd)
+  }, [])
+
+  // 鍵盤：→ 下一步、← 上一步、Esc 關閉（每次 render 重綁，才拿得到最新的 step）
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); skip() }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); if (isLast) finish(); else onNext() }
+      else if (e.key === 'ArrowLeft' && !isFirst) { e.preventDefault(); onPrev() }
     }
-    tick()
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  })
+
+  useEffect(() => { primaryRef.current?.focus({ preventScroll: true }) }, [step])
+
+  // 量重點區域的位置。手機要把它捲到畫面上半部（卡片在下半部）；電腦捲到中間。
+  // 固定在畫面上的東西（底部導覽列、右下角圓鈕）捲了也不會動，跳過不捲。
+  useEffect(() => {
+    if (!cur) return
+    const measure = (mayScroll: boolean) => {
+      if (!cur.target) { setBox(null); return }
+      const els = Array.from(document.querySelectorAll(cur.target)) as HTMLElement[]
+      // 同一個 target 可能有電腦版側欄與手機版底部列兩個 → 挑看得到（有實際大小）的那個
+      const el = els.find(e => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4 }) || els[0]
+      if (!el) { setBox(null); return }
+      if (mayScroll && !isFixed(el)) {
+        const vh = window.innerHeight
+        const r0 = el.getBoundingClientRect()
+        const instant = 'instant' as ScrollBehavior   // 頁面有 scroll-behavior: smooth，用 auto 會變成動畫、量到一半的位置
+        if (window.innerWidth < 768) {
+          if (r0.top < 64 || r0.bottom > vh * 0.5) {
+            el.scrollIntoView({ block: 'start', behavior: instant })
+            window.scrollBy({ top: -72, behavior: instant })   // 讓開手機版的頂部列
+          }
+        } else if (r0.top < 8 || r0.bottom > vh - 8) {
+          el.scrollIntoView({ block: 'center', behavior: instant })
+        }
+      }
+      const r = el.getBoundingClientRect()
+      if (r.width < 4 || r.height < 4) { setBox(null); return }
+      const pad = 8
+      setBox({ top: r.top - pad, left: r.left - pad, width: r.width + pad * 2, height: r.height + pad * 2 })
+    }
+    // 切頁／資料載入後再量幾次
+    const raf = requestAnimationFrame(() => measure(true))
+    const t1 = setTimeout(() => measure(true), 120)
+    const t2 = setTimeout(() => measure(true), 400)
+    const onMove = () => measure(false)
+    window.addEventListener('resize', onMove)
+    window.addEventListener('scroll', onMove, true)
+    return () => {
+      cancelAnimationFrame(raf); clearTimeout(t1); clearTimeout(t2)
+      window.removeEventListener('resize', onMove)
+      window.removeEventListener('scroll', onMove, true)
+    }
   }, [step, cur])
 
-  // 滑鼠箭頭示範：游標移動 →（點擊 / 打字 / 拖曳塗色），循環播放，讓觀看者看到實際操作
+  useLayoutEffect(() => {
+    if (cardRef.current) setCardH(cardRef.current.offsetHeight)
+  }, [step, box, vp])
+
+  const mobile = vp.w < 768
+
+  // 電腦版的滑鼠示範：游標滑到重點上按一下（或按住拖一段），循環播放
   useEffect(() => {
     const demo = cur?.demo
-    if (!demo || !box) { setCursor(null); setPaint(0); return }
+    if (!demo || !box || mobile || demo.type === 'type') { setCursor(null); return }
     const b = box
     let timers: ReturnType<typeof setTimeout>[] = []
     const at = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms))
@@ -49,149 +163,98 @@ export default function Tour({
       clearAll()
       if (demo.type === 'click') {
         setCursor({ x: b.left + b.width * 0.78, y: b.top - 38, down: false })
-        at(80, () => setCursor({ x: b.left + b.width / 2, y: b.top + b.height / 2, down: false }))  // 游標滑向目標
-        at(820, () => setCursor(c => c && { ...c, down: true }))   // 按下
+        at(80, () => setCursor({ x: b.left + b.width / 2, y: b.top + b.height / 2, down: false }))
+        at(820, () => setCursor(c => c && { ...c, down: true }))
         at(1040, () => setCursor(c => c && { ...c, down: false }))
-        at(2400, run)  // 循環
-      } else if (demo.type === 'type') {
-        const inputY = b.top + (b.height > 120 ? 66 : b.height / 2)
-        setCursor({ x: b.left + b.width * 0.62, y: b.top - 26, down: false })
-        at(80, () => setCursor({ x: b.left + 40, y: inputY, down: false }))  // 滑到輸入框
-        at(760, () => setCursor(c => c && { ...c, down: true }))   // 點進去
-        at(940, () => setCursor(c => c && { ...c, down: false }))
-        // 之後打字由 typed 動畫接手；游標停在輸入框附近
-      } else if (demo.type === 'drag') {
-        const y = b.top + Math.min(b.height * 0.5, b.height - 70)
-        const x0 = b.left + b.width * 0.14
-        const x1 = b.left + b.width * 0.42
-        setPaint(0)
+        at(2600, run)
+      } else {
+        const y = b.top + Math.min(b.height * 0.5, b.height - 30)
+        const x0 = b.left + b.width * 0.18
+        const x1 = b.left + b.width * 0.62
         setCursor({ x: b.left + b.width * 0.5, y: b.top - 30, down: false })
-        at(80, () => setCursor({ x: x0, y, down: false }))         // 滑到起點
-        at(760, () => { setCursor(c => c && { ...c, down: true }); setPaint(1) })  // 按住
-        at(1020, () => { setCursor({ x: x0 + (x1 - x0) * 0.35, y, down: true }); setPaint(2) })  // 拖…塗色
-        at(1300, () => { setCursor({ x: x0 + (x1 - x0) * 0.7, y, down: true }); setPaint(3) })
-        at(1580, () => { setCursor({ x: x1, y, down: true }); setPaint(4) })
-        at(1860, () => setCursor(c => c && { ...c, down: false }))  // 放開
-        at(2900, () => { setPaint(0); run() })  // 重來
+        at(80, () => setCursor({ x: x0, y, down: false }))
+        at(760, () => setCursor({ x: x0, y, down: true }))
+        at(1000, () => setCursor({ x: x1, y, down: true }))
+        at(1900, () => setCursor({ x: x1, y, down: false }))
+        at(3000, run)
       }
     }
     run()
     return clearAll
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, box])
-
-  useEffect(() => {
-    if (!cur) return
-    let raf = 0
-    const measure = () => {
-      if (!cur.target) { setBox(null); return }
-      // 同一個 target 可能有電腦版側欄與手機版底部列兩個 → 挑「看得到」(有實際大小)的那個
-      const els = Array.from(document.querySelectorAll(cur.target)) as HTMLElement[]
-      const el = els.find(e => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4 }) || els[0]
-      if (!el) { setBox(null); return }
-      // 若重點區域不在畫面內（頁面下方），先「立即」捲進畫面（用 auto 避免動畫造成量測偏差）
-      const r0 = el.getBoundingClientRect()
-      if (r0.top < 8 || r0.bottom > window.innerHeight - 8) {
-        el.scrollIntoView({ block: 'center', behavior: 'auto' })
-      }
-      const r = el.getBoundingClientRect()
-      if (r.width < 4 || r.height < 4) { setBox(null); return }
-      const pad = 8
-      setBox({ top: r.top - pad, left: r.left - pad, width: r.width + pad * 2, height: r.height + pad * 2 })
-    }
-    // 等切換頁面／資料載入後再量一次位置
-    const t1 = setTimeout(measure, 80)
-    const t2 = setTimeout(measure, 320)
-    raf = requestAnimationFrame(measure)
-    window.addEventListener('resize', measure)
-    window.addEventListener('scroll', measure, true)
-    return () => {
-      clearTimeout(t1); clearTimeout(t2); cancelAnimationFrame(raf)
-      window.removeEventListener('resize', measure)
-      window.removeEventListener('scroll', measure, true)
-    }
-  }, [step, cur])
-
-  // 量測說明卡實際高度（各步驟文字長短不一），定位時才能確保整張卡含「下一步」都留在畫面內
-  useLayoutEffect(() => {
-    if (cardRef.current) setCardH(cardRef.current.offsetHeight)
-  }, [step, box])
+  }, [step, box, mobile])
 
   if (!cur) return null
-  const isFirst = step === 0
-  const isLast = step === steps.length - 1
-  const vw = typeof window !== 'undefined' ? window.innerWidth : 1440
-  const vh = typeof window !== 'undefined' ? window.innerHeight : 900
-  const TW = 340
-  const th = Math.min(cardH, vh - 32)  // 用實測卡高，且不超過畫面；確保定位後整張卡（含按鈕）在畫面內
 
-  // 決定說明框位置：右→下→上→左，選第一個放得下的；沒有 target 就置中
-  let tip = { left: (vw - TW) / 2, top: (vh - th) / 2 }
-  if (box) {
-    const bigTarget = box.width > vw * 0.62 && box.height > vh * 0.5
-    if (bigTarget) {
-      // 目標很大（例如排程表）→ 放右下角，不擋住示範操作
-      tip = { left: vw - TW - 24, top: vh - th - 24 }
-    } else if (box.left + box.width + 16 + TW <= vw) tip = { left: box.left + box.width + 16, top: box.top }
-    else if (box.top + box.height + 16 + th <= vh) tip = { left: box.left, top: box.top + box.height + 16 }
-    else if (box.top - 16 - th >= 0) tip = { left: box.left, top: box.top - 16 - th }
-    else tip = { left: box.left - 16 - TW, top: box.top }
-    tip.left = Math.max(16, Math.min(tip.left, vw - TW - 16))
-    tip.top = Math.max(16, Math.min(tip.top, vh - th - 16))
+  // ── 卡片放哪裡 ──────────────────────────────────────────────
+  const th = Math.min(cardH, vp.h - 24)
+  let pos: { left: number; top: number } | null = null
+  let side: Side = 'none'
+  let sheet: 'bottom' | 'top' | 'center' = 'center'
+  if (mobile) {
+    if (box) {
+      // 預設貼底部；重點會被底部面板蓋到、而上面又放得下時，改貼頂部
+      const intrudes = box.top + box.height > vp.h - th - 12
+      const topFree = box.top > th + 12
+      sheet = intrudes && topFree ? 'top' : 'bottom'
+    }
+  } else if (box) {
+    const right = box.left + box.width
+    const bottom = box.top + box.height
+    const big = box.width > vp.w * 0.62 && box.height > vp.h * 0.5
+    if (big) pos = { left: vp.w - CARD_W - 24, top: vp.h - th - 24 }   // 重點很大（整個表單）→ 放右下角不擋示範
+    else if (right + GAP + CARD_W <= vp.w - EDGE) { side = 'right'; pos = { left: right + GAP, top: box.top } }
+    else if (bottom + GAP + th <= vp.h - EDGE) { side = 'bottom'; pos = { left: box.left, top: bottom + GAP } }
+    else if (box.top - GAP - th >= EDGE) { side = 'top'; pos = { left: box.left, top: box.top - GAP - th } }
+    else if (box.left - GAP - CARD_W >= EDGE) { side = 'left'; pos = { left: box.left - GAP - CARD_W, top: box.top } }
+    else pos = { left: vp.w - CARD_W - 24, top: vp.h - th - 24 }
+    pos = { left: clamp(pos.left, EDGE, vp.w - CARD_W - EDGE), top: clamp(pos.top, EDGE, vp.h - th - EDGE) }
+  } else {
+    pos = { left: (vp.w - CARD_W) / 2, top: (vp.h - th) / 2 }
+  }
+  // 箭頭對準重點區域的中心
+  let arrow: CSSProperties | null = null
+  if (box && pos && side !== 'none') {
+    const cx = box.left + box.width / 2
+    const cy = box.top + box.height / 2
+    if (side === 'right') arrow = { left: -8, top: clamp(cy - pos.top, 24, th - 24) }
+    else if (side === 'left') arrow = { right: -8, top: clamp(cy - pos.top, 24, th - 24) }
+    else if (side === 'bottom') arrow = { top: -8, left: clamp(cx - pos.left, 24, CARD_W - 24) }
+    else arrow = { bottom: -8, left: clamp(cx - pos.left, 24, CARD_W - 24) }
   }
 
+  const contentIdx = step            // 第幾步（不含歡迎卡）
+  const contentTotal = total - 2     // 共幾步（不含歡迎、結尾）
+  const pct = (step / (total - 1)) * 100
+
+  const bodyEl = Array.isArray(cur.body)
+    ? (cur.numbered
+      ? <ol className="tour-list num">{cur.body.map((t, i) => <li key={i}>{t}</li>)}</ol>
+      : <ul className="tour-list">{cur.body.map((t, i) => <li key={i}>{t}</li>)}</ul>)
+    : <p className="tour-p">{cur.body}</p>
+
   return (
-    <div className="fixed inset-0" style={{ zIndex: 100 }}>
-      {/* 全螢幕點擊攔截（透明，避免導覽中誤觸頁面）*/}
-      <div className="absolute inset-0" onClick={e => e.stopPropagation()} />
-      {/* 背景變暗 + 重點區域挖空(spotlight) */}
-      {box ? (
-        <div style={{
-          position: 'absolute', top: box.top, left: box.left, width: box.width, height: box.height,
-          borderRadius: 14, boxShadow: '0 0 0 9999px rgba(13,16,28,0.66)', pointerEvents: 'none',
-          transition: 'top .25s ease, left .25s ease, width .25s ease, height .25s ease',
-          outline: '2px solid rgba(146,168,255,0.9)', outlineOffset: 0,
-        }} />
-      ) : (
-        <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,16,28,0.66)' }} />
+    <div className="tour-root" role="dialog" aria-modal="true" aria-label="新手教學">
+      {/* 全螢幕點擊攔截：導覽中不會誤觸底下的頁面 */}
+      <div className="tour-block" onClick={e => e.stopPropagation()} />
+
+      {/* 背景變暗；有重點區域就挖一個洞露出來 */}
+      {box
+        ? <div className="tour-spot" style={{ top: box.top, left: box.left, width: box.width, height: box.height }} />
+        : <div className="tour-dim" />}
+
+      {/* 手機沒有滑鼠：在重點中央一圈一圈擴散，提示「按這裡」 */}
+      {mobile && box && cur.demo && cur.demo.type !== 'type' && (
+        <span className="tour-ripple" style={{ left: box.left + box.width / 2, top: box.top + box.height / 2 }} />
       )}
 
-      {/* 拖曳塗色示範：沿路塗出的格子 */}
-      {box && cur.demo?.type === 'drag' && Array.from({ length: paint }).map((_, i) => {
-        const y = box.top + Math.min(box.height * 0.5, box.height - 70)
-        const cw = box.width * 0.066
-        return <div key={i} style={{
-          position: 'absolute', left: box.left + box.width * 0.14 + i * (box.width * 0.072), top: y - 15,
-          width: cw, height: 30, borderRadius: 6,
-          background: 'rgba(110,168,254,0.5)', border: '1.5px solid rgba(110,168,254,0.95)',
-          transition: 'opacity .2s', pointerEvents: 'none',
-        }} />
-      })}
-
-      {/* 打字示範：範例字一個一個打出（配合游標移到輸入框）*/}
-      {box && cur.demo?.type === 'type' && typed && (
-        <div className="tour-type" style={{
-          left: box.left + 18,
-          top: box.top + (box.height > 120 ? 60 : Math.max(10, box.height / 2 - 15)),
-          maxWidth: box.width - 40,
-        }}>
-          {typed}<span className="tour-caret" style={{ height: 16 }}>&nbsp;</span>
-        </div>
-      )}
-
-      {/* 模擬滑鼠箭頭：會移動、按下、拖曳，讓觀看者看到實際操作 */}
       {cursor && (
         <>
           {cursor.down && cur.demo?.type === 'click' && (
-            <span className="tour-ripple" style={{ position: 'absolute', left: cursor.x + 2, top: cursor.y + 2 }} />
+            <span className="tour-ripple" style={{ left: cursor.x + 2, top: cursor.y + 2 }} />
           )}
-          <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"
-            style={{
-              position: 'absolute', left: cursor.x, top: cursor.y, zIndex: 3, pointerEvents: 'none',
-              filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.45))',
-              transition: 'left .55s cubic-bezier(.4,0,.2,1), top .55s cubic-bezier(.4,0,.2,1), transform .12s',
-              transform: cursor.down ? 'scale(.82)' : 'scale(1)',
-            }}>
+          <svg className="tour-cursor" width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"
+            style={{ left: cursor.x, top: cursor.y, transform: cursor.down ? 'scale(.82)' : 'scale(1)' }}>
             <path d="M4 2 L4 19 L8.5 14.6 L11.7 21.5 L14.2 20.4 L11 13.7 L17.5 13.7 Z" fill="#ffffff" stroke="#2b2f3a" strokeWidth="1.3" strokeLinejoin="round" />
           </svg>
         </>
@@ -199,30 +262,76 @@ export default function Tour({
 
       {/* 說明卡片 */}
       <div ref={cardRef} onClick={e => e.stopPropagation()}
-        style={{ position: 'absolute', left: tip.left, top: tip.top, width: TW, maxHeight: vh - 24, overflowY: 'auto', zIndex: 5, transition: 'left .25s ease, top .25s ease' }}
-        className="rounded-2xl p-5 shadow-2xl"
-      >
-        <div style={{ background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(16px)', borderRadius: 16 }} className="p-5 border border-white/90">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold" style={{ color: '#4a7fd6' }}>步驟 {step + 1} / {steps.length}</span>
-            <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">跳過 ✕</button>
-          </div>
-          <p className="text-lg font-extrabold text-gray-900 mb-1.5">{cur.title}</p>
-          <p className="text-sm text-gray-600 leading-relaxed mb-4">{cur.body}</p>
-          {/* 進度點 */}
-          <div className="flex items-center gap-1.5 mb-4">
-            {steps.map((_, i) => (
-              <span key={i} style={{ width: i === step ? 18 : 6, height: 6, borderRadius: 999, background: i === step ? 'linear-gradient(90deg,#6ea8fe,#a86efe)' : 'rgba(120,130,170,0.28)', transition: 'width .2s' }} />
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            {!isFirst && (
-              <button onClick={onPrev} className="text-sm text-gray-500 hover:text-gray-800 px-3 py-2 rounded-lg border border-gray-200">上一步</button>
+        className={`tour-card ${mobile ? `sheet-${sheet}` : ''}`}
+        style={mobile ? undefined : { left: pos!.left, top: pos!.top, width: CARD_W }}>
+        {arrow && <span className={`tour-arrow ${side}`} style={arrow} />}
+        {mobile && sheet !== 'center' && <span className="tour-handle" aria-hidden="true" />}
+        <div className="tour-inner">
+          <div key={step} className="tour-body">
+            <div className="tour-head">
+              <span className="tour-chip">{isFirst ? '歡迎' : isLast ? '完成' : curChapter?.name}</span>
+              {!isFirst && !isLast && <span className="tour-count">第 {contentIdx} 步，共 {contentTotal} 步</span>}
+              <button className="tour-x" onClick={skip} aria-label="關閉教學" title="關閉（Esc）">✕</button>
+            </div>
+            <div className="tour-bar" aria-hidden="true"><div className="tour-bar-fill" style={{ width: `${pct}%` }} /></div>
+
+            {!isFirst && !isLast && chapters.length > 1 && (
+              <div className="tour-chapters" aria-label="章節">
+                {chapters.map(c => {
+                  const state = curChapter?.name === c.name ? 'cur' : step >= c.first + c.count ? 'done' : ''
+                  return (
+                    <button key={c.name} className={`tour-chap ${state}`} onClick={() => onJump(c.first)} title={`跳到「${c.name}」`}>
+                      {state === 'done' ? '✓ ' : ''}{c.name}
+                    </button>
+                  )
+                })}
+              </div>
             )}
-            <button onClick={isLast ? onClose : onNext}
-              className="flex-1 aurora-grad text-white rounded-lg py-2.5 text-sm font-bold hover:brightness-105">
-              {isLast ? '開始使用 🎉' : '下一步 →'}
-            </button>
+
+            <h2 className="tour-title">{cur.title}</h2>
+            {bodyEl}
+            {cur.example && (
+              <div className="tour-example"><span className="tour-example-k">例如</span><span className="tour-example-v">{cur.example}</span></div>
+            )}
+            {cur.tip && <p className="tour-tip">💡 {cur.tip}</p>}
+
+            {isFirst && (
+              <>
+                <ol className="tour-toc">
+                  {chapters.map((c, i) => (
+                    <li key={c.name}>
+                      <span className="tour-toc-n">{i + 1}</span>
+                      <span className="tour-toc-name">{c.name}</span>
+                      <span className="tour-toc-cnt">{c.count} 步</span>
+                      <button className="tour-toc-go" onClick={() => onJump(c.first)}>看這章 ›</button>
+                    </li>
+                  ))}
+                </ol>
+                {resumeAt > 0 && (
+                  <button className="tour-resume" onClick={() => onJump(resumeAt)}>
+                    ▶ 從上次看到的第 {resumeAt} 步（{steps[resumeAt].chapter}）繼續
+                  </button>
+                )}
+              </>
+            )}
+
+            {isLast && onGo && (
+              <div className="tour-go">
+                <p className="tour-go-label">接下來試試看：</p>
+                <button onClick={() => go('daily')}>✅ 打開今日工作</button>
+                <button onClick={() => go('list')}>📋 看案件清單</button>
+                <button onClick={() => go('chat')}>💬 問 AI 助理</button>
+              </div>
+            )}
+
+            <div className="tour-foot">
+              {!isFirst && <button className="tour-btn ghost" onClick={onPrev}>← 上一步</button>}
+              <button ref={primaryRef} className="tour-btn primary" onClick={isLast ? finish : onNext}>
+                {isFirst ? '開始導覽（約 3 分鐘）' : isLast ? '完成' : '下一步 →'}
+              </button>
+            </div>
+            {isFirst && <button className="tour-later" onClick={skip}>先自己摸索，之後再看</button>}
+            {!mobile && !isFirst && <p className="tour-keys">鍵盤 ← → 可翻頁，Esc 關閉</p>}
           </div>
         </div>
       </div>

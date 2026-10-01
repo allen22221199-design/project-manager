@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect, useRef, useMemo } from 'react'
-import Tour, { type TourStep } from './tour'
+import Tour, { tourSeen, type TourStep } from './tour'
 import RichText, { MediaGroup } from './richtext'
 import DoorOrderForm from '@/components/DoorOrderForm'
 import AdminHub from '@/components/AdminHub'
@@ -47,39 +47,70 @@ const CAT_STYLE: Record<string, string> = {
   其他: 'bg-gray-50 text-gray-500 border-gray-200',
 }
 
-// 新手教學引導步驟。順序照「一天會用到的先後」排：先看今天要做什麼，
-// 再往下是查東西、記東西、開會追蹤。管理者限定的頁面不放進來——
+// 新手教學。分成六章，照「一天會用到的先後」排：先看總覽與今日工作，再往下是案件、
+// 查詢、AI 助理，最後是工廠自己用的製圖。管理者限定的頁面不放進來——
 // 一般同仁看不到那些按鈕，框到空的地方只會讓人困惑。
+// 第一張是歡迎卡（有章節目錄可以直接跳），最後一張是結尾卡；中間每一步都要有 chapter。
 const TOUR_STEPS: TourStep[] = [
-  { title: '歡迎使用煌盛專案 App 👋', body: '第一次用嗎？我帶你花 3 分鐘認識每個功能和常用操作。點「下一步」開始，隨時可按右上角「跳過」。' },
+  { title: '歡迎使用煌盛專案 App', body: '我用大約 3 分鐘帶你認識六個主要功能。每一步會把要看的地方框起來、其他地方變暗，照著看就好。想直接看某一章，點下面的「看這章」。' },
 
   // ── 總覽 ──
-  { view: 'dashboard', target: '[data-tour="nav-dashboard"]', title: '📊 總覽（主畫面）', body: '一進來就在這頁。上面四格是今日待辦、逾期任務、本週完成率、進行中案件數；下面的「最新進度」會列出同仁最近回報的進度，今天回報的會標「今天」。這一區只能看，要改請到案件頁。', demo: { type: 'click' } },
+  { chapter: '總覽', view: 'dashboard', target: '[data-tour="nav-dashboard"]', title: '總覽：一進來先看這裡',
+    body: ['上面四格：今日待辦、逾期任務、本週完成率、進行中案件', '下面「最新進度」：同事最近回報了什麼，今天回報的會標「今天」', '這一頁只能看，要改內容請到案件頁'],
+    demo: { type: 'click' } },
 
   // ── 今日工作（每天最常開的一頁）──
-  { view: 'daily', target: '[data-tour="nav-daily"]', title: '✅ 今日工作', body: '看每位同事今天要做什麼、直接勾選完成。這是每天最常開的一頁，下面幾個操作我一個一個講。', demo: { type: 'click' } },
-  { view: 'daily', target: '[data-tour="plaud"]', title: '📥 晨會記錄貼這裡', body: '開完晨會，把 Plaud 逐字稿或整理好的日誌「貼到這個框」，AI 會判斷負責人、拆成可勾選步驟，寫進今日工作。手機上這一格預設收起來，按「展開貼上」就會出現。同一天再貼一次會蓋掉前一次貼的，但你手動加的不會被動到。要跑 40～70 秒，請等它轉完。', demo: { type: 'type', text: '2026/08/24 晨會：阿蔡負責前處理、艾里包裝…' } },
-  { view: 'daily', target: '[data-tour="add-task"]', title: '➕ 手動加一項工作', body: '先在下拉選負責人 → 輸入任務內容 → 按「新增」，就指派給那個人。', demo: { type: 'type', text: '櫃體包裝完成、回報進度' } },
-  { view: 'daily', target: '[data-tour="task-drag"]', title: '✋ 換人、改狀態、改字', body: '任務卡片可以「拖曳」搬到別人名下換負責人（手機用「轉給」選單）；點「狀態」切換進行中／完成；點任務文字可直接改——都會即時同步到 Notion。', demo: { type: 'drag' } },
+  { chapter: '今日工作', view: 'daily', target: '[data-tour="nav-daily"]', title: '今日工作：每天最常開的一頁',
+    body: ['看每位同事今天要做什麼', '做完直接打勾', '接下來三步教你怎麼加工作、換人'],
+    demo: { type: 'click' } },
+  { chapter: '今日工作', view: 'daily', target: '[data-tour="plaud"]', title: '晨會記錄貼這裡',
+    body: ['開完晨會，把 Plaud 逐字稿貼進這個框', 'AI 會判斷負責人、拆成可以打勾的步驟，寫進今日工作', '要等 40～70 秒，請等它轉完'],
+    example: '2026/08/24 晨會：阿蔡負責前處理、艾里包裝…',
+    tip: '手機上這一格預設收起來，按「展開貼上」才會出現。同一天再貼一次會蓋掉上一次貼的，但你手動加的不會被動到。' },
+  { chapter: '今日工作', view: 'daily', target: '[data-tour="add-task"]', title: '手動加一項工作',
+    body: ['在下拉選負責人', '輸入任務內容', '按「新增」，就指派給那個人'], numbered: true,
+    example: '櫃體包裝完成、回報進度' },
+  { chapter: '今日工作', view: 'daily', target: '[data-tour="task-drag"]', title: '換人、改狀態、改文字',
+    body: ['把任務卡片拖到別人名下＝換負責人（手機用「轉給」選單）', '點「狀態」切換進行中／完成', '點任務文字可以直接改', '改了會馬上同步到 Notion'],
+    demo: { type: 'drag' } },
 
-  // ── 案件清單 ──
-  { view: 'list', target: '[data-tour="nav-list"]', title: '📋 案件清單', body: '所有專案都在這。案名底下如果出現「⚠ 缺電話」「缺品項」，代表資料還沒填齊，點進去補上就會消失。點任一個案子可看細節、改名稱、聯絡人、地址、負責人與狀態。', demo: { type: 'click' } },
-  { view: 'list', target: '[data-tour="case-filters"]', title: '🔎 篩選 / 搜尋 / 新增專案', body: '用狀態標籤（報價中／打樣中／施工中…）快速篩選；搜尋框可找名稱、聯絡人、地址；點「＋ 新增專案」建立新案子。', demo: { type: 'click' } },
-  { view: 'create', target: '[data-tour="create-form"]', title: '➕ 怎麼新增專案', body: '填「專案名稱」（必填）、聯絡人、地址、狀態，就能建立一個新案子。聯絡人記得把電話一起填，不然清單上會一直標「缺電話」。', demo: { type: 'type', text: '惠宇-新竹關埔案' } },
-  { view: 'create', target: '[data-tour="quote-upload"]', title: '📷 報價單自動辨識', body: '在「產品品項」按「📷 上傳圖片辨識」，拍或選一張報價單／材料清單照片，AI 會把品項、材質、規格、數量、單位填進來，不用一項一項手打。', demo: { type: 'click' } },
+  // ── 案件 ──
+  { chapter: '案件', view: 'list', target: '[data-tour="nav-list"]', title: '案件清單：所有專案都在這',
+    body: ['點任一個案子看細節，可以改名稱、聯絡人、地址、負責人、狀態', '案名底下出現「⚠ 缺電話」「缺品項」＝資料沒填齊，補上就會消失'],
+    demo: { type: 'click' } },
+  { chapter: '案件', view: 'list', target: '[data-tour="case-filters"]', title: '篩選、搜尋、新增',
+    body: ['點狀態標籤（報價中／打樣中／施工中…）快速篩選', '搜尋框可以找名稱、聯絡人、地址', '點「＋ 新增專案」建新案子'],
+    demo: { type: 'click' } },
+  { chapter: '案件', view: 'create', target: '[data-tour="create-form"]', title: '新增專案要填什麼',
+    body: ['專案名稱一定要填', '聯絡人請連電話一起填，不然清單會一直標「缺電話」', '地址、狀態可以之後再補'],
+    example: '惠宇-新竹關埔案' },
+  { chapter: '案件', view: 'create', target: '[data-tour="quote-upload"]', title: '報價單拍照自動辨識',
+    body: ['在「產品品項」按「📷 上傳圖片辨識」', '拍一張報價單或材料清單', 'AI 會把品項、材質、規格、數量、單位填進來，不用一項一項打'],
+    demo: { type: 'click' } },
 
-  // ── 任務查詢 ──
-  { view: 'search', target: '[data-tour="nav-search"]', title: '🔍 任務查詢', body: '用關鍵字或點人名，快速查任務、看每個人手上還有幾件沒做完。', demo: { type: 'click' } },
+  // ── 查詢 ──
+  { chapter: '查詢', view: 'search', target: '[data-tour="nav-search"]', title: '任務查詢',
+    body: ['用關鍵字找任務', '點人名看那個人手上還有幾件沒做完'],
+    demo: { type: 'click' } },
 
   // ── AI 助理 ──
-  { view: 'chat', target: '[data-tour="nav-chat"]', title: '💬 AI 助理', body: '不會的直接問它。查 SOP、機具參數、防火標章、丈量步驟，都會從公司資料找答案，還會把對應的圖片和教學影片一起附上。問「阿蔡還有什麼工作沒做完」它也答得出來，用的是真實的任務資料。', demo: { type: 'click' } },
-  { view: 'chat', target: '[data-tour="chat-input"]', title: '⌨️ 它會做這幾件事', body: '① 問問題（Enter 送出）② 記進度：講「冠德的箱蓋今天噴好了」，它會對應到專案 ③ 交辦任務：講「叫治先把冠德圖面畫完」④ 施工進度打勾：講「桃大27 A棟門片好了」⑤ 按 🎤 用講的。不管哪一種，都會先出確認卡片，你按確認才會真的寫進去。', demo: { type: 'type', text: '桃大27 A棟門片好了' } },
-  { view: 'dashboard', target: '[data-tour="ai-fab"]', title: '🔵 右下角隨時問', body: '不管在哪一頁，右下角這顆「AI 助理」圓鈕按下去會彈出小視窗，不用離開正在看的案件就能問。往下捲時它會自動讓開，不會擋住內容。', demo: { type: 'click' } },
+  { chapter: 'AI 助理', view: 'chat', target: '[data-tour="nav-chat"]', title: 'AI 助理：不會的直接問',
+    body: ['查 SOP、機具參數、防火標章、丈量步驟，它會從公司資料找答案', '會附上對應的圖片和教學影片', '問「阿蔡還有什麼工作沒做完」也答得出來，用的是真實的任務資料'],
+    demo: { type: 'click' } },
+  { chapter: 'AI 助理', view: 'chat', target: '[data-tour="chat-input"]', title: '用講的也可以做事',
+    body: ['記進度：「冠德的箱蓋今天噴好了」，它會對應到專案', '交辦任務：「叫治先把冠德圖面畫完」', '施工進度打勾：「桃大27 A棟門片好了」', '按 🎤 用說的；Enter 送出'],
+    example: '桃大27 A棟門片好了',
+    tip: '不管哪一種，都會先出確認卡片，你按確認才會真的寫進去。' },
+  { chapter: 'AI 助理', view: 'dashboard', target: '[data-tour="ai-fab"]', title: '右下角隨時問',
+    body: ['不管在哪一頁，按右下角的藍色圓鈕就會彈出小視窗', '不用離開正在看的案件', '往下捲時它會自動讓開，不擋內容'],
+    demo: { type: 'click' } },
 
   // ── 製圖 ──
-  { view: 'doors', target: '[data-tour="doors-form"]', title: '🚪 製圖（防火門訂料）', body: '這一區是工廠自己用的製圖工具，跟接案管理分開放。選案場、填棟別樓層和門的尺寸，資料會存進 Notion 的門單，再用本機的製圖程式出圖。', demo: { type: 'click' } },
+  { chapter: '製圖', view: 'doors', target: '[data-tour="doors-form"]', title: '製圖：防火門訂料',
+    body: ['工廠自己用的工具，跟接案管理分開放', '選案場、填棟別樓層和門的尺寸', '資料會存進 Notion 的門單，再用本機的製圖程式出圖'],
+    demo: { type: 'click' } },
 
-  { title: '這樣就會用囉！🎉', body: '之後想再看一次，電腦版點左邊選單最下面的「🎓 新手教學」，手機版點右上角的「🎓 教學」。有些頁面（會議模式、私人行事曆）要管理者登入才看得到，一般同仁不會出現。開始操作看看吧！' },
+  { title: '這樣就會用了 🎉', body: ['之後想再看：電腦版點左邊選單最下面的「🎓 新手教學」，手機版點右上角的「🎓 教學」', '會議模式、私人行事曆要管理者登入才看得到，一般同仁不會出現'] },
 ]
 
 const STATUS_COLORS: Record<string, string> = {
@@ -506,6 +537,8 @@ export default function Page() {
       // ?tour 直接開啟新手教學（?tour=2 可從第 3 步開始，分享／截圖用）
       const tourParam = new URLSearchParams(window.location.search).get('tour')
       if (tourParam !== null) setTourStep(Math.max(0, Math.min(parseInt(tourParam) || 0, TOUR_STEPS.length - 1)))
+      // 這台裝置第一次打開：等畫面出來後自動跳出歡迎卡。看過、或按過「先自己摸索」就不再出現
+      else if (!v && !tourSeen()) setTimeout(() => setTourStep(0), 1200)
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -4555,7 +4588,9 @@ export default function Page() {
           step={tourStep}
           onNext={() => setTourStep(s => Math.min(s + 1, TOUR_STEPS.length - 1))}
           onPrev={() => setTourStep(s => Math.max(s - 1, 0))}
+          onJump={n => setTourStep(Math.max(0, Math.min(n, TOUR_STEPS.length - 1)))}
           onClose={() => setTourStep(-1)}
+          onGo={v => { setTourStep(-1); setView(v as View); if (v === 'daily') fetchDailyTasks() }}
         />
       )}
     </div>
