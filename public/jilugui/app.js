@@ -4,7 +4,7 @@
   'use strict';
 
   const API = '/api/jilugui';
-  const LABEL = { home: '首頁', projects: '專案', records: '紀錄', files: '檔案' };
+  const LABEL = { projects: '專案', records: '紀錄', files: '檔案' };   // 專案就是首頁
   const STATUS = ['進行中', '已完成', '待追蹤', '取消'];
   const PROJECT_STATUS = ['進行中', '暫停', '已完成'];
   const STATUS_CLASS = { '進行中': 'blue', '已完成': 'green', '待追蹤': 'yellow', '取消': 'gray' };
@@ -24,7 +24,7 @@
   };
 
   const state = {
-    user: null, mode: 'notion', ai: false, appName: '紀錄櫃', view: 'home', painter: null,
+    user: null, mode: 'notion', ai: false, appName: '紀錄櫃', view: 'projects', painter: null,
     records: freshList(), files: freshList(), active: freshList(), projects: freshList(), covers: {},
     chat: { messages: [], busy: false, open: false }, chatPainter: null,
   };
@@ -159,7 +159,7 @@
   }
   async function logout() {
     try { await api('POST', '/logout'); } catch (e) { /* 忽略 */ }
-    state.user = null; state.records = freshList(); state.files = freshList(); state.active = freshList(); state.projects = freshList(); state.covers = {}; state.chat = { messages: [], busy: false, open: false }; state.view = 'home';
+    state.user = null; state.records = freshList(); state.files = freshList(); state.active = freshList(); state.projects = freshList(); state.covers = {}; state.chat = { messages: [], busy: false, open: false }; state.view = 'projects';
     render();
   }
 
@@ -210,82 +210,37 @@
   function setView(v) {
     state.view = v;
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
-    if (v === 'home') {
+    if (v === 'projects') {
       for (const s of [state.records, state.files]) if (s.q || s.filter) { s.q = ''; s.filter = ''; s.loaded = false; }
     }
     renderView();
     window.scrollTo(0, 0);
   }
   function renderView() {
-    $main.replaceChildren(state.view === 'home' ? homeView() : state.view === 'projects' ? projectsView() : state.view === 'records' ? recordsView() : filesView());
+    $main.replaceChildren(state.view === 'records' ? recordsView() : state.view === 'files' ? filesView() : projectsView());
   }
   function repaint() { if (state.painter) state.painter(); }
   function ensureLoaded(s, loader) { if (!s.loaded && !s.loading) loader(true); }
 
-  // ---------- 首頁 ----------
-  function homeView() {
-    const wrap = h('div', { class: 'view' });
-    const statsEl = h('div', { class: 'stats' });
-    const boardEl = h('div', { class: 'board' });
-    const boardCount = h('span', { class: 'muted small' });
-    const recEl = h('div', { class: 'list' });
-    const fileEl = h('div', { class: 'grid' });
-    wrap.appendChild(h('div', { class: 'greet' }, h('h1', { class: 'page-title', text: greeting() }), h('p', { class: 'muted', text: todayLabel() })));
-    wrap.appendChild(statsEl);
-    // 進行中的項目：一眼看出每一類現在有哪些事在做、做到哪裡
-    wrap.appendChild(h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', { text: '進行中的項目' }), boardCount), boardEl));
-    wrap.appendChild(h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', { text: '最近的紀錄' }), h('button', { class: 'linkbtn', type: 'button', text: '看全部', onclick: () => setView('records') })), recEl));
-    wrap.appendChild(h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', { text: '最新檔案' }), h('button', { class: 'linkbtn', type: 'button', text: '看全部', onclick: () => setView('files') })), fileEl));
-    const paint = () => {
-      if (state.view !== 'home') return;
-      paintStats(statsEl);
-      paintBoard(boardEl, boardCount);
-      paintItems(recEl, state.records, 5, recordCard, '還沒有紀錄。按右下角「＋」寫下第一件做過的事。');
-      paintItems(fileEl, state.files, 8, fileTile, '還沒有檔案。按右下角「＋」上傳第一個檔案。');
-    };
-    state.painter = paint;
-    paint();
-    loadActive();   // 每次回到首頁都重抓，狀態改了馬上反映
-    ensureLoaded(state.projects, loadProjects);   // 看板要按專案分組，需要專案名稱
-    ensureLoaded(state.records, loadRecords);
-    ensureLoaded(state.files, loadFiles);
-    return wrap;
-  }
-  function paintStats(el) {
-    const recs = state.records.items, files = state.files.items, act = state.active;
-    const ym = today().slice(0, 7);
-    const tile = (num, label, accent) => h('div', { class: 'stat' + (accent ? ' accent' : '') }, h('div', { class: 'stat-num', text: num }), h('div', { class: 'stat-label', text: label }));
-    const plus = (s) => (s.cursor ? '+' : '');
-    // 進行中／待追蹤用「進行中的項目」那份完整清單算，數字才準；還沒載入就先用最近的紀錄估
-    const count = (st) => (act.loaded ? String(act.items.filter((r) => r.status === st).length) : recs.filter((r) => r.status === st).length + plus(state.records));
-    el.replaceChildren(
-      tile(recs.filter((r) => (r.date || '').indexOf(ym) === 0).length + (state.records.cursor ? '+' : ''), '本月紀錄', true),
-      tile(count('進行中'), '進行中'),
-      tile(count('待追蹤'), '待追蹤'),
-      tile(files.length + plus(state.files), '檔案'));
-  }
+  // ---------- 首頁＝專案（見下面的「專案」區）----------
   // 細節只取第一行、最多 80 字，當成「現在做到哪」的一句話
   function firstLine(s, n) {
     const line = String(s || '').split(/\r?\n/).map((x) => x.trim()).find((x) => x) || '';
     return clip(line, n);
   }
-  function paintBoard(el, countEl) {
-    const s = state.active;
-    if (!s.loaded && s.loading) { el.replaceChildren(h('div', { class: 'muted', text: '載入中…' })); countEl.textContent = ''; return; }
-    if (!s.items.length) { el.replaceChildren(h('div', { class: 'empty', text: s.loaded ? '目前沒有進行中或待追蹤的項目。' : '' })); countEl.textContent = ''; return; }
-    countEl.textContent = s.items.length + ' 項';
-    // 有掛專案的照專案分組（專案在前，照專案清單的順序）；沒掛專案的照分類分組排在後面
+  // 沒掛專案的進行中／待追蹤：有掛專案的在專案卡片上看，這裡只列沒歸專案的，照分類分組。
+  // 一件都沒有就把整個區塊藏起來。
+  function paintBoard(el, section) {
+    const items = state.active.items.filter((r) => !r.projectId);
+    section.hidden = !items.length;
+    if (!items.length) { el.replaceChildren(); return; }
     const groups = new Map();
-    for (const r of s.items) {
-      const pn = r.projectId ? projectName(r.projectId) : '';
-      const k = pn ? '📁 ' + pn : (r.category || '未分類');
+    for (const r of items) {
+      const k = r.category || '未分類';
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k).push(r);
     }
-    const projKeys = state.projects.items.map((p) => '📁 ' + p.name).filter((k) => groups.has(k));
-    for (const k of Array.from(groups.keys())) if (k.indexOf('📁 ') === 0 && projKeys.indexOf(k) < 0) projKeys.push(k);
-    const catKeys = CATEGORY.concat(['未分類']).filter((k) => groups.has(k)).concat(Array.from(groups.keys()).filter((k) => k.indexOf('📁 ') !== 0 && CATEGORY.indexOf(k) < 0 && k !== '未分類'));
-    const order = projKeys.concat(catKeys);
+    const order = CATEGORY.concat(['未分類']).filter((k) => groups.has(k)).concat(Array.from(groups.keys()).filter((k) => CATEGORY.indexOf(k) < 0 && k !== '未分類'));
     el.replaceChildren.apply(el, order.map((k) => {
       const rows = groups.get(k);
       return h('div', { class: 'board-group' },
@@ -295,11 +250,6 @@
           r.note ? h('div', { class: 'brow-note', text: firstLine(r.note, 80) }) : null,
           h('div', { class: 'brow-meta', text: [fmtDate(r.date), r.by, r.fileIds.length ? '附件 ' + r.fileIds.length : '', r.link ? '有連結' : ''].filter(Boolean).join(' · ') }))));
     }));
-  }
-  function paintItems(el, s, limit, fn, emptyMsg) {
-    if (!s.loaded && s.loading) { el.replaceChildren(h('div', { class: 'muted', text: '載入中…' })); return; }
-    if (!s.items.length) { el.replaceChildren(h('div', { class: 'empty', text: s.loaded ? emptyMsg : '' })); return; }
-    el.replaceChildren.apply(el, s.items.slice(0, limit).map(fn));
   }
 
   // ---------- 紀錄 ----------
@@ -474,15 +424,7 @@
       const f = todo[i];
       btn.textContent = '產生縮圖 ' + (i + 1) + '/' + todo.length;
       try {
-        const first = f.files[0];
-        const src = first.url ? first.url : fileUrl(f.id, first.index) + '?raw=1';
-        const res = await fetch(src, { credentials: 'same-origin' });
-        if (!res.ok) throw new Error('下載失敗（' + res.status + '）');
-        const blob = await res.blob();
-        const jpeg = await makeThumb(blob, first.name, blob.type);
-        if (!jpeg) { bad++; continue; }
-        const url = await uploadThumb(jpeg, first.name);
-        const saved = await api('PATCH', '/files/' + f.id, { thumb: url });
+        const saved = await api('PATCH', '/files/' + f.id, { thumb: await genThumbFor(f) });
         replaceItem(state.files, saved); ok++; repaint();
       } catch (e) { bad++; console.warn('補縮圖失敗', f.name, e); }
     }
@@ -677,6 +619,7 @@
   }
   // 專案卡片的封面：開過專案頁就記住它第一個有縮圖的檔案；沒開過就從已載入的檔案裡找一張屬於它的
   function coverFor(p) {
+    if (p.cover) return p.cover;
     if (state.covers[p.id]) return state.covers[p.id];
     for (const f of state.files.items) {
       if (!f.thumb) continue;
@@ -688,10 +631,12 @@
     }
     return '';
   }
+  // 專案頁就是首頁：問候、專案卡片，下面接「沒掛專案的進行中事項」
   function projectsView() {
     const s = state.projects;
     const wrap = h('div', { class: 'view' });
-    wrap.appendChild(h('div', { class: 'section-head' }, h('h1', { class: 'page-title', text: '專案' }),
+    wrap.appendChild(h('div', { class: 'greet' }, h('h1', { class: 'page-title', text: greeting() }), h('p', { class: 'muted', text: todayLabel() })));
+    wrap.appendChild(h('div', { class: 'section-head' }, h('h2', { text: '專案' }),
       h('button', { class: 'btn small primary', type: 'button', text: '＋ 新增專案', onclick: () => openProjectForm(null) })));
     const search = h('input', { type: 'search', class: 'search', id: 'search-projects', placeholder: '搜尋專案名稱、說明', value: s.q, 'aria-label': '搜尋專案',
       oninput: debounce((e) => { s.q = e.target.value.trim(); paint(); }, 200) });
@@ -699,8 +644,12 @@
       onclick: () => { s.filter = st; chips.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c.dataset.v === st)); paint(); } })));
     const gridEl = h('div', { class: 'pgrid' });
     wrap.appendChild(search); wrap.appendChild(chips); wrap.appendChild(gridEl);
+    const boardEl = h('div', { class: 'board' });
+    const boardSec = h('section', { class: 'section', hidden: true }, h('div', { class: 'section-head' }, h('h2', { text: '其他進行中的事（沒掛專案）' })), boardEl);
+    wrap.appendChild(boardSec);
     const paint = () => {
       if (state.view !== 'projects') return;
+      paintBoard(boardEl, boardSec);
       if (!s.loaded && s.loading) { gridEl.replaceChildren(h('div', { class: 'muted', text: '載入中…' })); return; }
       const q = s.q.toLowerCase();
       const items = s.items.filter((p) => (!s.filter || p.status === s.filter) && (!q || (p.name + ' ' + p.note + ' ' + p.category).toLowerCase().indexOf(q) >= 0));
@@ -709,18 +658,36 @@
     };
     state.painter = paint; paint();
     loadProjects();
+    loadActive();                               // 卡片上「進行中 n」和最近一筆靠它；每次回來都重抓
     ensureLoaded(state.files, loadFiles);       // 封面縮圖要靠檔案
     ensureLoaded(state.records, loadRecords);
     return wrap;
   }
+  // 專案最近的一筆紀錄：從已載入的紀錄（進行中清單＋最近的紀錄）裡挑日期最新的
+  function latestOf(p) {
+    let best = null;
+    const seen = {};
+    for (const r of state.active.items.concat(state.records.items)) {
+      if (r.projectId !== p.id || seen[r.id]) continue;
+      seen[r.id] = true;
+      const d = r.date || '', bd = best ? (best.date || '') : '';
+      if (!best || d > bd || (d === bd && (r.createdAt || '') > (best.createdAt || ''))) best = r;
+    }
+    return best;
+  }
   function projectCard(p) {
     const cover = coverFor(p);
+    const latest = latestOf(p);
+    const doing = state.active.items.filter((r) => r.projectId === p.id && r.status === '進行中').length;
+    const waiting = state.active.items.filter((r) => r.projectId === p.id && r.status === '待追蹤').length;
     return h('article', { class: 'pcard', tabindex: 0, role: 'button', onclick: () => openProject(p), onkeydown: (e) => { if (e.key === 'Enter') openProject(p); } },
       h('div', { class: 'pcover' }, cover ? h('img', { src: cover, alt: '', loading: 'lazy' }) : h('span', { class: 'pinitial', text: (p.name || '?').slice(0, 1) })),
       h('div', { class: 'pbody' },
-        h('div', { class: 'chips' }, p.status ? chip(p.status, STATUS_CLASS[p.status] || 'gray') : null, p.category ? chip(p.category) : null),
+        h('div', { class: 'chips' }, p.status ? chip(p.status, STATUS_CLASS[p.status] || 'gray') : null, doing ? chip('進行中 ' + doing, 'blue') : null, waiting ? chip('待追蹤 ' + waiting, 'yellow') : null, p.category ? chip(p.category) : null),
         h('div', { class: 'ptitle', text: p.name || '（未命名）' }),
-        p.note ? h('div', { class: 'pnote', text: firstLine(p.note, 70) }) : null,
+        latest
+          ? h('div', { class: 'platest' }, h('span', { class: 'mono small muted', text: fmtDate(latest.date) + '  ' }), latest.title || '（無標題）')
+          : (p.note ? h('div', { class: 'pnote', text: firstLine(p.note, 70) }) : null),
         h('div', { class: 'pmeta', text: ['紀錄 ' + p.recordCount, '檔案 ' + p.fileCount, p.lastDate ? '最近 ' + fmtDate(p.lastDate) : ''].filter(Boolean).join(' · ') })));
   }
   async function openProject(p) {
@@ -760,10 +727,30 @@
     recHead.textContent = '紀錄（' + data.records.length + '）';
     recsEl.replaceChildren.apply(recsEl, data.records.length ? data.records.map(recordCard) : [h('div', { class: 'muted', text: '還沒有紀錄，按上面「＋ 新增紀錄」' })]);
     fileHead.textContent = '檔案（' + data.files.length + '）';
-    filesEl.replaceChildren.apply(filesEl, data.files.length ? data.files.map(fileTile) : [h('div', { class: 'muted', text: '還沒有檔案' })]);
-    const cov = data.files.find((f) => f.thumb);
-    if (cov) state.covers[p.id] = cov.thumb;
-    replaceItem(state.projects, data.project);   // 筆數可能變了
+    // 檔案牆：每個有縮圖的檔案下面有「設為封面」
+    const paintFiles = () => {
+      filesEl.replaceChildren.apply(filesEl, data.files.length ? data.files.map((f) => h('div', { class: 'tilewrap' }, fileTile(f),
+        f.thumb ? h('button', { class: 'linkbtn', type: 'button', text: data.project.cover === f.thumb ? '✓ 目前封面' : '設為封面', onclick: async () => {
+          try {
+            const saved = await api('PATCH', '/projects/' + p.id, { cover: f.thumb });
+            data.project = saved; p.cover = saved.cover; replaceItem(state.projects, saved);
+            toast('已設為封面'); paintFiles(); repaint();
+          } catch (ex) { toast(ex.message, 'err'); }
+        } }) : null)) : [h('div', { class: 'muted', text: '還沒有檔案' })]);
+    };
+    paintFiles();
+    replaceItem(state.projects, data.project);   // 筆數、封面可能變了
+    p.cover = data.project.cover;
+    // 沒縮圖的檔案在背景補；補完重畫檔案牆，專案還沒封面就順手設一張
+    autoThumbs(data.files).then(async () => {
+      paintFiles();
+      if (!data.project.cover) {
+        const cov = data.files.find((f) => f.thumb);
+        if (cov) {
+          try { const saved = await api('PATCH', '/projects/' + p.id, { cover: cov.thumb }); data.project = saved; p.cover = saved.cover; replaceItem(state.projects, saved); paintFiles(); repaint(); } catch (e) { /* 下次再試 */ }
+        }
+      }
+    });
   }
   function openProjectForm(existing, parentSheet) {
     const sh = openSheet(existing ? '編輯專案' : '新增專案');
@@ -773,15 +760,36 @@
     const note = h('textarea', { id: 'p-note', rows: 3, placeholder: '這個專案在做什麼、目標、注意事項', value: existing ? existing.note : '' });
     const link = h('input', { type: 'url', id: 'p-link', placeholder: 'https://…（專案的網站或主要頁面，選填）', value: existing ? (existing.link || '') : '' });
     const err = h('div', { class: 'form-error' });
+    // 封面：可以自己上傳一張（會縮成小圖再傳）；沒設就自動用專案裡第一張有縮圖的檔案
+    const coverUrl = { v: existing ? (existing.cover || '') : '' };
+    const coverPrev = h('div', { class: 'cover-pick' });
+    const coverInput = h('input', { type: 'file', accept: 'image/*', class: 'visually-hidden', id: 'p-cover-' + Math.random().toString(36).slice(2, 8) });
+    const paintCover = () => coverPrev.replaceChildren(
+      coverUrl.v ? h('img', { src: coverUrl.v, alt: '' }) : h('span', { class: 'muted small', text: '還沒有封面。沒設的話會自動用專案裡第一張有縮圖的檔案；也可以在這裡上傳一張。' }),
+      h('div', { class: 'actions' },
+        h('label', { class: 'btn small', for: coverInput.id, text: coverUrl.v ? '換一張' : '上傳封面圖片' }),
+        coverUrl.v ? h('button', { class: 'btn small', type: 'button', text: '清除', onclick: () => { coverUrl.v = ''; paintCover(); } }) : null,
+        coverInput));
+    coverInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0]; e.target.value = '';
+      if (!file) return;
+      err.textContent = '封面上傳中…';
+      try {
+        const j = await makeThumb(file, file.name, file.type);
+        if (!j) throw new Error('這個格式不能當封面，請用 JPG 或 PNG');
+        coverUrl.v = await uploadThumb(j, file.name); err.textContent = ''; paintCover();
+      } catch (ex) { err.textContent = '封面上傳失敗：' + ex.message; }
+    });
+    paintCover();
     const submit = h('button', { class: 'btn primary', type: 'submit', text: existing ? '儲存變更' : '建立專案' });
-    const form = h('form', { class: 'form' }, field('專案名稱', name), h('div', { class: 'row' }, field('狀態', status), field('分類', category)), field('說明', note), field('連結', link), err,
+    const form = h('form', { class: 'form' }, field('專案名稱', name), h('div', { class: 'row' }, field('狀態', status), field('分類', category)), field('說明', note), field('連結', link), field('封面圖片', coverPrev), err,
       h('div', { class: 'actions' }, submit, h('button', { class: 'btn', type: 'button', text: '取消', onclick: () => sh.close() })));
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!name.value.trim()) { err.textContent = '請填「專案名稱」'; name.focus(); return; }
       err.textContent = ''; submit.disabled = true;
       try {
-        const data = { name: name.value.trim(), status: status.value, category: category.value, note: note.value.trim(), link: link.value.trim() };
+        const data = { name: name.value.trim(), status: status.value, category: category.value, note: note.value.trim(), link: link.value.trim(), cover: coverUrl.v };
         const saved = existing ? await api('PATCH', '/projects/' + existing.id, data) : await api('POST', '/projects', data);
         replaceItem(state.projects, saved); state.projects.items = sortProjects(state.projects.items); state.projects.loaded = true;
         toast(existing ? '已儲存' : '已建立專案');
@@ -1043,6 +1051,43 @@
     try { const j = await makeThumb(blob, name, type); return j ? await uploadThumb(j, name) : ''; }
     catch (e) { console.warn('縮圖失敗', name, e); return ''; }
   }
+  // 幫一個「已經在庫裡」的檔案做縮圖：先把檔案抓下來（Notion 的經 ?raw=1 同網域轉一手），做好傳上去，回傳縮圖網址
+  async function genThumbFor(f) {
+    const first = f.files[0];
+    const src = first.url ? first.url : fileUrl(f.id, first.index) + '?raw=1';
+    const res = await fetch(src, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('下載失敗（' + res.status + '）');
+    const blob = await res.blob();
+    const jpeg = await makeThumb(blob, first.name, blob.type);
+    if (!jpeg) throw new Error('格式不支援');
+    return uploadThumb(jpeg, first.name);
+  }
+  // 自動補縮圖：畫面上有還沒縮圖的 PDF／影片／照片，就在背景一個一個做，做好直接換上去，不用按任何鈕。
+  // 一輪最多 8 個，做完還有再接著做；失敗的記住不重試（避免一直打）。
+  const thumbTried = {};
+  let thumbBusy = false;
+  async function autoThumbs(list) {
+    if (thumbBusy || !list) return;
+    const pick = () => list.filter((f) => !f.thumb && f.files[0] && !thumbTried[f.id] && ['image', 'pdf', 'video'].indexOf(kindOf(f.files[0].name, '')) >= 0).slice(0, 8);
+    let todo = pick();
+    if (!todo.length) return;
+    thumbBusy = true;
+    try {
+      while (todo.length) {
+        for (const f of todo) {
+          thumbTried[f.id] = true;
+          try {
+            const saved = await api('PATCH', '/files/' + f.id, { thumb: await genThumbFor(f) });
+            replaceItem(state.files, saved);
+            const i = list.indexOf(f);
+            if (i >= 0) list[i] = saved;
+            repaint();
+          } catch (e) { console.warn('自動縮圖失敗', f.name, e); }
+        }
+        todo = pick();
+      }
+    } finally { thumbBusy = false; }
+  }
 
   // ---------- 面板 ----------
   function openSheet(title, opts) {
@@ -1159,6 +1204,7 @@
     } finally {
       if (seq === s.seq) { s.loading = false; repaint(); }
     }
+    if (path === '/files' && seq === s.seq) autoThumbs(s.items);   // 載到沒縮圖的檔案就在背景補
   }
 
   boot();

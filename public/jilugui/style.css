@@ -158,6 +158,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .pbody .chips { gap: 4px; }
 .ptitle { font-weight: 700; font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
 .pnote { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.platest { font-size: 13px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tilewrap { display: grid; gap: 4px; align-content: start; justify-items: start; }
+.tilewrap .tile { width: 100%; }
+.cover-pick { display: grid; gap: 8px; }
+.cover-pick img { width: 100%; max-width: 320px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; }
 .pmeta { font-family: var(--font-mono); font-size: 11px; color: var(--ink-2); }
 
 /* ---- 紀錄卡片 ---- */

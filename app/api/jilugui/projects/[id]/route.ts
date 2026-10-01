@@ -24,8 +24,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   const a = needUser(req)
   if (a.res) return a.res
   try {
-    const r = cleanProjectInput(await req.json().catch(() => null))
-    if (!r) return fail('資料格式不對：「專案名稱」必填，連結要以 http 開頭', 400)
+    const r = cleanProjectInput(await req.json().catch(() => null), false)
+    if (!r) return fail('資料格式不對：連結和封面要以 http 開頭', 400)
     const saved = await updateProject(params.id, r)
     if (!saved) return fail('這個專案已經被刪掉了，你的修改沒有存到。', 409)
     return NextResponse.json(saved)

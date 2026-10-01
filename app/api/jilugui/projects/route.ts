@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   const a = needUser(req)
   if (a.res) return a.res
   try {
-    const r = cleanProjectInput(await req.json().catch(() => null))
+    const r = cleanProjectInput(await req.json().catch(() => null), true)
     if (!r) return fail('資料格式不對：「專案名稱」必填，連結要以 http 開頭', 400)
     return NextResponse.json(await createProject(r))
   } catch (e: any) {

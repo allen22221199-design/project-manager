@@ -423,6 +423,7 @@ export async function deleteFile(id: string): Promise<{ blobUrls: string[] }> {
 // 一個專案底下掛工作紀錄（紀錄的「專案」欄）和檔案（檔案直接掛、或經由紀錄的「相關檔案」間接掛）。
 export type JProject = {
   id: string; name: string; status: string; category: string; note: string; link: string; code: string
+  cover: string   // 封面圖網址；沒設就空字串，前端會用專案裡第一張有縮圖的檔案
   recordCount: number; fileCount: number; lastDate: string; notionUrl: string; createdAt: string; updatedAt: string
 }
 function toProject(p: any): JProject {
@@ -442,6 +443,7 @@ function toProject(p: any): JProject {
     note: rtext(pr['說明']),
     link: pr['連結']?.url ?? '',
     code: codeOf(pr['編號']),
+    cover: pr['封面']?.url ?? '',
     recordCount: rollNum('紀錄數', '紀錄'),
     fileCount: rollNum('檔案數', '檔案'),
     lastDate: r && r.type === 'date' ? (r.date?.start ?? '') : '',
@@ -450,23 +452,38 @@ function toProject(p: any): JProject {
     updatedAt: p.last_edited_time ?? '',
   }
 }
-export type ProjectInput = { name: string; status: string; category: string; note: string; link: string }
-export function cleanProjectInput(v: any): ProjectInput | null {
+// 只改有送來的欄位：編輯表單送全部；「設為封面」只送 cover。新增時 name 必填。
+export type ProjectInput = { name?: string; status?: string; category?: string; note?: string; link?: string; cover?: string }
+export function cleanProjectInput(v: any, needName: boolean): ProjectInput | null {
   if (!v || typeof v !== 'object') return null
-  const name = s(v.name, 200)
-  if (!name) return null
-  const link = s(v.link, 2000)
-  if (link && !/^https?:\/\//i.test(link)) return null
-  return { name, status: s(v.status, 50), category: s(v.category, 50), note: s(v.note, 20000), link }
+  const out: ProjectInput = {}
+  if (v.name !== undefined) out.name = s(v.name, 200)
+  if (needName && !out.name) return null
+  if (v.status !== undefined) out.status = s(v.status, 50)
+  if (v.category !== undefined) out.category = s(v.category, 50)
+  if (v.note !== undefined) out.note = s(v.note, 20000)
+  if (v.link !== undefined) {
+    const link = s(v.link, 2000)
+    if (link && !/^https?:\/\//i.test(link)) return null
+    out.link = link
+  }
+  if (v.cover !== undefined) {
+    const cover = s(v.cover, 2000)
+    if (cover && !/^https?:\/\//i.test(cover)) return null
+    out.cover = cover
+  }
+  if (!Object.keys(out).length) return null
+  return out
 }
 function projectProps(r: ProjectInput): any {
-  return {
-    專案名稱: { title: rich(r.name) },
-    狀態: r.status ? { select: { name: r.status } } : { select: null },
-    分類: r.category ? { select: { name: r.category } } : { select: null },
-    說明: { rich_text: rich(r.note) },
-    連結: { url: r.link || null },
-  }
+  const props: any = {}
+  if (r.name) props['專案名稱'] = { title: rich(r.name) }
+  if (r.status !== undefined) props['狀態'] = r.status ? { select: { name: r.status } } : { select: null }
+  if (r.category !== undefined) props['分類'] = r.category ? { select: { name: r.category } } : { select: null }
+  if (r.note !== undefined) props['說明'] = { rich_text: rich(r.note) }
+  if (r.link !== undefined) props['連結'] = { url: r.link || null }
+  if (r.cover !== undefined) props['封面'] = { url: r.cover || null }
+  return props
 }
 export async function listProjects(): Promise<JProject[]> {
   const pages = await queryAll(PROJECTS_DB, { sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }] }, 200)
@@ -512,6 +529,14 @@ export async function getProjectBundle(id: string): Promise<{ project: JProject;
     for (const f of got) if (f && !seen.has(f.id)) { seen.add(f.id); files.push(f) }
   }
   files.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  // 還沒設封面的專案，自動用第一張有縮圖的檔案當封面並存回去，專案清單才會有圖
+  if (!project.cover) {
+    const cov = files.find(f => f.thumb)
+    if (cov) {
+      project.cover = cov.thumb
+      try { await notion.pages.update({ page_id: id, properties: { 封面: { url: cov.thumb } } }) } catch { /* 存不回去就下次再試 */ }
+    }
+  }
   return { project, records, files }
 }
 
