@@ -1,0 +1,16 @@
+{
+  "name": "紀錄櫃",
+  "short_name": "紀錄櫃",
+  "description": "存放檔案，也記下做過的事。",
+  "start_url": "/jilugui",
+  "scope": "/jilugui",
+  "display": "standalone",
+  "background_color": "#F4F5F8",
+  "theme_color": "#B4271F",
+  "lang": "zh-Hant",
+  "icons": [
+    { "src": "/jilugui/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/jilugui/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/jilugui/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

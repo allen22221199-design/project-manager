@@ -4,5 +4,9 @@ const nextConfig = {
   // 本機無 Node 可先跑型別檢查、Vercel 記錄檔也看不到，故忽略型別錯誤以確保部署穩定。
   // 程式邏輯皆人工審過；若日後拿得到 Vercel 的確切型別錯誤訊息，可再修掉並移除此設定。
   typescript: { ignoreBuildErrors: true },
+  // 紀錄櫃：純前端放在 public/jilugui，/jilugui 直接給它的 index.html（API 在 app/api/jilugui）
+  async rewrites() {
+    return [{ source: '/jilugui', destination: '/jilugui/index.html' }]
+  },
 }
 module.exports = nextConfig
