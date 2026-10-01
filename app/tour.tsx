@@ -191,24 +191,37 @@ export default function Tour({ steps, step, onNext, onPrev, onJump, onClose, onG
   let pos: { left: number; top: number } | null = null
   let side: Side = 'none'
   let sheet: 'bottom' | 'top' | 'center' = 'center'
+  let innerMax: number | undefined   // 手機面板的內容高度：只用重點以外的空間；不夠就讓內容在面板裡捲，面板不蓋到重點
   if (mobile) {
     if (box) {
-      // 預設貼底部；重點會被底部面板蓋到、而上面又放得下時，改貼頂部
-      const intrudes = box.top + box.height > vp.h - th - 12
-      const topFree = box.top > th + 12
-      sheet = intrudes && topFree ? 'top' : 'bottom'
+      const below = vp.h - (box.top + box.height) - 16
+      const above = box.top - 16
+      sheet = (below >= 260 || below >= above) ? 'bottom' : 'top'
+      innerMax = clamp((sheet === 'bottom' ? below : above) - 16, 220, vp.h * 0.6)
     }
   } else if (box) {
+    // 右 → 下 → 上 → 左，第一個完全不會蓋到重點的位置就用。
+    // 重點太大（整張表單）時哪一邊都會蓋到，就挑蓋到最少的那一邊，而且不畫箭頭（會指到卡片自己身上）。
     const right = box.left + box.width
     const bottom = box.top + box.height
-    const big = box.width > vp.w * 0.62 && box.height > vp.h * 0.5
-    if (big) pos = { left: vp.w - CARD_W - 24, top: vp.h - th - 24 }   // 重點很大（整個表單）→ 放右下角不擋示範
-    else if (right + GAP + CARD_W <= vp.w - EDGE) { side = 'right'; pos = { left: right + GAP, top: box.top } }
-    else if (bottom + GAP + th <= vp.h - EDGE) { side = 'bottom'; pos = { left: box.left, top: bottom + GAP } }
-    else if (box.top - GAP - th >= EDGE) { side = 'top'; pos = { left: box.left, top: box.top - GAP - th } }
-    else if (box.left - GAP - CARD_W >= EDGE) { side = 'left'; pos = { left: box.left - GAP - CARD_W, top: box.top } }
-    else pos = { left: vp.w - CARD_W - 24, top: vp.h - th - 24 }
-    pos = { left: clamp(pos.left, EDGE, vp.w - CARD_W - EDGE), top: clamp(pos.top, EDGE, vp.h - th - EDGE) }
+    const cands: { side: Side; left: number; top: number }[] = [
+      { side: 'right', left: right + GAP, top: box.top },
+      { side: 'bottom', left: box.left, top: bottom + GAP },
+      { side: 'top', left: box.left, top: box.top - GAP - th },
+      { side: 'left', left: box.left - GAP - CARD_W, top: box.top },
+    ]
+    let best = { side: 'none' as Side, left: EDGE, top: EDGE, area: Infinity }
+    for (const c of cands) {
+      const left = clamp(c.left, EDGE, vp.w - CARD_W - EDGE)
+      const top = clamp(c.top, EDGE, vp.h - th - EDGE)
+      const ox = Math.max(0, Math.min(left + CARD_W, right) - Math.max(left, box.left))
+      const oy = Math.max(0, Math.min(top + th, bottom) - Math.max(top, box.top))
+      const area = ox * oy
+      if (area < best.area) best = { side: c.side, left, top, area }
+      if (area === 0) break
+    }
+    pos = { left: best.left, top: best.top }
+    side = best.area === 0 ? best.side : 'none'
   } else {
     pos = { left: (vp.w - CARD_W) / 2, top: (vp.h - th) / 2 }
   }
@@ -266,7 +279,7 @@ export default function Tour({ steps, step, onNext, onPrev, onJump, onClose, onG
         style={mobile ? undefined : { left: pos!.left, top: pos!.top, width: CARD_W }}>
         {arrow && <span className={`tour-arrow ${side}`} style={arrow} />}
         {mobile && sheet !== 'center' && <span className="tour-handle" aria-hidden="true" />}
-        <div className="tour-inner">
+        <div className="tour-inner" style={innerMax ? { maxHeight: innerMax } : undefined}>
           <div key={step} className="tour-body">
             <div className="tour-head">
               <span className="tour-chip">{isFirst ? '歡迎' : isLast ? '完成' : curChapter?.name}</span>
