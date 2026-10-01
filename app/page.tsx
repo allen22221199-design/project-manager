@@ -584,9 +584,9 @@ export default function Page() {
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
       if (d.authed) {
-        const r: 'admin' | 'marketing' = d.role === 'marketing' ? 'marketing' : 'admin'
-        setRole(r)
-        if (r === 'admin') { setIsAdmin(true); checkGcalStatus(); fetchPrivatePersonTasks() }
+        const nextRole: 'admin' | 'marketing' = d.role === 'marketing' ? 'marketing' : 'admin'
+        setRole(nextRole)
+        if (nextRole === 'admin') { setIsAdmin(true); checkGcalStatus(); fetchPrivatePersonTasks() }
       }
     }).catch(() => {})
     // 記住上次登入帳號，自動帶入
@@ -671,10 +671,10 @@ export default function Page() {
       const d = await r.json()
       if (!r.ok) { setLoginErr(d.error ?? '登入失敗'); return }
       try { localStorage.setItem('adminUser', user) } catch {}
-      const r: 'admin' | 'marketing' = d.role === 'marketing' ? 'marketing' : 'admin'
-      setRole(r)
+      const nextRole: 'admin' | 'marketing' = d.role === 'marketing' ? 'marketing' : 'admin'
+      setRole(nextRole)
       setShowLogin(false); setLoginPass('')  // 保留帳號，只清密碼
-      if (r === 'admin') { setIsAdmin(true); checkGcalStatus(); fetchPrivatePersonTasks() }
+      if (nextRole === 'admin') { setIsAdmin(true); checkGcalStatus(); fetchPrivatePersonTasks() }
       else setView('admin')  // 行銷登入後直接帶到他唯一多出來的那一頁
     } catch (e: any) { setLoginErr(e.message ?? '網路錯誤') }
     finally { setLoginLoading(false) }
