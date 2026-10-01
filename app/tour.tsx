@@ -200,7 +200,7 @@ export default function Tour({ steps, step, onNext, onPrev, onJump, onClose, onG
       // 整頁高的重點（整張表單）怎麼擺都放不下：固定貼底部、面板縮到最小，露出重點的開頭（表單的開頭比結尾重要）
       const tall = box.height > vp.h - 276
       sheet = tall || below >= 260 || below >= above ? 'bottom' : 'top'
-      innerMax = tall ? 220 : clamp((sheet === 'bottom' ? below : above) - 16, 220, vp.h * 0.6)
+      innerMax = tall ? 320 : clamp((sheet === 'bottom' ? below : above) - 16, 220, vp.h * 0.6)
     }
   } else if (box) {
     // 右 → 下 → 上 → 左，第一個完全不會蓋到重點的位置就用。左右兩邊空間不夠寬時卡片可以縮到 300。
@@ -294,7 +294,8 @@ export default function Tour({ steps, step, onNext, onPrev, onJump, onClose, onG
             </div>
             <div className="tour-bar" aria-hidden="true"><div className="tour-bar-fill" style={{ width: `${pct}%` }} /></div>
 
-            {!isFirst && !isLast && chapters.length > 1 && (
+            {/* 手機面板被壓得很矮時（整頁高的重點）把章節列省掉，先讓說明文字看得到 */}
+            {!isFirst && !isLast && chapters.length > 1 && !(mobile && (innerMax ?? 999) < 340) && (
               <div className="tour-chapters" aria-label="章節">
                 {chapters.map(c => {
                   const state = curChapter?.name === c.name ? 'cur' : step >= c.first + c.count ? 'done' : ''
