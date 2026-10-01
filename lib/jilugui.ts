@@ -225,7 +225,9 @@ function recordProps(r: RecordInput, by?: string): any {
 }
 function recordFilter(q?: string, status?: string): any {
   const parts: any[] = []
-  if (status) parts.push({ property: '狀態', select: { equals: status } })
+  // status=active：首頁「進行中的項目」用，進行中＋待追蹤一起拿
+  if (status === 'active') parts.push({ or: [{ property: '狀態', select: { equals: '進行中' } }, { property: '狀態', select: { equals: '待追蹤' } }] })
+  else if (status) parts.push({ property: '狀態', select: { equals: status } })
   if (q) parts.push({ or: [
     { property: '做了什麼', title: { contains: q } },
     { property: '細節', rich_text: { contains: q } },

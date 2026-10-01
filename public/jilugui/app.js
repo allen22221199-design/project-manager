@@ -23,7 +23,7 @@
 
   const state = {
     user: null, mode: 'notion', ai: false, appName: '紀錄櫃', view: 'home', painter: null,
-    records: freshList(), files: freshList(), chat: { messages: [], busy: false, open: false }, chatPainter: null,
+    records: freshList(), files: freshList(), active: freshList(), chat: { messages: [], busy: false, open: false }, chatPainter: null,
   };
   function freshList() { return { items: [], cursor: null, loaded: false, loading: false, q: '', filter: '', seq: 0 }; }
 
@@ -156,7 +156,7 @@
   }
   async function logout() {
     try { await api('POST', '/logout'); } catch (e) { /* 忽略 */ }
-    state.user = null; state.records = freshList(); state.files = freshList(); state.chat = { messages: [], busy: false, open: false }; state.view = 'home';
+    state.user = null; state.records = freshList(); state.files = freshList(); state.active = freshList(); state.chat = { messages: [], busy: false, open: false }; state.view = 'home';
     render();
   }
 
@@ -223,34 +223,70 @@
   function homeView() {
     const wrap = h('div', { class: 'view' });
     const statsEl = h('div', { class: 'stats' });
+    const boardEl = h('div', { class: 'board' });
+    const boardCount = h('span', { class: 'muted small' });
     const recEl = h('div', { class: 'list' });
     const fileEl = h('div', { class: 'grid' });
     wrap.appendChild(h('div', { class: 'greet' }, h('h1', { class: 'page-title', text: greeting() }), h('p', { class: 'muted', text: todayLabel() })));
     wrap.appendChild(statsEl);
+    // 進行中的項目：一眼看出每一類現在有哪些事在做、做到哪裡
+    wrap.appendChild(h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', { text: '進行中的項目' }), boardCount), boardEl));
     wrap.appendChild(h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', { text: '最近的紀錄' }), h('button', { class: 'linkbtn', type: 'button', text: '看全部', onclick: () => setView('records') })), recEl));
     wrap.appendChild(h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', { text: '最新檔案' }), h('button', { class: 'linkbtn', type: 'button', text: '看全部', onclick: () => setView('files') })), fileEl));
     const paint = () => {
       if (state.view !== 'home') return;
       paintStats(statsEl);
+      paintBoard(boardEl, boardCount);
       paintItems(recEl, state.records, 5, recordCard, '還沒有紀錄。按右下角「＋」寫下第一件做過的事。');
       paintItems(fileEl, state.files, 8, fileTile, '還沒有檔案。按右下角「＋」上傳第一個檔案。');
     };
     state.painter = paint;
     paint();
+    loadActive();   // 每次回到首頁都重抓，狀態改了馬上反映
     ensureLoaded(state.records, loadRecords);
     ensureLoaded(state.files, loadFiles);
     return wrap;
   }
   function paintStats(el) {
-    const recs = state.records.items, files = state.files.items;
+    const recs = state.records.items, files = state.files.items, act = state.active;
     const ym = today().slice(0, 7);
     const tile = (num, label, accent) => h('div', { class: 'stat' + (accent ? ' accent' : '') }, h('div', { class: 'stat-num', text: num }), h('div', { class: 'stat-label', text: label }));
     const plus = (s) => (s.cursor ? '+' : '');
+    // 進行中／待追蹤用「進行中的項目」那份完整清單算，數字才準；還沒載入就先用最近的紀錄估
+    const count = (st) => (act.loaded ? String(act.items.filter((r) => r.status === st).length) : recs.filter((r) => r.status === st).length + plus(state.records));
     el.replaceChildren(
       tile(recs.filter((r) => (r.date || '').indexOf(ym) === 0).length + (state.records.cursor ? '+' : ''), '本月紀錄', true),
-      tile(recs.filter((r) => r.status === '進行中').length + plus(state.records), '進行中'),
-      tile(recs.filter((r) => r.status === '待追蹤').length + plus(state.records), '待追蹤'),
+      tile(count('進行中'), '進行中'),
+      tile(count('待追蹤'), '待追蹤'),
       tile(files.length + plus(state.files), '檔案'));
+  }
+  // 細節只取第一行、最多 80 字，當成「現在做到哪」的一句話
+  function firstLine(s, n) {
+    const line = String(s || '').split(/\r?\n/).map((x) => x.trim()).find((x) => x) || '';
+    return clip(line, n);
+  }
+  function paintBoard(el, countEl) {
+    const s = state.active;
+    if (!s.loaded && s.loading) { el.replaceChildren(h('div', { class: 'muted', text: '載入中…' })); countEl.textContent = ''; return; }
+    if (!s.items.length) { el.replaceChildren(h('div', { class: 'empty', text: s.loaded ? '目前沒有進行中或待追蹤的項目。' : '' })); countEl.textContent = ''; return; }
+    countEl.textContent = s.items.length + ' 項';
+    // 照分類分組，順序照表單的分類順序；沒填分類的排最後
+    const groups = new Map();
+    for (const r of s.items) {
+      const k = r.category || '未分類';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(r);
+    }
+    const order = CATEGORY.concat(['未分類']).filter((k) => groups.has(k)).concat(Array.from(groups.keys()).filter((k) => CATEGORY.indexOf(k) < 0 && k !== '未分類'));
+    el.replaceChildren.apply(el, order.map((k) => {
+      const rows = groups.get(k);
+      return h('div', { class: 'board-group' },
+        h('div', { class: 'board-head' }, h('span', { text: k }), h('span', { class: 'n', text: String(rows.length) })),
+        rows.map((r) => h('button', { class: 'brow', type: 'button', onclick: () => openRecord(r) },
+          h('div', { class: 'brow-top' }, chip(r.status, STATUS_CLASS[r.status] || 'gray'), h('span', { class: 'brow-title', text: r.title || '（無標題）' })),
+          r.note ? h('div', { class: 'brow-note', text: firstLine(r.note, 80) }) : null,
+          h('div', { class: 'brow-meta', text: [fmtDate(r.date), r.by, r.fileIds.length ? '附件 ' + r.fileIds.length : '', r.link ? '有連結' : ''].filter(Boolean).join(' · ') }))));
+    }));
   }
   function paintItems(el, s, limit, fn, emptyMsg) {
     if (!s.loaded && s.loading) { el.replaceChildren(h('div', { class: 'muted', text: '載入中…' })); return; }
@@ -319,6 +355,7 @@
     if (canDelete(r.by)) actions.appendChild(h('button', { class: 'btn danger', type: 'button', text: '刪除', onclick: () => confirmBox(actions, '刪除這筆紀錄？相關檔案會保留在檔案庫。', async () => {
       await api('DELETE', '/records/' + r.id);
       state.records.items = state.records.items.filter((x) => x.id !== r.id);
+      state.active.items = state.active.items.filter((x) => x.id !== r.id);
       toast('已刪除紀錄'); sh.close(); repaint();
     }) }));
     if (r.notionUrl && state.user.role === 'admin') actions.appendChild(h('a', { class: 'btn', href: r.notionUrl, target: '_blank', rel: 'noopener', text: '在 Notion 開啟' }));
@@ -376,6 +413,7 @@
         toast(existing ? '已儲存' : '已新增紀錄');
         sh.lock(false); sh.close(); if (parentSheet) parentSheet.close();
         repaint();
+        loadActive();
         if (newIds.length) loadFiles(true);
       } catch (ex) { err.textContent = ex.message; submit.disabled = false; sh.lock(false); }
     });
@@ -768,6 +806,23 @@
 
   // ---------- 載入清單 ----------
   function loadRecords(reset) { return loadList(state.records, '/records', reset, (s) => ({ q: s.q, status: s.filter })); }
+  // 首頁「進行中的項目」：進行中＋待追蹤一次最多抓 100 筆（不分頁，這份要完整）
+  async function loadActive() {
+    const s = state.active;
+    if (s.loading) return;
+    s.loading = true; s.seq++;
+    const seq = s.seq;
+    repaint();
+    try {
+      const r = await api('GET', '/records?status=active&limit=100');
+      if (seq !== s.seq) return;
+      s.items = r.items; s.cursor = null; s.loaded = true;
+    } catch (e) {
+      if (seq === s.seq) { s.loaded = true; toast(e.message, 'err'); }
+    } finally {
+      if (seq === s.seq) { s.loading = false; repaint(); }
+    }
+  }
   function loadFiles(reset) { return loadList(state.files, '/files', reset, (s) => ({ q: s.q, category: s.filter })); }
   async function loadList(s, path, reset, paramsOf) {
     if (reset) { s.items = []; s.cursor = null; s.loaded = false; s.seq++; }
