@@ -694,6 +694,7 @@
         const r = await api('GET', '/projects');
         if (seq !== s.seq) return;
         s.items = sortProjects(r.items || []); s.loaded = true;
+        autoCovers();   // 還沒封面的專案在背景補
       } catch (e) {
         if (seq === s.seq) { s.loaded = true; toast(e.message, 'err'); }
       } finally {
@@ -716,12 +717,49 @@
   // 1. 手動指定的永遠優先——專案表單上傳一張，或在專案頁的檔案下按「設為封面」
   // 2. 沒指定就從這個專案的檔案裡挑：分類是「照片」「圖面」的先，其次 PDF 第一頁／影片第一格；同類裡日期最新的
   // 3. 一張有縮圖的都沒有（例如只有 Word 檔）就不放圖，顯示專案名稱第一個字
-  function pickCover(files) {
+  function coverOrder(a, b) {
     const rank = (f) => (f.category === '照片' || f.category === '圖面') ? 0 : 1;
     const when = (f) => f.date || (f.createdAt || '').slice(0, 10);
-    const cands = (files || []).filter((f) => f.thumb);
-    cands.sort((a, b) => (rank(a) - rank(b)) || when(b).localeCompare(when(a)));
+    return (rank(a) - rank(b)) || when(b).localeCompare(when(a));
+  }
+  function pickCover(files) {
+    const cands = (files || []).filter((f) => f.thumb).sort(coverOrder);
     return cands.length ? cands[0].thumb : '';
+  }
+  // 自動補封面：專案清單載好後，還沒封面又有東西的專案在背景一個一個做——讀它的檔案，有縮圖就直接挑；
+  // 都沒縮圖就照同樣順序挑最適合的一個先做縮圖（最多試 3 個），存成封面。其他檔案的縮圖等開到再補，不用一次全做。
+  let coverBusy = false;
+  const coverTried = {};
+  async function autoCovers() {
+    if (coverBusy || !state.user) return;
+    const pick = () => state.projects.items.filter((p) => !p.cover && !coverTried[p.id] && (p.fileCount > 0 || p.recordCount > 0));
+    if (!pick().length) return;
+    coverBusy = true;
+    try {
+      let todo;
+      while ((todo = pick()).length) {
+        const p = todo[0];
+        coverTried[p.id] = true;
+        try {
+          const data = await api('GET', '/projects/' + p.id);
+          let cover = data.project.cover || pickCover(data.files);
+          if (!cover) {
+            const cands = data.files.filter((f) => f.files[0] && !thumbTried[f.id] && ['image', 'pdf', 'video'].indexOf(kindOf(f.files[0].name, '')) >= 0).sort(coverOrder);
+            for (const f of cands.slice(0, 3)) {
+              thumbTried[f.id] = true;
+              try {
+                const saved = await api('PATCH', '/files/' + f.id, { thumb: await genThumbFor(f) });
+                replaceItem(state.files, saved); cover = saved.thumb; break;
+              } catch (e) { console.warn('封面縮圖失敗', f.name, e); }
+            }
+          }
+          if (!cover) continue;
+          const saved = data.project.cover ? data.project : await api('PATCH', '/projects/' + p.id, { cover });
+          replaceItem(state.projects, saved); state.covers[p.id] = saved.cover || cover;
+          if (state.view === 'projects') repaint();
+        } catch (e) { console.warn('自動封面失敗', p.name, e); }
+      }
+    } finally { coverBusy = false; }
   }
   // 專案卡片的封面：開過專案頁就記住挑出來的那張；沒開過就從已載入的檔案裡找屬於它的
   function coverFor(p) {
