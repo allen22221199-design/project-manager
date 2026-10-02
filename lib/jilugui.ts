@@ -423,7 +423,7 @@ export async function deleteFile(id: string): Promise<{ blobUrls: string[] }> {
 // 一個專案底下掛工作紀錄（紀錄的「專案」欄）和檔案（檔案直接掛、或經由紀錄的「相關檔案」間接掛）。
 export type JProject = {
   id: string; name: string; status: string; category: string; note: string; link: string; code: string
-  cover: string   // 封面圖網址；沒設就空字串，前端會用專案裡第一張有縮圖的檔案
+  cover: string   // 封面圖網址；沒設就空字串，開專案頁時會照 pickCover 的規則自動挑一張存回去
   recordCount: number; fileCount: number; lastDate: string; notionUrl: string; createdAt: string; updatedAt: string
 }
 function toProject(p: any): JProject {
@@ -510,6 +510,14 @@ export async function updateProject(id: string, r: ProjectInput): Promise<JProje
 export async function deleteProject(id: string): Promise<void> {
   try { await notion.pages.update({ page_id: id, archived: true }) } catch (e) { if (!isGone(e)) throw e }
 }
+// 自動封面的規則（前端 app.js 的 pickCover 要跟這裡一致）：手動設的永遠優先；沒設就從有縮圖的檔案裡挑——
+// 分類「照片」「圖面」先、其他（PDF 第一頁、影片第一格）後，同類裡日期最新的；一張有縮圖的都沒有（例如只有 Word 檔）就不放
+export function pickCover(files: JFile[]): string {
+  const rank = (f: JFile) => (f.category === '照片' || f.category === '圖面') ? 0 : 1
+  const when = (f: JFile) => f.date || (f.createdAt || '').slice(0, 10)
+  const cands = files.filter(f => f.thumb).sort((a, b) => (rank(a) - rank(b)) || when(b).localeCompare(when(a)))
+  return cands.length ? cands[0].thumb : ''
+}
 // 專案頁要的整包：專案本身、它的紀錄（新→舊）、它的檔案（直接掛的＋經由紀錄掛的，去重、新→舊）
 export async function getProjectBundle(id: string): Promise<{ project: JProject; records: JRecord[]; files: JFile[] } | null> {
   const project = await getProject(id)
@@ -529,12 +537,12 @@ export async function getProjectBundle(id: string): Promise<{ project: JProject;
     for (const f of got) if (f && !seen.has(f.id)) { seen.add(f.id); files.push(f) }
   }
   files.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
-  // 還沒設封面的專案，自動用第一張有縮圖的檔案當封面並存回去，專案清單才會有圖
+  // 還沒設封面的專案，照 pickCover 的規則挑一張存回去，專案清單才會有圖
   if (!project.cover) {
-    const cov = files.find(f => f.thumb)
+    const cov = pickCover(files)
     if (cov) {
-      project.cover = cov.thumb
-      try { await notion.pages.update({ page_id: id, properties: { 封面: { url: cov.thumb } } }) } catch { /* 存不回去就下次再試 */ }
+      project.cover = cov
+      try { await notion.pages.update({ page_id: id, properties: { 封面: { url: cov } } }) } catch { /* 存不回去就下次再試 */ }
     }
   }
   return { project, records, files }

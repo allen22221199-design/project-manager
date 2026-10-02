@@ -25,6 +25,7 @@
 
   const state = {
     user: null, mode: 'notion', ai: false, appName: '紀錄櫃', view: 'projects', painter: null,
+    edit: false,   // 編輯模式：卡片上直接出現「改」「刪除」，檔案可以勾選多個一起刪
     records: freshList(), files: freshList(), active: freshList(), projects: freshList(), covers: {},
     chat: { messages: [], busy: false, open: false }, chatPainter: null,
   };
@@ -147,6 +148,7 @@
   }
 
   async function boot() {
+    try { state.edit = localStorage.getItem('jilugui.edit') === '1'; } catch (e) { /* 無痕模式等 */ }
     try {
       const me = await api('GET', '/me');
       state.user = me.user; state.mode = me.mode; state.ai = !!me.ai; state.appName = me.app || state.appName;
@@ -200,13 +202,22 @@
     return h('div', { class: 'shell' },
       h('header', { class: 'topbar' },
         h('div', { class: 'brand' }, h('span', { class: 'brand-mark', html: ICONS.logo }), h('span', { class: 'brand-name', text: state.appName }), state.mode === 'demo' ? h('span', { class: 'pill demo', text: '示範' }) : null),
-        h('div', { class: 'topbar-right' }, h('button', { class: 'who', type: 'button', title: '帳號設定', text: state.user.name + (state.user.role === 'admin' ? '（管理者）' : ''), onclick: openAccount }), h('button', { class: 'linkbtn', type: 'button', text: '登出', onclick: logout }))),
+        h('div', { class: 'topbar-right' },
+          h('button', { class: 'editbtn' + (state.edit ? ' on' : ''), type: 'button', title: '開啟後，專案、紀錄、檔案的卡片上會直接出現「改」和「刪除」；檔案可以勾選多個一起刪', text: state.edit ? '✓ 編輯模式' : '編輯模式', onclick: toggleEdit }),
+          h('button', { class: 'who', type: 'button', title: '帳號設定', text: state.user.name + (state.user.role === 'admin' ? '（管理者）' : ''), onclick: openAccount }),
+          h('button', { class: 'linkbtn', type: 'button', text: '登出', onclick: logout }))),
+      state.edit ? h('div', { class: 'editnote', text: '編輯模式：卡片上的「改」可以改文字、「刪除」直接刪；檔案勾選後可以一次刪掉多個。' }) : null,
       tabs, $main,
       h('button', { class: 'fab add', type: 'button', 'aria-label': '新增', title: '新增', html: ICONS.plus, onclick: openAddMenu }),
       h('button', { class: 'fab assistant', type: 'button', 'aria-label': '問紀錄櫃', title: '問紀錄櫃', html: ICONS.ask, onclick: toggleAssistant }),
       assistantPanel());
   }
 
+  function toggleEdit() {
+    state.edit = !state.edit;
+    try { localStorage.setItem('jilugui.edit', state.edit ? '1' : '0'); } catch (e) { /* 存不了就只有這次有效 */ }
+    render();
+  }
   function setView(v) {
     state.view = v;
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
@@ -276,22 +287,42 @@
     if (!s.loaded && s.loading) { el.replaceChildren(h('div', { class: 'muted', text: '載入中…' })); return; }
     if (!s.items.length) { el.replaceChildren(h('div', { class: 'empty', text: s.loaded ? (s.q || s.filter ? '沒有符合的紀錄。' : '還沒有紀錄。按右下角「＋」寫下第一件做過的事。') : '' })); return; }
     const out = []; let month = null;
+    const hooks = { onChanged: (saved) => { replaceItem(s, saved); repaint(); }, onDeleted: () => repaint() };
     for (const r of s.items) {
       const mk = (r.date || '').slice(0, 7);
       if (mk !== month) { month = mk; out.push(h('h2', { class: 'month', text: fmtMonth(r.date) })); }
-      out.push(recordCard(r));
+      out.push(recordCard(r, hooks));
     }
     el.replaceChildren.apply(el, out);
   }
   function chip(text, cls) { return h('span', { class: 'chip-s' + (cls ? ' ' + cls : ''), text }); }
-  function recordCard(r) {
+  // hooks（編輯模式用）：onChanged(saved) 改完要更新哪份清單、onDeleted(id) 刪完要重畫什麼
+  function recordCard(r, hooks) {
     return h('article', { class: 'card', tabindex: 0, role: 'button', onclick: () => openRecord(r), onkeydown: (e) => { if (e.key === 'Enter') openRecord(r); } },
       h('div', { class: 'card-date', text: fmtDate(r.date) }),
       h('div', { class: 'card-body' },
         h('div', { class: 'card-title', text: r.title || '（無標題）' }),
         r.note ? h('div', { class: 'card-note', text: clip(r.note, 90) }) : null,
         h('div', { class: 'chips' }, r.projectId && projectName(r.projectId) ? chip('📁 ' + projectName(r.projectId), 'proj') : null, r.status ? chip(r.status, STATUS_CLASS[r.status] || 'gray') : null, r.category ? chip(r.category) : null, r.tags.map((t) => chip('#' + t, 'tag')), r.fileIds.length ? chip('附件 ' + r.fileIds.length) : null, r.link ? chip('連結') : null),
-        h('div', { class: 'card-meta', text: [r.by, r.code].filter(Boolean).join(' · ') })));
+        h('div', { class: 'card-meta', text: [r.by, r.code].filter(Boolean).join(' · ') })),
+      state.edit ? recordTools(r, hooks || {}) : null);
+  }
+  // 編輯模式：紀錄卡片上的「改」「刪除」。按鈕要擋住冒泡，不然會連卡片一起打開。
+  function stopThen(fn) { return (e) => { e.stopPropagation(); e.preventDefault(); fn(e); }; }
+  function recordTools(r, hooks) {
+    return h('div', { class: 'tools' },
+      h('button', { class: 'btn small', type: 'button', text: '改', title: '改標題、細節、狀態、標籤', onclick: stopThen(() => openRecordForm(r, null, { afterSave: (saved) => { if (hooks.onChanged) hooks.onChanged(saved); } })) }),
+      canDelete(r.by) ? h('button', { class: 'btn small danger', type: 'button', text: '刪除', onclick: stopThen(async (e) => {
+        if (!confirm('刪除「' + (r.title || '（無標題）') + '」這筆紀錄？相關檔案會留在檔案庫。')) return;
+        e.target.disabled = true;
+        try {
+          await api('DELETE', '/records/' + r.id);
+          state.records.items = state.records.items.filter((x) => x.id !== r.id);
+          state.active.items = state.active.items.filter((x) => x.id !== r.id);
+          toast('已刪除紀錄'); loadProjects();
+          if (hooks.onDeleted) hooks.onDeleted(r.id); else repaint();
+        } catch (ex) { toast(ex.message, 'err'); e.target.disabled = false; }
+      }) }) : null);
   }
 
   async function openRecord(r) {
@@ -399,12 +430,15 @@
     // 管理者可以幫舊檔案（Cloudflare 版時期上傳、沒有縮圖的）一次補縮圖
     const fillBtn = h('button', { class: 'btn small', type: 'button', text: '產生縮圖', title: '幫還沒有縮圖的 PDF、影片、照片補上縮圖', onclick: () => backfillThumbs(fillBtn) });
     wrap.appendChild(h('div', { class: 'section-head' }, h('h1', { class: 'page-title', text: '檔案' }), state.user.role === 'admin' ? fillBtn : null));
-    wrap.appendChild(search); wrap.appendChild(chips); wrap.appendChild(gridEl); wrap.appendChild(more);
+    // 編輯模式的多選列：勾選後可以一次刪掉多個
+    const ed = selection(() => s.items, { repaint: () => paint(), onDeleted: () => paint(), onChanged: (saved) => { replaceItem(s, saved); paint(); } });
+    wrap.appendChild(search); wrap.appendChild(chips); wrap.appendChild(ed.bar); wrap.appendChild(gridEl); wrap.appendChild(more);
     const paint = () => {
       if (state.view !== 'files') return;
       if (!s.loaded && s.loading) gridEl.replaceChildren(h('div', { class: 'muted', text: '載入中…' }));
       else if (!s.items.length) gridEl.replaceChildren(h('div', { class: 'empty', text: s.loaded ? (s.q || s.filter ? '沒有符合的檔案。' : '還沒有檔案。按右下角「＋」上傳第一個檔案。') : '' }));
-      else gridEl.replaceChildren.apply(gridEl, s.items.map(fileTile));
+      else gridEl.replaceChildren.apply(gridEl, s.items.map((f) => fileTile(f, ed)));
+      ed.onSel();
       more.hidden = !s.cursor; more.disabled = s.loading; more.textContent = s.loading ? '載入中…' : '載入更多';
     };
     state.painter = paint; paint(); ensureLoaded(s, loadFiles);
@@ -472,14 +506,73 @@
     if (f.projectId) return projectName(f.projectId) || '';
     return relatedTitle(f);
   }
-  function fileTile(f) {
+  // ed（編輯模式用，可省略）：selection() 做出來的多選狀態，有的話格子左上角多一個勾選框
+  function fileTile(f, ed) {
     const rec = pinLabel(f);
-    return h('article', { class: 'tile', tabindex: 0, role: 'button', onclick: () => openFile(f), onkeydown: (e) => { if (e.key === 'Enter') openFile(f); } },
+    const picked = !!(state.edit && ed && ed.sel.has(f.id));
+    return h('article', { class: 'tile' + (state.edit ? ' editing' : '') + (picked ? ' picked' : ''), tabindex: 0, role: 'button', onclick: () => openFile(f), onkeydown: (e) => { if (e.key === 'Enter') openFile(f); } },
+      state.edit && ed ? h('input', { type: 'checkbox', class: 'tile-check', 'aria-label': '勾選 ' + f.name, checked: picked, onclick: (e) => { e.stopPropagation(); if (e.target.checked) ed.sel.add(f.id); else ed.sel.delete(f.id); e.target.closest('.tile').classList.toggle('picked', e.target.checked); ed.onSel(); } }) : null,
       thumbFor(f, false),
       h('div', { class: 'tile-body' },
         h('div', { class: 'tile-name', text: f.name }),
         rec ? h('div', { class: 'tile-rec', title: rec, text: '📌 ' + rec }) : null,
-        h('div', { class: 'tile-meta', text: [f.category, fileDate(f), f.by].filter(Boolean).join(' · ') })));
+        h('div', { class: 'tile-meta', text: [f.category, fileDate(f), f.by].filter(Boolean).join(' · ') })),
+      state.edit ? fileTools(f, ed) : null);
+  }
+  // 編輯模式：檔案格上的「改」「刪除」
+  function fileTools(f, ed) {
+    return h('div', { class: 'tools' },
+      h('button', { class: 'btn small', type: 'button', text: '改', title: '改檔名、說明、標籤、所屬專案', onclick: stopThen(() => openFileEdit(f, null, ed && ed.onChanged)) }),
+      canDelete(f.by) ? h('button', { class: 'btn small danger', type: 'button', text: '刪除', onclick: stopThen(async (e) => {
+        if (!confirm('刪除「' + f.name + '」？刪掉就找不回來了。')) return;
+        e.target.disabled = true;
+        try { await deleteFiles([f]); toast('已刪除檔案'); if (ed) ed.onDeleted([f.id]); else repaint(); }
+        catch (ex) { toast(ex.message, 'err'); e.target.disabled = false; }
+      }) }) : null);
+  }
+  // 一次刪多個檔案：逐一呼叫 API，刪掉的從已載入清單拿掉；專案卡片的檔案數會變，重抓專案
+  // 逐一刪；onEach(已刪幾個, 檔案) 讓多選刪除顯示進度。不管中途有沒有失敗，有刪到就重載一次專案清單（筆數變了）
+  async function deleteFiles(list, onEach) {
+    let n = 0;
+    try {
+      for (const f of list) {
+        await api('DELETE', '/files/' + f.id);
+        state.files.items = state.files.items.filter((x) => x.id !== f.id);
+        n++; if (onEach) onEach(n, f);
+      }
+    } finally { if (n) loadProjects(); }
+    return n;
+  }
+  // 編輯模式的多選：getFiles() 回傳畫面上這一批檔案；hooks.repaint 重畫格子、hooks.onDeleted(ids) 刪完更新清單、hooks.onChanged(saved) 改完更新清單
+  function selection(getFiles, hooks) {
+    const ed = { sel: new Set(), bar: h('div', { class: 'editbar', hidden: true }) };
+    ed.onSel = function () {
+      const files = getFiles() || [];
+      const n = files.filter((f) => ed.sel.has(f.id)).length;
+      ed.bar.hidden = !state.edit || !files.length;
+      if (ed.bar.hidden) return;
+      ed.bar.replaceChildren.apply(ed.bar, [
+        h('span', { class: 'editbar-n', text: n ? '已勾選 ' + n + ' 個檔案' : '勾選檔案後可以一次刪除' }),
+        h('button', { class: 'btn small', type: 'button', text: n === files.length ? '取消全選' : '全選', onclick: () => { if (n === files.length) ed.sel.clear(); else files.forEach((f) => ed.sel.add(f.id)); hooks.repaint(); } }),
+        n ? h('button', { class: 'btn small danger', type: 'button', text: '刪除所選（' + n + '）', onclick: async (e) => {
+          const picked = files.filter((f) => ed.sel.has(f.id));
+          const allowed = picked.filter((f) => canDelete(f.by));
+          if (!allowed.length) { toast('勾選的檔案都不是你上傳的，不能刪', 'err'); return; }
+          const skip = picked.length - allowed.length;
+          if (!confirm('刪除這 ' + allowed.length + ' 個檔案？刪掉就找不回來了。' + (skip ? '（另外 ' + skip + ' 個不是你上傳的，會略過）' : ''))) return;
+          e.target.disabled = true; e.target.textContent = '刪除中…';
+          const done = [];
+          try {
+            await deleteFiles(allowed, (n, f) => { done.push(f.id); e.target.textContent = '刪除中 ' + n + '/' + allowed.length; });
+            toast('已刪除 ' + done.length + ' 個檔案');
+          } catch (ex) { toast(ex.message, 'err'); }
+          done.forEach((id) => ed.sel.delete(id));
+          hooks.onDeleted(done);
+        } }) : null].filter(Boolean));
+    };
+    ed.onDeleted = (ids) => { ids.forEach((id) => ed.sel.delete(id)); hooks.onDeleted(ids); };
+    ed.onChanged = hooks.onChanged;
+    return ed;
   }
   // 檔案顯示的日期是「完成日期」，舊資料沒填才退回上傳時間
   function fileDate(f) { return f.date ? fmtDate(f.date) : fmtTime(f.createdAt); }
@@ -515,7 +608,8 @@
     relEl.replaceChildren.apply(relEl, recs.length ? recs.map((r) => h('button', { class: 'reclink', type: 'button', onclick: () => openRecord(r) }, h('span', { class: 'mono small muted', text: fmtDate(r.date) + '  ' }), r.title || '（無標題）')) : [h('div', { class: 'muted', text: '相關紀錄已被刪除' })]);
   }
 
-  function openFileEdit(f, parentSheet) {
+  // onSaved(saved)：編輯模式從專案頁改檔案時，順便更新專案頁手上那份清單
+  function openFileEdit(f, parentSheet, onSaved) {
     const sh = openSheet('編輯檔案資料');
     const name = h('input', { type: 'text', id: 'e-name', maxlength: 200, value: f.name, required: true });
     const category = select('e-category', FILE_CATEGORY, f.category);
@@ -533,7 +627,8 @@
         const saved = await api('PATCH', '/files/' + f.id, { name: name.value.trim() || f.name, category: category.value, date: date.value, note: note.value.trim(), tags: parseTags(tags.value), projectId: project.value });
         if (project.value !== (f.projectId || '')) loadProjects();
         replaceItem(state.files, saved);
-        toast('已儲存'); sh.close(); if (parentSheet) parentSheet.close(); repaint();
+        toast('已儲存'); sh.close(); if (parentSheet) parentSheet.close();
+        if (onSaved) onSaved(saved); else repaint();
       } catch (ex) { err.textContent = ex.message; submit.disabled = false; }
     });
     sh.body.appendChild(form);
@@ -617,19 +712,26 @@
     if (state.projects.loaded) fill(); else loadProjects().then(fill);
     return sel;
   }
-  // 專案卡片的封面：開過專案頁就記住它第一個有縮圖的檔案；沒開過就從已載入的檔案裡找一張屬於它的
+  // 封面怎麼挑（專案清單、專案頁、後端 lib/jilugui.ts 的 pickCover 都是同一套規則）：
+  // 1. 手動指定的永遠優先——專案表單上傳一張，或在專案頁的檔案下按「設為封面」
+  // 2. 沒指定就從這個專案的檔案裡挑：分類是「照片」「圖面」的先，其次 PDF 第一頁／影片第一格；同類裡日期最新的
+  // 3. 一張有縮圖的都沒有（例如只有 Word 檔）就不放圖，顯示專案名稱第一個字
+  function pickCover(files) {
+    const rank = (f) => (f.category === '照片' || f.category === '圖面') ? 0 : 1;
+    const when = (f) => f.date || (f.createdAt || '').slice(0, 10);
+    const cands = (files || []).filter((f) => f.thumb);
+    cands.sort((a, b) => (rank(a) - rank(b)) || when(b).localeCompare(when(a)));
+    return cands.length ? cands[0].thumb : '';
+  }
+  // 專案卡片的封面：開過專案頁就記住挑出來的那張；沒開過就從已載入的檔案裡找屬於它的
   function coverFor(p) {
     if (p.cover) return p.cover;
     if (state.covers[p.id]) return state.covers[p.id];
-    for (const f of state.files.items) {
-      if (!f.thumb) continue;
-      if (f.projectId === p.id) return f.thumb;
-      for (const rid of f.recordIds || []) {
-        const r = state.records.items.find((x) => x.id === rid) || state.active.items.find((x) => x.id === rid);
-        if (r && r.projectId === p.id) return f.thumb;
-      }
-    }
-    return '';
+    const belongs = (f) => f.projectId === p.id || (f.recordIds || []).some((rid) => {
+      const r = state.records.items.find((x) => x.id === rid) || state.active.items.find((x) => x.id === rid);
+      return !!r && r.projectId === p.id;
+    });
+    return pickCover(state.files.items.filter(belongs));
   }
   // 專案頁就是首頁：問候、專案卡片，下面接「沒掛專案的進行中事項」
   function projectsView() {
@@ -688,7 +790,38 @@
         latest
           ? h('div', { class: 'platest' }, h('span', { class: 'mono small muted', text: fmtDate(latest.date) + '  ' }), latest.title || '（無標題）')
           : (p.note ? h('div', { class: 'pnote', text: firstLine(p.note, 70) }) : null),
-        h('div', { class: 'pmeta', text: ['紀錄 ' + p.recordCount, '檔案 ' + p.fileCount, p.lastDate ? '最近 ' + fmtDate(p.lastDate) : ''].filter(Boolean).join(' · ') })));
+        h('div', { class: 'pmeta', text: ['紀錄 ' + p.recordCount, '檔案 ' + p.fileCount, p.lastDate ? '最近 ' + fmtDate(p.lastDate) : ''].filter(Boolean).join(' · ') })),
+      state.edit ? h('div', { class: 'tools' },
+        h('button', { class: 'btn small', type: 'button', text: '改', title: '改名稱、說明、狀態、封面', onclick: stopThen(() => openProjectForm(p, null)) }),
+        state.user.role === 'admin' ? h('button', { class: 'btn small danger', type: 'button', text: '整個刪除', title: '連同這個專案底下的紀錄和檔案一起刪掉', onclick: stopThen(() => deleteProjectDeep(p, null)) }) : null) : null);
+  }
+  // 整個專案連同內容一起刪：先抓專案頁的清單，逐一刪檔案、紀錄，最後刪專案本身。
+  // 這是「只留自己做的東西」用的：不要的專案一次清乾淨，不會留下沒掛專案的孤兒紀錄和檔案。
+  async function deleteProjectDeep(p, sheet, btn) {
+    let data;
+    try { data = await api('GET', '/projects/' + p.id); } catch (e) { toast(e.message, 'err'); return; }
+    const nf = data.files.length, nr = data.records.length;
+    if (!confirm('整個刪除「' + p.name + '」？會一併刪掉它的 ' + nr + ' 筆紀錄和 ' + nf + ' 個檔案，刪掉就找不回來了。')) return;
+    const total = nf + nr + 1; let n = 0;
+    const tick = () => { n++; if (btn) btn.textContent = '刪除中 ' + n + '/' + total; };
+    if (btn) btn.disabled = true;
+    try {
+      for (const f of data.files) { await api('DELETE', '/files/' + f.id); tick(); }
+      for (const r of data.records) { await api('DELETE', '/records/' + r.id); tick(); }
+      await api('DELETE', '/projects/' + p.id); tick();
+    } catch (e) {
+      toast('刪到一半出錯：' + e.message + '。已刪掉的不會復原，再按一次可以繼續刪。', 'err');
+      if (btn) { btn.disabled = false; btn.textContent = '連同紀錄與檔案一起刪除'; }
+      loadProjects(); return;
+    }
+    state.projects.items = state.projects.items.filter((x) => x.id !== p.id);
+    const gone = {}; data.files.forEach((f) => { gone[f.id] = true; }); data.records.forEach((r) => { gone[r.id] = true; });
+    state.files.items = state.files.items.filter((x) => !gone[x.id]);
+    state.records.items = state.records.items.filter((x) => !gone[x.id]);
+    state.active.items = state.active.items.filter((x) => !gone[x.id]);
+    toast('已刪除「' + p.name + '」和它的 ' + nr + ' 筆紀錄、' + nf + ' 個檔案');
+    if (sheet) sheet.close();
+    repaint();
   }
   async function openProject(p) {
     const sh = openSheet(p.name || '專案', { wide: true });
@@ -700,11 +833,12 @@
       h('button', { class: 'btn primary', type: 'button', text: '＋ 新增紀錄', onclick: () => openRecordForm(null, null, { projectId: p.id, afterSave: refresh }) }),
       h('button', { class: 'btn', type: 'button', text: '上傳檔案', onclick: () => openFileForm({ projectId: p.id, afterSave: refresh }) }),
       h('button', { class: 'btn', type: 'button', text: '編輯專案', onclick: () => openProjectForm(p, sh) }),
-      state.user.role === 'admin' ? h('button', { class: 'btn danger', type: 'button', text: '刪除', onclick: () => confirmBox(actions, '刪除這個專案？底下的紀錄和檔案都會留著，只是不再掛在這個專案上。', async () => {
+      state.user.role === 'admin' ? h('button', { class: 'btn danger', type: 'button', text: '刪除', title: '只刪專案這一層，底下的紀錄和檔案留著', onclick: () => confirmBox(actions, '刪除這個專案？底下的紀錄和檔案都會留著，只是不再掛在這個專案上。', async () => {
         await api('DELETE', '/projects/' + p.id);
         state.projects.items = state.projects.items.filter((x) => x.id !== p.id);
         toast('已刪除專案'); sh.close(); repaint();
-      }) }) : null);
+      }) }) : null,
+      state.user.role === 'admin' && state.edit ? h('button', { class: 'btn danger', type: 'button', text: '連同紀錄與檔案一起刪除', onclick: (e) => deleteProjectDeep(p, sh, e.target) }) : null);
     b.appendChild(actions);
     const linksHead = h('h3', { class: 'sub', text: '連結' });
     const linksEl = h('div', { class: 'linklist' });
@@ -724,12 +858,28 @@
     linksEl.replaceChildren.apply(linksEl, links.length
       ? links.map((l) => h('a', { class: 'filelink', href: l.url, target: '_blank', rel: 'noopener' }, h('span', { text: '↗ ' + l.label }), h('div', { class: 'link-url', text: l.url })))
       : [h('div', { class: 'muted', text: '沒有連結' })]);
-    recHead.textContent = '紀錄（' + data.records.length + '）';
-    recsEl.replaceChildren.apply(recsEl, data.records.length ? data.records.map(recordCard) : [h('div', { class: 'muted', text: '還沒有紀錄，按上面「＋ 新增紀錄」' })]);
-    fileHead.textContent = '檔案（' + data.files.length + '）';
+    // 紀錄清單：編輯模式改完或刪掉，更新專案頁手上這份清單
+    const recHooks = {
+      onChanged: (saved) => { const i = data.records.findIndex((x) => x.id === saved.id); if (i >= 0) data.records[i] = saved; replaceItem(state.records, saved); paintRecs(); repaint(); },
+      onDeleted: (id) => { data.records = data.records.filter((x) => x.id !== id); paintRecs(); repaint(); },
+    };
+    const paintRecs = () => {
+      recHead.textContent = '紀錄（' + data.records.length + '）';
+      recsEl.replaceChildren.apply(recsEl, data.records.length ? data.records.map((r) => recordCard(r, recHooks)) : [h('div', { class: 'muted', text: '還沒有紀錄，按上面「＋ 新增紀錄」' })]);
+    };
+    paintRecs();
+    // 編輯模式的多選列（勾選檔案一次刪）
+    const ed = selection(() => data.files, {
+      repaint: () => paintFiles(),
+      onDeleted: (ids) => { data.files = data.files.filter((f) => ids.indexOf(f.id) < 0); paintFiles(); repaint(); },
+      onChanged: (saved) => { const i = data.files.findIndex((x) => x.id === saved.id); if (i >= 0) data.files[i] = saved; paintFiles(); repaint(); },
+    });
+    b.insertBefore(ed.bar, filesEl);
     // 檔案牆：每個有縮圖的檔案下面有「設為封面」
     const paintFiles = () => {
-      filesEl.replaceChildren.apply(filesEl, data.files.length ? data.files.map((f) => h('div', { class: 'tilewrap' }, fileTile(f),
+      fileHead.textContent = '檔案（' + data.files.length + '）';
+      ed.onSel();
+      filesEl.replaceChildren.apply(filesEl, data.files.length ? data.files.map((f) => h('div', { class: 'tilewrap' }, fileTile(f, ed),
         f.thumb ? h('button', { class: 'linkbtn', type: 'button', text: data.project.cover === f.thumb ? '✓ 目前封面' : '設為封面', onclick: async () => {
           try {
             const saved = await api('PATCH', '/projects/' + p.id, { cover: f.thumb });
@@ -741,13 +891,15 @@
     paintFiles();
     replaceItem(state.projects, data.project);   // 筆數、封面可能變了
     p.cover = data.project.cover;
+    state.covers[p.id] = data.project.cover || pickCover(data.files);
     // 沒縮圖的檔案在背景補；補完重畫檔案牆，專案還沒封面就順手設一張
     autoThumbs(data.files).then(async () => {
       paintFiles();
       if (!data.project.cover) {
-        const cov = data.files.find((f) => f.thumb);
+        const cov = pickCover(data.files);
         if (cov) {
-          try { const saved = await api('PATCH', '/projects/' + p.id, { cover: cov.thumb }); data.project = saved; p.cover = saved.cover; replaceItem(state.projects, saved); paintFiles(); repaint(); } catch (e) { /* 下次再試 */ }
+          state.covers[p.id] = cov;
+          try { const saved = await api('PATCH', '/projects/' + p.id, { cover: cov }); data.project = saved; p.cover = saved.cover; replaceItem(state.projects, saved); paintFiles(); repaint(); } catch (e) { /* 下次再試 */ }
         }
       }
     });
@@ -765,7 +917,7 @@
     const coverPrev = h('div', { class: 'cover-pick' });
     const coverInput = h('input', { type: 'file', accept: 'image/*', class: 'visually-hidden', id: 'p-cover-' + Math.random().toString(36).slice(2, 8) });
     const paintCover = () => coverPrev.replaceChildren(
-      coverUrl.v ? h('img', { src: coverUrl.v, alt: '' }) : h('span', { class: 'muted small', text: '還沒有封面。沒設的話會自動用專案裡第一張有縮圖的檔案；也可以在這裡上傳一張。' }),
+      coverUrl.v ? h('img', { src: coverUrl.v, alt: '' }) : h('span', { class: 'muted small', text: '還沒有封面。沒設的話會自動從專案的檔案裡挑：照片、圖面優先，其次 PDF 第一頁或影片第一格，同類裡取日期最新的。也可以在這裡上傳一張，或在專案頁的檔案下按「設為封面」。' }),
       h('div', { class: 'actions' },
         h('label', { class: 'btn small', for: coverInput.id, text: coverUrl.v ? '換一張' : '上傳封面圖片' }),
         coverUrl.v ? h('button', { class: 'btn small', type: 'button', text: '清除', onclick: () => { coverUrl.v = ''; paintCover(); } }) : null,
