@@ -9,7 +9,7 @@
   const PROJECT_STATUS = ['進行中', '暫停', '已完成'];
   const STATUS_CLASS = { '進行中': 'blue', '已完成': 'green', '待追蹤': 'yellow', '取消': 'gray' };
   const CATEGORY = ['工程', '業務', '會議', '採購', '行政', '系統開發', '其他'];
-  const FILE_CATEGORY = ['文件', '照片', '合約', '報價與發票', '圖面', '影片', '其他'];
+  const FILE_CATEGORY = ['文件', '照片', '圖面', '影片', '其他'];
   const PAGE = 30;
 
   const ICONS = {
@@ -993,7 +993,7 @@
   }
 
   // ---------- 問紀錄櫃（右下角小視窗）----------
-  const EXAMPLES = ['上個月台中案的報價單在哪？', '三樓大廳完工的照片', '最近上傳的合約', '林經理相關的檔案'];
+  const EXAMPLES = ['2025 新版型錄在哪？', '日本採訪的逐字稿', '最近上傳的圖面', '阿緯做的打樣'];
   function assistantPanel() {
     const c = state.chat;
     const panel = h('section', { class: 'assistant-panel', id: 'assistant-panel', role: 'dialog', 'aria-label': '問紀錄櫃', hidden: !c.open });

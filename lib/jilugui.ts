@@ -19,7 +19,7 @@ export const PROJECT_STATUS = ['進行中', '已完成', '暫停']
 
 export const RECORD_STATUS = ['進行中', '已完成', '待追蹤', '取消']
 export const RECORD_CATEGORY = ['工程', '業務', '會議', '採購', '行政', '系統開發', '其他']
-export const FILE_CATEGORY = ['文件', '照片', '合約', '報價與發票', '圖面', '影片', '其他']
+export const FILE_CATEGORY = ['文件', '照片', '圖面', '影片', '其他']
 
 // ---------- Notion 小工具 ----------
 const rtext = (p: any) => (p?.rich_text ?? []).map((r: any) => r.plain_text).join('')
