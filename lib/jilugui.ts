@@ -59,12 +59,67 @@ function cleanIds(v: any): string[] {
 async function queryAll(database_id: string, body: any, max = 300): Promise<any[]> {
   const results: any[] = []
   let cursor: string | undefined
+  const keep = await keepProps(database_id)   // 排除縮圖本體那種大欄位，列表才不會拖著幾百 KB 的 base64
   do {
-    const res: any = await notion.databases.query({ database_id, page_size: 100, ...body, ...(cursor ? { start_cursor: cursor } : {}) })
+    const res: any = await notion.databases.query({ database_id, page_size: 100, ...body, ...(keep ? { filter_properties: keep } : {}), ...(cursor ? { start_cursor: cursor } : {}) })
     results.push(...res.results)
     cursor = res.has_more ? res.next_cursor : undefined
   } while (cursor && results.length < max)
   return results.filter((p: any) => !p.archived && !p.in_trash)
+}
+// ---------- 縮圖／封面本體存在 Notion（不靠 Vercel Blob） ----------
+// 480px 的 JPEG 約 20～60KB，base64 後切成 2000 字一段放進 rich_text（Notion 一段上限 2000 字、一個屬性最多 100 段）。
+// 「縮圖」／「封面」網址欄填 /api/jilugui/thumb/:id，前端 <img> 直接載；讀的時候用 pages.properties.retrieve 把全部段落接回來。
+const THUMB_PROP = {
+  file: { db: FILES_DB, data: '縮圖資料', url: '縮圖' },
+  project: { db: PROJECTS_DB, data: '封面資料', url: '封面' },
+} as const
+export type ThumbKind = keyof typeof THUMB_PROP
+const propIdCache: Record<string, Record<string, string>> = {}
+async function propIds(db: string): Promise<Record<string, string>> {
+  if (!propIdCache[db]) {
+    const d: any = await notion.databases.retrieve({ database_id: db })
+    const map: Record<string, string> = {}
+    for (const [name, pr] of Object.entries<any>(d.properties ?? {})) map[name] = pr.id
+    propIdCache[db] = map
+  }
+  return propIdCache[db]
+}
+// 查詢／讀取時要保留的屬性 id（也就是全部減掉縮圖本體）；不是檔案庫／專案就回 null 表示不用過濾
+async function keepProps(db: string): Promise<string[] | null> {
+  const cfg = Object.values(THUMB_PROP).find(c => c.db === db)
+  if (!cfg) return null
+  try {
+    const ids = await propIds(db)
+    const keep = Object.entries(ids).filter(([n]) => n !== cfg.data).map(([, id]) => id)
+    return keep.length ? keep : null
+  } catch { return null }
+}
+export function thumbPath(kind: ThumbKind, id: string): string {
+  return `/api/jilugui/thumb/${id}` + (kind === 'project' ? '?kind=project' : '')
+}
+export async function saveThumbData(kind: ThumbKind, id: string, jpeg: Buffer): Promise<string> {
+  const b64 = jpeg.toString('base64')
+  if (b64.length > 100 * 2000) throw new Error('縮圖太大（超過 150KB）')
+  const chunks: any[] = []
+  for (let i = 0; i < b64.length; i += 2000) chunks.push({ type: 'text', text: { content: b64.slice(i, i + 2000) } })
+  const cfg = THUMB_PROP[kind]
+  const url = thumbPath(kind, id)
+  await notion.pages.update({ page_id: id, properties: { [cfg.data]: { rich_text: chunks }, [cfg.url]: { url } } })
+  return url
+}
+export async function getThumbData(kind: ThumbKind, id: string): Promise<Buffer | null> {
+  const cfg = THUMB_PROP[kind]
+  const pid = (await propIds(cfg.db))[cfg.data]
+  if (!pid) return null
+  let b64 = ''
+  let cursor: string | undefined
+  do {
+    const res: any = await notion.pages.properties.retrieve({ page_id: id, property_id: pid, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) })
+    for (const r of res.results ?? []) b64 += r.rich_text?.plain_text ?? r.rich_text?.text?.content ?? ''
+    cursor = res.has_more ? res.next_cursor : undefined
+  } while (cursor)
+  return b64 ? Buffer.from(b64, 'base64') : null
 }
 function isGone(e: any): boolean {
   const msg = String(e?.message ?? e)
@@ -280,7 +335,7 @@ export async function deleteRecord(id: string): Promise<void> {
 export type JFile = {
   id: string; name: string; files: { name: string; index: number; url?: string }[]; category: string; date: string
   note: string; tags: string[]; by: string; code: string; recordIds: string[]; notionUrl: string; createdAt: string
-  thumb: string   // 縮圖網址（瀏覽器上傳時產生、放在 Vercel Blob）；沒有就空字串
+  thumb: string   // 縮圖網址：瀏覽器產生後存進 Notion「縮圖資料」，網址是 /api/jilugui/thumb/:id（舊資料可能是 Vercel Blob 網址）；沒有就空字串
   projectId: string   // 直接掛在哪個專案底下；沒有就空字串（經由紀錄間接屬於專案的不算在這裡）
 }
 const isBlobUrl = (u: string) => { try { return new URL(u).hostname.endsWith('blob.vercel-storage.com') } catch { return false } }
@@ -337,7 +392,7 @@ export function cleanFileEdit(v: any): FileEdit | null {
   if (v.tags !== undefined) out.tags = cleanTags(v.tags)
   if (v.thumb !== undefined) {
     const t = s(v.thumb, 2000)
-    if (t && !/^https?:\/\//i.test(t)) return null
+    if (t && !/^https?:\/\//i.test(t) && !t.startsWith('/api/jilugui/thumb/')) return null
     out.thumb = t
   }
   if (v.projectId !== undefined) out.projectId = cleanIds([v.projectId])[0] ?? ''
@@ -369,7 +424,8 @@ export async function listFiles(o: { q?: string; category?: string; project?: st
 }
 export async function getFile(id: string): Promise<JFile | null> {
   try {
-    const p: any = await notion.pages.retrieve({ page_id: id })
+    const keep = await keepProps(FILES_DB)
+    const p: any = await notion.pages.retrieve({ page_id: id, ...(keep ? { filter_properties: keep } : {}) })
     if (p.archived || p.in_trash) return null
     return toFile(p)
   } catch (e) { if (isGone(e)) return null; throw e }
@@ -469,7 +525,7 @@ export function cleanProjectInput(v: any, needName: boolean): ProjectInput | nul
   }
   if (v.cover !== undefined) {
     const cover = s(v.cover, 2000)
-    if (cover && !/^https?:\/\//i.test(cover)) return null
+    if (cover && !/^https?:\/\//i.test(cover) && !cover.startsWith('/api/jilugui/thumb/')) return null
     out.cover = cover
   }
   if (!Object.keys(out).length) return null
@@ -491,7 +547,8 @@ export async function listProjects(): Promise<JProject[]> {
 }
 export async function getProject(id: string): Promise<JProject | null> {
   try {
-    const p: any = await notion.pages.retrieve({ page_id: id })
+    const keep = await keepProps(PROJECTS_DB)
+    const p: any = await notion.pages.retrieve({ page_id: id, ...(keep ? { filter_properties: keep } : {}) })
     if (p.archived || p.in_trash) return null
     return toProject(p)
   } catch (e) { if (isGone(e)) return null; throw e }

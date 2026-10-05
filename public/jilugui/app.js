@@ -520,7 +520,7 @@
       const f = todo[i];
       btn.textContent = '產生縮圖 ' + (i + 1) + '/' + todo.length;
       try {
-        const saved = await api('PATCH', '/files/' + f.id, { thumb: await genThumbFor(f) });
+        const saved = await genThumbFor(f);
         replaceItem(state.files, saved); ok++; repaint();
       } catch (e) { bad++; console.warn('補縮圖失敗', f.name, e); }
     }
@@ -810,7 +810,7 @@
             for (const f of cands.slice(0, 3)) {
               thumbTried[f.id] = true;
               try {
-                const saved = await api('PATCH', '/files/' + f.id, { thumb: await genThumbFor(f) });
+                const saved = await genThumbFor(f);
                 replaceItem(state.files, saved); cover = saved.thumb; break;
               } catch (e) { console.warn('封面縮圖失敗', f.name, e); }
             }
@@ -1027,9 +1027,11 @@
       if (!file) return;
       err.textContent = '封面上傳中…';
       try {
+        if (!existing) throw new Error('請先建立專案，再回來上傳封面');
         const j = await makeThumb(file, file.name, file.type);
         if (!j) throw new Error('這個格式不能當封面，請用 JPG 或 PNG');
-        coverUrl.v = await uploadThumb(j, file.name); err.textContent = ''; paintCover();
+        const savedP = await uploadThumb(j, existing.id, 'project');
+        coverUrl.v = savedP.cover || ''; err.textContent = ''; paintCover();
       } catch (ex) { err.textContent = '封面上傳失敗：' + ex.message; }
     });
     paintCover();
@@ -1173,12 +1175,12 @@
         c.status = 'up'; c.progress = 0; paint();
         try {
           const up = await uploadFile(c.file, (p) => { c.progress = p; paint(); });
-          c.status = 'thumb'; paint();
-          const thumb = await tryThumb(c.file, c.file.name, c.file.type);
           const meta = metaFor ? metaFor(c.file) : {};
-          const entry = await api('POST', '/files', Object.assign({ name: c.file.name, uploads: [up], thumb }, meta));
+          const entry = await api('POST', '/files', Object.assign({ name: c.file.name, uploads: [up] }, meta));
           c.status = 'done'; c.entryId = entry.id; ids.push(entry.id);
           state.files.items.unshift(entry);
+          // 縮圖要有頁面 id 才存得進 Notion，所以建好頁面後在背景補；失敗只是先顯示副檔名
+          genThumbFor(entry).then((saved) => { replaceItem(state.files, saved); repaint(); }).catch((e) => console.warn('縮圖失敗', c.file.name, e));
         } catch (e) {
           c.status = 'error'; paint();
           throw new Error('「' + c.file.name + '」上傳失敗：' + e.message);
@@ -1240,7 +1242,14 @@
     c.width = Math.max(1, Math.round((w || 1) * scale)); c.height = Math.max(1, Math.round((h || 1) * scale));
     return c;
   }
-  function canvasToJpeg(c) { return new Promise((resolve) => c.toBlob((b) => resolve(b), 'image/jpeg', 0.82)); }
+  // 縮圖存進 Notion 有 150KB 上限，太大就逐步降畫質
+  async function canvasToJpeg(c) {
+    for (const q of [0.82, 0.7, 0.58, 0.45, 0.32]) {
+      const b = await new Promise((resolve) => c.toBlob((x) => resolve(x), 'image/jpeg', q));
+      if (!b || b.size <= 140 * 1024) return b;
+    }
+    return null;
+  }
   async function thumbFromImage(blob) {
     const bmp = await createImageBitmap(blob);
     const c = fitCanvas(bmp.width, bmp.height);
@@ -1291,19 +1300,15 @@
     if (kind === 'video') return thumbFromVideo(blob);
     return null;
   }
-  async function uploadThumb(jpeg, name) {
-    const client = await loadBlobClient();
-    const base = String(name || 'file').replace(/\.[^.]+$/, '');
-    const path = blobPath(base + '.jpg').replace('jilugui/', 'jilugui/thumbs/');
-    const blob = await client.upload(path, jpeg, { access: 'public', handleUploadUrl: API + '/upload', contentType: 'image/jpeg' });
-    return blob.url;
+  // 縮圖本體存在 Notion，不用 Vercel Blob：把做好的 JPEG POST 給 /thumb/:id，伺服器切段存進「縮圖資料」（專案封面則是「封面資料」）
+  // 並把「縮圖」／「封面」網址填成 /api/jilugui/thumb/:id。回傳存好後的檔案（或專案）物件。
+  async function uploadThumb(jpeg, id, kind) {
+    const res = await fetch(API + '/thumb/' + encodeURIComponent(id) + (kind === 'project' ? '?kind=project' : ''), { method: 'POST', body: jpeg, headers: { 'Content-Type': 'image/jpeg' }, credentials: 'same-origin' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('縮圖儲存失敗（' + res.status + '）'));
+    return data;
   }
-  // 產生縮圖失敗不影響上傳，只是那個檔案格會顯示副檔名
-  async function tryThumb(blob, name, type) {
-    try { const j = await makeThumb(blob, name, type); return j ? await uploadThumb(j, name) : ''; }
-    catch (e) { console.warn('縮圖失敗', name, e); return ''; }
-  }
-  // 幫一個「已經在庫裡」的檔案做縮圖：先把檔案抓下來（Notion 的經 ?raw=1 同網域轉一手），做好傳上去，回傳縮圖網址
+  // 幫一個「已經在庫裡」的檔案做縮圖：先把檔案抓下來（Notion 的經 ?raw=1 同網域轉一手），做好存進去，回傳更新後的檔案
   async function genThumbFor(f) {
     const first = f.files[0];
     const src = first.url ? first.url : fileUrl(f.id, first.index) + '?raw=1';
@@ -1312,7 +1317,7 @@
     const blob = await res.blob();
     const jpeg = await makeThumb(blob, first.name, blob.type);
     if (!jpeg) throw new Error('格式不支援');
-    return uploadThumb(jpeg, first.name);
+    return uploadThumb(jpeg, f.id);
   }
   // 自動補縮圖：畫面上有還沒縮圖的 PDF／影片／照片，就在背景一個一個做，做好直接換上去，不用按任何鈕。
   // 一輪最多 8 個，做完還有再接著做；失敗的記住不重試（避免一直打）。
@@ -1329,7 +1334,7 @@
         for (const f of todo) {
           thumbTried[f.id] = true;
           try {
-            const saved = await api('PATCH', '/files/' + f.id, { thumb: await genThumbFor(f) });
+            const saved = await genThumbFor(f);
             replaceItem(state.files, saved);
             const i = list.indexOf(f);
             if (i >= 0) list[i] = saved;
