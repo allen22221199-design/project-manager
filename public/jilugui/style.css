@@ -238,6 +238,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .meta { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); }
 .note { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 65ch; }
 .note a, .msg-text a { color: var(--seal); overflow-wrap: anywhere; }
+/* 說明／細節的簡易排版：表格、條列、小標 */
+.rich { display: grid; gap: 8px; max-width: 72ch; overflow-wrap: anywhere; white-space: normal; }
+.rich p { margin: 0; }
+.rich h4 { margin: 6px 0 0; font-size: 13px; color: var(--seal); letter-spacing: .04em; }
+.rich h4:first-child { margin-top: 0; }
+.rich ul, .rich ol { margin: 0; padding-left: 20px; display: grid; gap: 3px; }
+.rich-table { overflow-x: auto; }
+.rich table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.rich th, .rich td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+.rich th { background: var(--paper); font-weight: 600; white-space: nowrap; }
+.rich td:first-child { color: var(--ink-2); white-space: nowrap; }
+.rich tr:nth-child(even) td { background: color-mix(in srgb, var(--paper) 45%, transparent); }
 .linkbox { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .link-url { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
 .sub { font-size: 13px; font-weight: 600; color: var(--ink-2); letter-spacing: .04em; margin-top: 4px; }

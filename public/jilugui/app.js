@@ -124,6 +124,71 @@
     if (last < s.length) el.appendChild(document.createTextNode(s.slice(last)));
     return el;
   }
+  // 說明／細節支援很簡單的標記，讓長文字不要擠成一團：
+  //   | 欄 | 欄 |   表格（第一列是表頭，|---| 分隔列可有可無）
+  //   - 項目        條列；1. 項目  編號
+  //   【小標】或 ## 小標   小標題（【小標】後面同一行接著寫的字會當成內文）
+  //   **粗體**、網址自動變連結；其他文字照原樣換行
+  function inlineRuns(el, s) {
+    const re = /\*\*([^*]+)\*\*|(https?:\/\/[^\s<>"'，。）)]+)/g;
+    let last = 0, m;
+    while ((m = re.exec(s))) {
+      if (m.index > last) el.appendChild(document.createTextNode(s.slice(last, m.index)));
+      if (m[1] !== undefined) el.appendChild(h('strong', { text: m[1] }));
+      else el.appendChild(h('a', { href: m[2], target: '_blank', rel: 'noopener', text: m[2] }));
+      last = m.index + m[0].length;
+    }
+    if (last < s.length) el.appendChild(document.createTextNode(s.slice(last)));
+    return el;
+  }
+  const RT_SEP = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/;
+  const RT_BLOCK = /^(?:#{1,3}\s|【[^】]+】|[-•]\s|\d+[.、]\s*)/;
+  function richText(text, cls) {
+    const root = h('div', { class: 'rich' + (cls ? ' ' + cls : '') });
+    const lines = String(text || '').split(/\r?\n/).map((x) => x.trim());
+    let i = 0, m;
+    while (i < lines.length) {
+      const l = lines[i];
+      if (!l) { i++; continue; }
+      if (l.charAt(0) === '|') {
+        const table = h('table'); let head = true;
+        while (i < lines.length && lines[i].charAt(0) === '|') {
+          const row = lines[i++];
+          if (RT_SEP.test(row)) continue;
+          const tr = h('tr');
+          row.replace(/^\|/, '').replace(/\|$/, '').split('|').forEach((c) => tr.appendChild(inlineRuns(h(head ? 'th' : 'td'), c.trim())));
+          table.appendChild(tr); head = false;
+        }
+        root.appendChild(h('div', { class: 'rich-table' }, table));
+        continue;
+      }
+      if ((m = /^#{1,3}\s+(.+)$/.exec(l))) { root.appendChild(inlineRuns(h('h4'), m[1])); i++; continue; }
+      if ((m = /^【([^】]+)】\s*(.*)$/.exec(l))) { root.appendChild(inlineRuns(h('h4'), m[1])); if (m[2]) lines[i] = m[2]; else i++; continue; }
+      if (/^[-•]\s/.test(l)) {
+        const ul = h('ul');
+        while (i < lines.length && /^[-•]\s/.test(lines[i])) ul.appendChild(inlineRuns(h('li'), lines[i++].replace(/^[-•]\s+/, '')));
+        root.appendChild(ul); continue;
+      }
+      if (/^\d+[.、]\s*/.test(l)) {
+        const ol = h('ol');
+        while (i < lines.length && /^\d+[.、]\s*/.test(lines[i])) ol.appendChild(inlineRuns(h('li'), lines[i++].replace(/^\d+[.、]\s*/, '')));
+        root.appendChild(ol); continue;
+      }
+      const p = h('p'); let first = true;
+      while (i < lines.length && lines[i] && lines[i].charAt(0) !== '|' && !RT_BLOCK.test(lines[i])) {
+        if (!first) p.appendChild(document.createElement('br'));
+        inlineRuns(p, lines[i]); first = false; i++;
+      }
+      root.appendChild(p);
+    }
+    return root;
+  }
+  // 卡片上的一行摘要：跳過表格、分隔列，去掉標記符號
+  function plainSummary(s, n) {
+    const lines = String(s || '').split(/\r?\n/).map((x) => x.trim()).filter((x) => x && x.charAt(0) !== '|' && !RT_SEP.test(x));
+    const line = (lines[0] || '').replace(/^#{1,3}\s+/, '').replace(/^【([^】]+)】\s*/, '$1：').replace(/^[-•]\s+/, '').replace(/\*\*/g, '');
+    return clip(line, n);
+  }
 
   // ---------- 提示 ----------
   let toastTimer = null;
@@ -235,10 +300,7 @@
 
   // ---------- 首頁＝專案（見下面的「專案」區）----------
   // 細節只取第一行、最多 80 字，當成「現在做到哪」的一句話
-  function firstLine(s, n) {
-    const line = String(s || '').split(/\r?\n/).map((x) => x.trim()).find((x) => x) || '';
-    return clip(line, n);
-  }
+  function firstLine(s, n) { return plainSummary(s, n); }
   // 沒掛專案的進行中／待追蹤：有掛專案的在專案卡片上看，這裡只列沒歸專案的，照分類分組。
   // 一件都沒有就把整個區塊藏起來。
   function paintBoard(el, section) {
@@ -302,7 +364,7 @@
       h('div', { class: 'card-date', text: fmtDate(r.date) }),
       h('div', { class: 'card-body' },
         h('div', { class: 'card-title', text: r.title || '（無標題）' }),
-        r.note ? h('div', { class: 'card-note', text: clip(r.note, 90) }) : null,
+        r.note ? h('div', { class: 'card-note', text: plainSummary(r.note, 90) }) : null,
         h('div', { class: 'chips' }, r.projectId && projectName(r.projectId) ? chip('📁 ' + projectName(r.projectId), 'proj') : null, r.status ? chip(r.status, STATUS_CLASS[r.status] || 'gray') : null, r.category ? chip(r.category) : null, r.tags.map((t) => chip('#' + t, 'tag')), r.fileIds.length ? chip('附件 ' + r.fileIds.length) : null, r.link ? chip('連結') : null),
         h('div', { class: 'card-meta', text: [r.by, r.code].filter(Boolean).join(' · ') })),
       state.edit ? recordTools(r, hooks || {}) : null);
@@ -333,7 +395,7 @@
     b.appendChild(h('div', { class: 'chips' }, proj ? chip('📁 ' + proj.name, 'proj') : null, r.status ? chip(r.status, STATUS_CLASS[r.status] || 'gray') : null, r.category ? chip(r.category) : null, r.tags.map((t) => chip('#' + t, 'tag'))));
     if (proj) b.appendChild(h('button', { class: 'linkbtn', type: 'button', text: '看這個專案的全部紀錄與檔案 →', onclick: () => { sh.close(); openProject(proj); } }));
     if (r.link) b.appendChild(h('div', { class: 'linkbox' }, h('a', { class: 'btn primary', href: r.link, target: '_blank', rel: 'noopener', text: '開啟連結' }), h('a', { class: 'link-url', href: r.link, target: '_blank', rel: 'noopener', text: r.link })));
-    if (r.note) b.appendChild(linkified(r.note, 'note'));
+    if (r.note) b.appendChild(richText(r.note, 'note'));
     const filesEl = h('div', { class: 'grid small' });
     b.appendChild(h('h3', { class: 'sub', text: '相關檔案' + (r.fileIds.length ? '（' + r.fileIds.length + '）' : '') }));
     b.appendChild(filesEl);
@@ -584,7 +646,7 @@
     b.appendChild(thumbFor(f, true));
     b.appendChild(h('div', { class: 'meta', text: [f.code, f.category, f.date ? '日期 ' + fmtDate(f.date) : '', f.by ? '上傳者 ' + f.by : '', '上傳 ' + fmtTime(f.createdAt)].filter(Boolean).join(' · ') }));
     if (f.tags.length) b.appendChild(h('div', { class: 'chips' }, f.tags.map((t) => chip('#' + t, 'tag'))));
-    if (f.note) b.appendChild(h('p', { class: 'note', text: f.note }));
+    if (f.note) b.appendChild(richText(f.note, 'note'));
     if (f.files.length > 1) {
       b.appendChild(h('h3', { class: 'sub', text: '這一筆有 ' + f.files.length + ' 個檔案' }));
       b.appendChild(h('div', { class: 'linklist' }, f.files.map((x) => h('a', { class: 'filelink', href: fileUrl(f.id, x.index), target: '_blank', rel: 'noopener', text: x.name }))));
@@ -865,7 +927,7 @@
     const sh = openSheet(p.name || '專案', { wide: true });
     const b = sh.body;
     b.appendChild(h('div', { class: 'chips' }, p.status ? chip(p.status, STATUS_CLASS[p.status] || 'gray') : null, p.category ? chip(p.category) : null, p.code ? h('span', { class: 'meta', text: p.code }) : null));
-    if (p.note) b.appendChild(linkified(p.note, 'note'));
+    if (p.note) b.appendChild(richText(p.note, 'note'));
     const refresh = () => { sh.close(); openProject(p); };
     const actions = h('div', { class: 'actions' },
       h('button', { class: 'btn primary', type: 'button', text: '＋ 新增紀錄', onclick: () => openRecordForm(null, null, { projectId: p.id, afterSave: refresh }) }),
