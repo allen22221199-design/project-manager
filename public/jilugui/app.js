@@ -1191,8 +1191,26 @@
     }
     return { el, uploadAll, count: () => chosen.length };
   }
-  // 檔案從瀏覽器「直接」送到 Vercel Blob，不經過我們的伺服器——伺服器函式一次只能收 4.5MB，影片一定塞不下。
-  // Blob 的瀏覽器端程式從 CDN 載入（這個 App 沒有打包工具）；第一個載不到就換第二個。
+  // 上傳分兩條路：
+  // ≤4MB 的檔案 POST 給我們的伺服器轉存進 Notion（不用 Vercel Blob，也不用設 token）；
+  // 更大的檔案從瀏覽器「直接」送到 Vercel Blob，不經過伺服器——伺服器函式一次只能收 4.5MB，影片一定塞不下，
+  // 這條需要 Vercel 設好 BLOB_READ_WRITE_TOKEN。Blob 的瀏覽器端程式從 CDN 載入（這個 App 沒有打包工具）；第一個載不到就換第二個。
+  const NOTION_UPLOAD_MAX = 4 * 1024 * 1024;
+  function uploadViaNotion(file, type, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', API + '/upload-notion?name=' + encodeURIComponent(file.name) + '&type=' + encodeURIComponent(type));
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.min(0.95, e.loaded / e.total)); };
+      xhr.onload = () => {
+        let d = null; try { d = JSON.parse(xhr.responseText); } catch (e) { d = null; }
+        if (xhr.status >= 200 && xhr.status < 300 && d && d.uploadId) { onProgress(1); resolve({ uploadId: d.uploadId, name: file.name, size: file.size, type: d.type || type }); }
+        else reject(new Error((d && d.error) || ('上傳失敗（' + xhr.status + '）')));
+      };
+      xhr.onerror = () => reject(new Error('上傳失敗，請檢查網路後再試一次'));
+      xhr.send(file);
+    });
+  }
   let blobClient = null;
   async function loadBlobClient() {
     if (blobClient) return blobClient;
@@ -1211,14 +1229,21 @@
   }
   async function uploadFile(file, onProgress) {
     const type = file.type || guessType(file.name) || 'application/octet-stream';
-    const client = await loadBlobClient();
-    const blob = await client.upload(blobPath(file.name), file, {
-      access: 'public',
-      handleUploadUrl: API + '/upload',
-      multipart: file.size > 8 * 1024 * 1024,   // 大檔分段傳，斷了只重傳那一段
-      contentType: type,
-      onUploadProgress: (p) => onProgress(Math.min(1, ((p && p.percentage) || 0) / 100)),
-    });
+    if (file.size <= NOTION_UPLOAD_MAX) return uploadViaNotion(file, type, onProgress);
+    let blob;
+    try {
+      const client = await loadBlobClient();
+      blob = await client.upload(blobPath(file.name), file, {
+        access: 'public',
+        handleUploadUrl: API + '/upload',
+        multipart: file.size > 8 * 1024 * 1024,   // 大檔分段傳，斷了只重傳那一段
+        contentType: type,
+        onUploadProgress: (p) => onProgress(Math.min(1, ((p && p.percentage) || 0) / 100)),
+      });
+    } catch (e) {
+      if (/token/i.test(String(e && e.message))) throw new Error('超過 4MB 的檔案要走 Vercel Blob，但 Vercel 還沒設定 BLOB_READ_WRITE_TOKEN；請先設定，或把檔案壓到 4MB 以下');
+      throw e;
+    }
     onProgress(1);
     return { url: blob.url, name: file.name, size: file.size, type };
   }

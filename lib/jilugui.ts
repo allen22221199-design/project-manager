@@ -359,15 +359,18 @@ function toFile(p: any): JFile {
     projectId: pr['專案']?.relation?.[0]?.id ?? '',
   }
 }
-export type Upload = { url: string; name: string; size?: number; type?: string }
+// url：放在 Vercel Blob 的外部連結；uploadId：已經送進 Notion 的 file upload（≤4MB 的檔走這條，不用 Blob token）
+export type Upload = { url?: string; uploadId?: string; name: string; size?: number; type?: string }
 export type FileInput = { name: string; uploads: Upload[]; category: string; date: string; note: string; tags: string[]; recordIds: string[]; thumb?: string; projectId?: string }
 export function cleanFileInput(v: any): FileInput | null {
   if (!v || typeof v !== 'object') return null
   const uploads: Upload[] = []
   for (const u of Array.isArray(v.uploads) ? v.uploads.slice(0, 20) : []) {
     const url = s(u?.url, 2000)
-    if (!/^https?:\/\//i.test(url)) continue
-    uploads.push({ url, name: s(u?.name, 200) || url.split('/').pop() || '檔案', size: Number(u?.size) || undefined, type: s(u?.type, 100) || undefined })
+    const uploadId = s(u?.uploadId, 40)
+    const name = s(u?.name, 200)
+    if (/^https?:\/\//i.test(url)) uploads.push({ url, name: name || url.split('/').pop() || '檔案', size: Number(u?.size) || undefined, type: s(u?.type, 100) || undefined })
+    else if (/^[0-9a-f-]{32,36}$/i.test(uploadId)) uploads.push({ uploadId, name: name || '檔案', size: Number(u?.size) || undefined, type: s(u?.type, 100) || undefined })
   }
   if (!uploads.length) return null
   const date = s(v.date, 10)
@@ -435,7 +438,7 @@ export async function createFile(f: FileInput, by: string): Promise<JFile> {
     parent: { database_id: FILES_DB },
     properties: {
       檔名: { title: rich(f.name) },
-      檔案: { files: f.uploads.map(u => ({ name: u.name.slice(0, 100), type: 'external', external: { url: u.url } })) },
+      檔案: { files: f.uploads.map(u => u.uploadId ? { name: u.name.slice(0, 100), type: 'file_upload', file_upload: { id: u.uploadId } } : { name: u.name.slice(0, 100), type: 'external', external: { url: u.url } }) },
       分類: f.category ? { select: { name: f.category } } : { select: null },
       日期: f.date ? { date: { start: f.date } } : { date: null },
       說明: { rich_text: rich(f.note) },
@@ -603,6 +606,28 @@ export async function getProjectBundle(id: string): Promise<{ project: JProject;
     }
   }
   return { project, records, files }
+}
+
+// 把檔案本體送進 Notion（File Upload API，single_part，Notion 單檔上限 20MB；但經過 Vercel 函式只收得到 4.5MB，
+// 所以前端只讓 ≤4MB 的檔走這條，大檔仍走 Vercel Blob）。回傳 file upload id，建檔案頁時用 type:'file_upload' 掛上去（一小時內要掛）。
+// 直接打 REST，因為 @notionhq/client 2.x 還沒有 file_uploads；content_type 讓 Notion 照副檔名決定，multipart 那段再用同一個值，
+// 不然 .zip／.mp4 這種瀏覽器猜的型別跟 Notion 的對不上會被退 400。
+const NOTION_API = 'https://api.notion.com/v1'
+export async function uploadToNotion(buf: Buffer, filename: string, contentType: string): Promise<{ id: string; contentType: string }> {
+  const token = process.env.NOTION_TOKEN
+  if (!token) throw new Error('伺服器沒有設定 NOTION_TOKEN')
+  const headers = { Authorization: `Bearer ${token}`, 'Notion-Version': '2022-06-28' }
+  const name = (filename || '檔案').replace(/[\\/:*?"<>|]/g, '_').slice(-200) || '檔案'
+  const c = await fetch(`${NOTION_API}/file_uploads`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'single_part', filename: name }) })
+  const cj: any = await c.json().catch(() => ({}))
+  if (!c.ok || !cj.id) throw new Error('Notion 不接受這個檔案：' + (cj.message || c.status))
+  const type = cj.content_type || contentType || 'application/octet-stream'
+  const fd = new FormData()
+  fd.append('file', new Blob([new Uint8Array(buf)], { type }), name)
+  const r = await fetch(`${NOTION_API}/file_uploads/${cj.id}/send`, { method: 'POST', headers, body: fd })
+  const rj: any = await r.json().catch(() => ({}))
+  if (!r.ok || rj.status !== 'uploaded') throw new Error('送進 Notion 失敗：' + (rj.message || r.status))
+  return { id: cj.id, contentType: type }
 }
 
 // 檔案本體的網址：檔案庫的「檔案」欄或工作紀錄的「附件」欄，第 idx 個
