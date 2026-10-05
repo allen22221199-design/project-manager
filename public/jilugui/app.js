@@ -269,6 +269,7 @@
         h('div', { class: 'brand' }, h('span', { class: 'brand-mark', html: ICONS.logo }), h('span', { class: 'brand-name', text: state.appName }), state.mode === 'demo' ? h('span', { class: 'pill demo', text: '示範' }) : null),
         h('div', { class: 'topbar-right' },
           h('button', { class: 'editbtn' + (state.edit ? ' on' : ''), type: 'button', title: '開啟後，專案、紀錄、檔案的卡片上會直接出現「改」和「刪除」；檔案可以勾選多個一起刪', text: state.edit ? '✓ 編輯模式' : '編輯模式', onclick: toggleEdit }),
+          state.user.role === 'admin' ? h('button', { class: 'linkbtn', type: 'button', title: '拿一個唯讀網址，貼給任何 AI 就能讀整份作品集', text: '分享給 AI', onclick: openShareLink }) : null,
           h('button', { class: 'who', type: 'button', title: '帳號設定', text: state.user.name + (state.user.role === 'admin' ? '（管理者）' : ''), onclick: openAccount }),
           h('button', { class: 'linkbtn', type: 'button', text: '登出', onclick: logout }))),
       state.edit ? h('div', { class: 'editnote', text: '編輯模式：卡片上的「改」可以改文字、「刪除」直接刪；檔案勾選後可以一次刪掉多個。' }) : null,
@@ -1421,6 +1422,28 @@
     sh.body.appendChild(h('div', { class: 'meta', text: state.user.name + ' · ' + (state.user.role === 'admin' ? '管理者' : '成員') }));
     sh.body.appendChild(form);
     sh.body.appendChild(h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', text: '登出', onclick: () => { sh.close(); logout(); } })));
+  }
+  // 管理者專用：拿「分享給 AI」的唯讀網址。文字全部給、檔案與縮圖連結 7 天有效；對方只能讀不能改。
+  async function openShareLink() {
+    const sh = openSheet('分享給 AI');
+    const info = h('p', { class: 'hint', text: '載入中…' });
+    sh.body.appendChild(info);
+    try {
+      const d = await api('GET', '/share-link');
+      info.textContent = '把下面的網址貼給任何 AI（Claude、ChatGPT、Gemini…），它就能讀到整份作品集：專案、紀錄、檔案說明，以及 7 天內有效的檔案與縮圖連結。只能讀，不能改。';
+      const md = h('textarea', { class: 'share-url', rows: 3, readonly: 'readonly' }); md.value = d.url;
+      const js = h('textarea', { class: 'share-url', rows: 3, readonly: 'readonly' }); js.value = d.json;
+      md.addEventListener('focus', () => md.select()); js.addEventListener('focus', () => js.select());
+      sh.body.appendChild(field('Markdown 版（給會讀網頁的 AI）', md));
+      sh.body.appendChild(h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'button', text: '複製 Markdown 網址', onclick: () => copyText(d.url) })));
+      sh.body.appendChild(field('JSON 版（給程式或工具）', js));
+      sh.body.appendChild(h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', text: '複製 JSON 網址', onclick: () => copyText(d.json) })));
+      sh.body.appendChild(h('p', { class: 'hint', text: d.note }));
+    } catch (e) { info.textContent = e.message; }
+  }
+  function copyText(t) {
+    const p = navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject(new Error('no clipboard'));
+    p.then(() => toast('已複製'), () => toast('複製失敗，請自己選取網址複製', 'err'));
   }
 
   function openAddMenu() {

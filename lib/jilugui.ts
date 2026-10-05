@@ -227,6 +227,26 @@ export function readUser(token?: string | null): JUser | null {
   } catch { return null }
 }
 
+// ---------- 分享給外部 AI 的唯讀連結 ----------
+// 金鑰由伺服器密鑰導出，不用另外設環境變數；想換一把就設 JILUGUI_SHARE_SALT（舊連結立刻失效）。
+// 檔案與縮圖連結另外帶時效簽章，分享頁被轉貼出去也只有幾天有效。
+export function shareKey(): string {
+  return crypto.createHmac('sha256', SECRET).update('jilugui-share:' + (process.env.JILUGUI_SHARE_SALT || 'v1')).digest('hex').slice(0, 32)
+}
+export function shareSign(parts: string): string {
+  return crypto.createHmac('sha256', SECRET).update('jilugui-share-sig:' + parts).digest('hex').slice(0, 32)
+}
+export function shareKeyOk(key?: string | null): boolean {
+  const a = Buffer.from(String(key || '')), b = Buffer.from(shareKey())
+  return a.length === b.length && safeEq(a, b)
+}
+export function shareSigOk(parts: string, exp?: string | null, sig?: string | null): boolean {
+  const n = Number(exp)
+  if (!Number.isFinite(n) || n < Date.now()) return false
+  const a = Buffer.from(String(sig || '')), b = Buffer.from(shareSign(parts + ':' + n))
+  return a.length === b.length && safeEq(a, b)
+}
+
 // ---------- 工作紀錄 ----------
 export type JRecord = {
   id: string; title: string; date: string; note: string; status: string; category: string

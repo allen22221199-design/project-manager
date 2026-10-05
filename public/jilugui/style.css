@@ -135,6 +135,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   width: 100%; min-width: 0; background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 16px;
 }
 .form textarea { resize: vertical; min-height: 88px; }
+/* 分享給 AI：唯讀網址框，整串可選取 */
+.share-url { width: 100%; box-sizing: border-box; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); word-break: break-all; resize: none; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips.scroll { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
 .chips.scroll::-webkit-scrollbar { display: none; }
