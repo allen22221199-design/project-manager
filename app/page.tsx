@@ -6,6 +6,7 @@ import DoorOrderForm from '@/components/DoorOrderForm'
 import AdminHub from '@/components/AdminHub'
 import { catOf, buildingsOf, monthKey, monthLabel, shortDate, sortKey, itemVocabulary, itemsOf } from '@/lib/progressTags'
 import { missingOf, hasPhone } from '@/lib/projectChecks'
+import { celebrate, toast as fxToast } from '@/lib/fx'
 
 // 進度紀錄的類別顏色。Tailwind 是編譯期掃字串的，不能用 `bg-${x}-50` 這種拼法，
 // 所以整串 class 要原封不動寫在這裡。
@@ -206,6 +207,7 @@ type ImageResult = { source: string; url: string; caption: string; kind?: 'image
 type ProgressDraft = { date: string; description: string; matchedId: string | null; matchedName: string | null; candidates: { id: string; name: string }[] }
 // 一次講很多筆進度時，每筆各自記住「使用者選了哪個專案」與「寫入狀態」
 type ChatDraft = ProgressDraft & {
+  fxAt?: number                  // 剛寫入成功的時間：只在那一刻讓卡片彈一下（重新整理後就不會再彈）
   chosenId?: string | null
   chosenName?: string | null
   state?: 'pending' | 'saving' | 'done' | 'error' | 'skipped'
@@ -214,6 +216,7 @@ type ChatDraft = ProgressDraft & {
 // 隨手記任務草稿：AI 判斷這句是在交辦事情，整理成待辦，一律要按確認才會派下去
 type TaskDraft = { task: string; date: string; owner: string | null; ownerReason: string; suggested: string | null; why: string }
 type ChatTaskDraft = TaskDraft & {
+  fxAt?: number                  // 剛寫入成功的時間：只在那一刻讓卡片彈一下（重新整理後就不會再彈）
   chosenPerson?: string | null   // 使用者最後決定派給誰
   picking?: boolean              // 正在展開人員清單改派
   state?: 'pending' | 'saving' | 'done' | 'error'
@@ -222,16 +225,67 @@ type ChatTaskDraft = TaskDraft & {
 // 施工進度打勾草稿：跟 AI 說「A棟門片好了」，一樣要按確認才會真的動到進度
 type BuildDraft = { rowId: string; site: string; building: string; step: string; done: boolean; already: boolean }
 type ChatBuildDraft = BuildDraft & {
+  fxAt?: number                  // 剛寫入成功的時間：只在那一刻讓卡片彈一下（重新整理後就不會再彈）
   state?: 'pending' | 'saving' | 'done' | 'error'
   note?: string
 }
 // 待辦清單 PDF 匯入：AI 讀出「掛在【自己】底下」的項目，一樣要勾選＋按確認才會寫進 Notion
 type PdfTaskDraft = { task: string; date: string | null; dueFrom: string; duplicate: boolean }
 type ChatPdfDraft = PdfTaskDraft & {
+  fxAt?: number                  // 剛寫入成功的時間：只在那一刻讓卡片彈一下（重新整理後就不會再彈）
   picked: boolean                // 使用者要不要這一筆（重複的預設不勾）
   state?: 'pending' | 'saving' | 'done' | 'error'
   note?: string
 }
+// 剛寫入成功的卡片加上 fx-pop，彈一下就好。用「寫入的時間」判斷，
+// 所以重新整理、從聊天紀錄還原回來的卡片不會一次全部一起彈。
+const justDone = (x: { fxAt?: number }) => (x.fxAt && Date.now() - x.fxAt < 1500 ? ' fx-pop' : '')
+
+// AI 回答要等 15～25 秒。只有一行不會動的「思考中…」，常被以為當掉了，
+// 所以點點會跳，文字也照時間換成它正在做的事。PDF 匯入有自己的進度文字，就照那個顯示。
+const THINKING_STEPS: [number, string][] = [
+  [0, '看懂你的問題…'], [2500, '翻公司資料中…'], [6000, '找對應的照片和影片…'], [10000, '整理答案中…'], [17000, '快好了，再等一下…'],
+]
+function ThinkingBubble({ text }: { text?: string }) {
+  const [ms, setMs] = useState(0)
+  useEffect(() => {
+    const t0 = Date.now()
+    const id = setInterval(() => setMs(Date.now() - t0), 500)
+    return () => clearInterval(id)
+  }, [])
+  const label = text || THINKING_STEPS.filter(([at]) => ms >= at).pop()![1]
+  return (
+    <div role="status" className="bg-white border border-gray-200/70 shadow-sm rounded-2xl px-4 py-2.5 text-sm text-gray-500 flex items-center gap-2.5">
+      <span className="fx-dots" aria-hidden="true"><i /><i /><i /></span>
+      <span key={label} className="fx-fade">{label}</span>
+    </div>
+  )
+}
+
+// 總覽的數字：打開時從 0 跑到實際值（不到 1 秒），資料更新時從舊數字跑到新數字。
+// 開了「減少動態效果」就直接顯示。
+function CountUp({ value }: { value: number }) {
+  const [shown, setShown] = useState(0)
+  const cur = useRef(0)
+  useEffect(() => {
+    const from = cur.current
+    if (from === value) { setShown(value); return }
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { cur.current = value; setShown(value); return }
+    let raf = 0
+    const t0 = performance.now()
+    const tick = (t: number) => {
+      const k = Math.min(1, (t - t0) / 800)
+      const v = Math.round(from + (value - from) * (1 - Math.pow(1 - k, 3)))
+      cur.current = v
+      setShown(v)
+      if (k < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value])
+  return <>{shown}</>
+}
+
 // AI 助理「能做什麼」說明卡的內容。同仁不知道 AI 可以幹嘛，最快的方法是給他「一按就能試」的例子。
 // ask：查詢類，點了直接問（不會寫入任何東西）。
 // fill：會寫進 Notion 的動作（記進度、派工、打勾），點了只帶進輸入框，讓他改成自己的內容再送——
@@ -338,6 +392,10 @@ export default function Page() {
   // AI 按鈕固定在右下角，會一直蓋住卡片右邊的狀態標籤。往下捲就讓開，往上捲或停住就回來。
   const [fabHidden, setFabHidden] = useState(false)
   const [chatPop, setChatPop] = useState(false)   // 右下角的小視窗開著沒
+  // 右下角 AI 圓鈕：打開網頁時彈一下提醒它在那裡。只有剛打開那一次——
+  // 關掉小視窗後圓鈕會重新出現，那時候再彈就變成在吵人了。
+  const [fabHello, setFabHello] = useState(true)
+  useEffect(() => { const t = setTimeout(() => setFabHello(false), 3000); return () => clearTimeout(t) }, [])
   const [projEdit, setProjEdit] = useState<Record<string, string>>({})
   const [projErr, setProjErr] = useState('')
   // 進度紀錄的篩選與展開狀態
@@ -1353,9 +1411,11 @@ export default function Page() {
   const FREQ_CYCLE = ['當日', '每周', '每月']
 
   // 切換狀態（optimistic）
-  async function cycleStatus(t: DailyTask) {
+  async function cycleStatus(t: DailyTask, el?: HTMLElement) {
     const idx = DAILY_STATUS_CYCLE.indexOf(t.status)
     const next = DAILY_STATUS_CYCLE[(idx + 1) % DAILY_STATUS_CYCLE.length]
+    // 做完一件事要有點感覺：狀態鈕彈一下、噴一小把彩帶（切回進行中就不用）
+    if (next === '完成') celebrate(el)
     setDailyAll(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
     fetch('/api/daily-tasks', {
       method: 'PATCH',
@@ -1678,7 +1738,7 @@ export default function Page() {
         })
         const data = await readJson(r)
         if (r.ok) {
-          patchDraft(msgIndex, di, { state: 'done' })
+          patchDraft(msgIndex, di, { state: 'done', fxAt: Date.now() })
           touched.push(d.chosenId!)
         } else {
           patchDraft(msgIndex, di, { state: 'error', note: data.error ?? '未知錯誤' })
@@ -1688,6 +1748,7 @@ export default function Page() {
       }
     }
     setChatMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, draftDone: true } : m))
+    if (touched.length) fxToast(`已寫進進度紀錄（${touched.length} 筆）`)
     if (touched.length) {
       fetchProjects()
       if (selected?.id && touched.includes(selected.id)) refreshProjectDetail()
@@ -1706,6 +1767,7 @@ export default function Page() {
     const targets = list.map((t, ti) => ({ t, ti })).filter(x => x.t.chosenPerson && x.t.state !== 'done')
     if (targets.length === 0) return
     let wrotePrivate = false
+    let ok = 0
     for (const { t, ti } of targets) {
       patchTask(msgIndex, ti, { state: 'saving' })
       try {
@@ -1715,7 +1777,8 @@ export default function Page() {
         })
         const data = await readJson(r)
         if (r.ok) {
-          patchTask(msgIndex, ti, { state: 'done' })
+          patchTask(msgIndex, ti, { state: 'done', fxAt: Date.now() })
+          ok++
           if (t.chosenPerson === PRIVATE_PERSON) wrotePrivate = true
         } else {
           patchTask(msgIndex, ti, { state: 'error', note: data.error ?? '未知錯誤' })
@@ -1725,6 +1788,7 @@ export default function Page() {
       }
     }
     setChatMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, draftDone: true } : m))
+    if (ok) fxToast(`已派下去，共 ${ok} 件`)
     // 派完之後把看板資料抓新的，會議模式／今日工作馬上就看得到
     fetchInProgress()
     if (wrotePrivate) fetchPrivatePersonTasks()
@@ -1746,6 +1810,7 @@ export default function Page() {
     const targets = list.map((b, bi) => ({ b, bi })).filter(x => x.b.state !== 'done')
     if (targets.length === 0) return
     const sites = new Set<string>()
+    let ok = 0
     for (const { b, bi } of targets) {
       patchBuild(msgIndex, bi, { state: 'saving' })
       try {
@@ -1754,13 +1819,14 @@ export default function Page() {
           body: JSON.stringify({ id: b.rowId, step: b.step, done: b.done }),
         })
         const d = await readJson(r)
-        if (r.ok) { patchBuild(msgIndex, bi, { state: 'done' }); sites.add(b.site) }
+        if (r.ok) { patchBuild(msgIndex, bi, { state: 'done', fxAt: Date.now() }); sites.add(b.site); ok++ }
         else patchBuild(msgIndex, bi, { state: 'error', note: d.error ?? '未知錯誤' })
       } catch (e: any) {
         patchBuild(msgIndex, bi, { state: 'error', note: e.message })
       }
     }
     setChatMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, draftDone: true } : m))
+    if (ok) fxToast(`施工進度已更新（${ok} 項）`)
     // 正在看的案件如果剛好被改到，畫面上的勾要跟著更新
     if (selected && sites.has(selected.name)) fetchBuildings(selected.name)
   }
@@ -1850,6 +1916,7 @@ export default function Page() {
     const fallback = msg?.pdfFallbackDate || todayISO()
     const targets = list.map((d, di) => ({ d, di })).filter(x => x.d.picked && x.d.state !== 'done')
     if (targets.length === 0) return
+    let ok = 0
     for (const { d, di } of targets) {
       patchPdf(msgIndex, di, { state: 'saving' })
       try {
@@ -1858,12 +1925,13 @@ export default function Page() {
           body: JSON.stringify({ person: PRIVATE_PERSON, task: d.task, date: d.date || fallback, source: '待辦清單PDF' }),
         })
         const data = await readJson(r)
-        if (r.ok) patchPdf(msgIndex, di, { state: 'done' })
+        if (r.ok) { patchPdf(msgIndex, di, { state: 'done', fxAt: Date.now() }); ok++ }
         else patchPdf(msgIndex, di, { state: 'error', note: data.error ?? '未知錯誤' })
       } catch (e: any) {
         patchPdf(msgIndex, di, { state: 'error', note: e.message })
       }
     }
+    if (ok) fxToast(`已加進待辦（${ok} 項）`)
     fetchPrivatePersonTasks()
     fetchInProgress()
   }
@@ -2341,7 +2409,7 @@ export default function Page() {
                         return (
                           <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
                             {builds.map((b, bi) => (
-                              <div key={bi} className={`rounded-lg border p-2.5 ${b.state === 'done' ? 'border-emerald-200 bg-emerald-50' : b.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
+                              <div key={bi} className={`rounded-lg border p-2.5 ${b.state === 'done' ? 'border-emerald-200 bg-emerald-50' + justDone(b) : b.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
                                 <p className="text-sm text-gray-700">
                                   🏗️ <span className="font-medium">{b.site}</span> · {b.building}
                                 </p>
@@ -2382,7 +2450,7 @@ export default function Page() {
                               // 清單有顯示出來的那一筆，使用者才能直接打數字選人
                               const isFirstListed = tasks.findIndex(x => !x.chosenPerson && x.state !== 'done' && (!x.suggested || x.picking)) === ti
                               return (
-                                <div key={ti} className={`rounded-lg border p-2.5 ${t.state === 'done' ? 'border-emerald-200 bg-emerald-50' : t.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
+                                <div key={ti} className={`rounded-lg border p-2.5 ${t.state === 'done' ? 'border-emerald-200 bg-emerald-50' + justDone(t) : t.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
                                   <div className="text-sm text-gray-700 space-y-0.5">
                                     <p className="font-medium">📌 {t.task}</p>
                                     <p className="text-xs text-gray-500">📅 {t.date}</p>
@@ -2525,7 +2593,7 @@ export default function Page() {
                                       return (
                                         <label key={di}
                                           className={`flex items-start gap-2.5 px-2.5 py-2 ${locked ? '' : 'cursor-pointer hover:bg-indigo-50/40'} ${
-                                            d.state === 'done' ? 'bg-emerald-50' : d.state === 'error' ? 'bg-red-50' : ''}`}>
+                                            d.state === 'done' ? 'bg-emerald-50' + justDone(d) : d.state === 'error' ? 'bg-red-50' : ''}`}>
                                           <input type="checkbox" checked={d.picked} disabled={locked}
                                             onChange={() => patchPdf(i, di, { picked: !d.picked })}
                                             className="mt-1 w-4 h-4 shrink-0 accent-indigo-600" />
@@ -2587,7 +2655,7 @@ export default function Page() {
                               // 第一筆還沒選專案的 → 使用者直接在對話框打數字就是選這一筆
                               const isFirstUnresolved = drafts.findIndex(x => !x.chosenId && x.state !== 'done') === di
                               return (
-                                <div key={di} className={`rounded-lg border p-2.5 ${d.state === 'done' ? 'border-emerald-200 bg-emerald-50' : d.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
+                                <div key={di} className={`rounded-lg border p-2.5 ${d.state === 'done' ? 'border-emerald-200 bg-emerald-50' + justDone(d) : d.state === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50/70'}`}>
                                   <div className="text-sm text-gray-700 space-y-0.5">
                                     <p className="font-medium">{d.description}</p>
                                     <p className="text-xs text-gray-500">📅 {d.date}</p>
@@ -2661,7 +2729,7 @@ export default function Page() {
                 ))}
                 {chatLoading && (
                   <div className="flex justify-start">
-                    <div className="bg-white border border-gray-200/70 shadow-sm rounded-2xl px-4 py-2.5 text-sm text-gray-400">{pdfBusy || '思考中…（查詢公司資料）'}</div>
+                    <ThinkingBubble text={pdfBusy || undefined} />
                   </div>
                 )}
               </div>
@@ -2982,20 +3050,20 @@ export default function Page() {
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <button onClick={() => { setView('daily'); fetchDailyTasks() }} className="glass-card p-4 text-left hover:border-indigo-300 transition-colors">
                   <p className="text-xs text-gray-400">今日待辦</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-1">{todayTasks.length}</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1"><CountUp value={todayTasks.length} /></p>
                 </button>
                 <button onClick={() => { setView('search'); fetchInProgress() }} className={`border rounded-xl shadow-sm p-4 text-left transition-colors ${overdue.length > 0 ? 'bg-red-50 border-red-200 hover:border-red-300' : 'bg-white border-gray-200/70 hover:border-indigo-300'}`}>
                   <p className={`text-xs ${overdue.length > 0 ? 'text-red-500' : 'text-gray-400'}`}>逾期任務</p>
-                  <p className={`text-3xl font-bold mt-1 ${overdue.length > 0 ? 'text-red-600' : 'text-gray-900'}`}>{overdue.length}</p>
+                  <p className={`text-3xl font-bold mt-1 ${overdue.length > 0 ? 'text-red-600' : 'text-gray-900'}`}><CountUp value={overdue.length} /></p>
                 </button>
                 <div className="glass-card p-4">
                   <p className="text-xs text-gray-400">本週完成率</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-1">{rate}<span className="text-lg">%</span></p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1"><CountUp value={rate} /><span className="text-lg">%</span></p>
                   <p className="text-xs text-gray-400 mt-0.5">{weekDone.length}/{weekTasks.length} 項</p>
                 </div>
                 <button onClick={() => setView('list')} className="glass-card p-4 text-left hover:border-indigo-300 transition-colors">
                   <p className="text-xs text-gray-400">進行中案件</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-1">{projects.filter(p => !INACTIVE_STATUSES.includes(p.status)).length}</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1"><CountUp value={projects.filter(p => !INACTIVE_STATUSES.includes(p.status)).length} /></p>
                 </button>
               </div>
 
@@ -4256,7 +4324,7 @@ export default function Page() {
                                 {t.status !== '完成' && taskTags(t.task).map(tag => (
                                   <span key={tag.label} className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 mt-0.5 font-medium ${tag.cls}`}>{tag.label}</span>
                                 ))}
-                                <button onClick={() => cycleStatus(t)} title="點擊切換狀態"
+                                <button onClick={e => cycleStatus(t, e.currentTarget)} title="點擊切換狀態"
                                   className={`text-xs px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.status === '完成' || t.status === '已完成' ? 'bg-green-100 text-green-700' : t.status === '進行中' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
                                   {t.status}
                                 </button>
@@ -4611,7 +4679,7 @@ export default function Page() {
           已經在 AI 助理頁就不顯示——那等於一顆按了沒反應的按鈕。 */}
       {view !== 'chat' && !chatPop && (
         <button onClick={() => setChatPop(true)} title="問 AI 助理" data-tour="ai-fab"
-          className={`ai-fab ${fabHidden ? 'ai-fab-away' : ''} fixed right-4 md:right-6 z-30 w-16 h-16 rounded-full aurora-grad text-white flex flex-col items-center justify-center leading-none`}>
+          className={`ai-fab ${fabHello ? 'ai-fab-hello' : ''} ${fabHidden ? 'ai-fab-away' : ''} fixed right-4 md:right-6 z-30 w-16 h-16 rounded-full aurora-grad text-white flex flex-col items-center justify-center leading-none`}>
           <span className="text-[17px] font-bold tracking-wide">AI</span>
           <span className="text-[12px] font-medium mt-0.5">助理</span>
         </button>

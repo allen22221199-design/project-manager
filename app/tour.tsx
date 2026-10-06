@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { confettiFrom } from '@/lib/fx'
 
 export type TourStep = {
   view?: string            // 這一步要切到哪一頁
@@ -77,7 +78,8 @@ export default function Tour({ steps, step, onNext, onPrev, onJump, onClose, onG
   // 上次中途關掉時看到第幾步；只在剛打開時讀一次
   const [resumeAt] = useState(() => { const n = parseInt(ls.get(STEP_KEY) || '', 10); return n > 0 && n < total - 1 ? n : 0 })
 
-  const finish = () => { ls.set(DONE_KEY, '1'); ls.del(STEP_KEY); onClose() }
+  // 看完整套教學：從「完成」鈕噴一把彩帶再關掉（彩帶掛在 body 上，教學關了還看得到）
+  const finish = () => { confettiFrom(primaryRef.current, 34); ls.set(DONE_KEY, '1'); ls.del(STEP_KEY); onClose() }
   const skip = () => { ls.set(DONE_KEY, '1'); onClose() }
   const go = (v: string) => { finish(); onGo?.(v) }
 
