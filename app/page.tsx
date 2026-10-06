@@ -95,7 +95,7 @@ const TOUR_STEPS: TourStep[] = [
 
   // ── AI 助理 ──
   { chapter: 'AI 助理', view: 'chat', target: '[data-tour="nav-chat"]', title: 'AI 助理：不會的直接問',
-    body: ['查 SOP、機具參數、防火標章、丈量步驟，它會從公司資料找答案', '會附上對應的圖片和教學影片', '問「阿蔡還有什麼工作沒做完」也答得出來，用的是真實的任務資料'],
+    body: ['查 SOP、機具參數、防火標章、丈量步驟，它會從公司資料找答案', '會附上對應的圖片和教學影片', '問「阿蔡還有什麼工作沒做完」也答得出來，用的是真實的任務資料', '不知道可以問什麼，就問它「你能做什麼」，會列出所有功能和例子，點一下就能試'],
     demo: { type: 'click' } },
   { chapter: 'AI 助理', view: 'chat', target: '[data-tour="chat-input"]', title: '用講的也可以做事',
     body: ['記進度：「冠德的箱蓋今天噴好了」，它會對應到專案', '交辦任務：「叫治先把冠德圖面畫完」', '施工進度打勾：「桃大27 A棟門片好了」', '按 🎤 用說的；Enter 送出'],
@@ -232,7 +232,28 @@ type ChatPdfDraft = PdfTaskDraft & {
   state?: 'pending' | 'saving' | 'done' | 'error'
   note?: string
 }
-type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; images?: ImageResult[]; drafts?: ChatDraft[]; tasks?: ChatTaskDraft[]; builds?: ChatBuildDraft[]; pdfs?: ChatPdfDraft[]; pdfFallbackDate?: string; draftDone?: boolean; suggestions?: string[] }
+// AI 助理「能做什麼」說明卡的內容。同仁不知道 AI 可以幹嘛，最快的方法是給他「一按就能試」的例子。
+// ask：查詢類，點了直接問（不會寫入任何東西）。
+// fill：會寫進 Notion 的動作（記進度、派工、打勾），點了只帶進輸入框，讓他改成自己的內容再送——
+//       不能一點就送：例句被原封不動確認下去，就變成一筆假的進度。
+// 每個例子都實際問過線上的 AI，確認答得出來、附的圖對得上才放上來。
+// 「UV機每天要檢查哪些項目」答不出來（檔案庫那份是印尼文為主），不要放回來。
+const AI_ABILITIES: { icon: string; title: string; desc: string; ask?: string[]; fill?: string }[] = [
+  { icon: '📚', title: '查公司資料', desc: 'SOP、丈量方法、機具保養、防火標章，有圖片和影片會一起附上', ask: ['丈量要帶哪些東西？', '防火標章是什麼？'] },
+  { icon: '🦺', title: '安全巡檢', desc: '廠內巡檢要看的 5 個地方，附照片和完成後的影片', ask: ['安全巡檢要檢查什麼？'] },
+  { icon: '👷', title: '查誰還有什麼工作', desc: '用的是今日工作裡真實的任務', ask: ['阿蔡還有什麼工作沒做完？'] },
+  { icon: '🏗️', title: '查施工進度', desc: '各案場、各棟做到哪一道工序', ask: ['桃大27 現在做到哪了？'] },
+  { icon: '✏️', title: '記進度', desc: '講一句話，我幫你對應到案子；按確認才會寫進去', fill: '惠宇大然的箱體今天噴好了' },
+  { icon: '📋', title: '交辦工作', desc: '講誰、做什麼、什麼時候；按確認才會派下去', fill: '叫治先明天把桃大27的圖面畫完' },
+  { icon: '✅', title: '施工進度打勾', desc: '講哪一棟哪一道做好了；按確認才會打勾', fill: '桃大27 A棟門片好了' },
+]
+
+// 「你能做什麼」「怎麼用」「你好」這類話直接秀說明卡，不送去問 AI——
+// AI 只讀得到公司資料，問它自己有哪些功能，它答不出來。
+// 整句要從頭到尾都是這種問法才算：「滾塗機可以做什麼」「還可以做什麼」是在問別的事，不能攔下來。
+const ASK_ABILITY_RE = /^(請問)?\s*(你|妳|您|ai|助理|ai助理)?\s*(到底)?\s*(可以|能夠|能|會)\s*(幫(我|忙)?)?\s*(做|幹|處理|回答|問|查)?\s*(些)?\s*(什麼|甚麼|啥|哪些|嘛)\s*(事情|事|功能|東西)?\s*(呢|啊|嗎|阿)?[\s?？!！。.~～]*$|^\s*(有)?(哪些|什麼|甚麼)功能[\s?？]*$|^\s*(要|該)?怎麼用(你|妳|ai)?[\s?？]*$|^\s*(使用)?說明\s*$|^\s*help\s*$|^\s*(你好|您好|哈囉|嗨|hi|hello)[\s!！。~～]*$/i
+
+type ChatMsg = { role: 'user' | 'assistant'; content: string; files?: FileResult[]; images?: ImageResult[]; drafts?: ChatDraft[]; tasks?: ChatTaskDraft[]; builds?: ChatBuildDraft[]; pdfs?: ChatPdfDraft[]; pdfFallbackDate?: string; draftDone?: boolean; suggestions?: string[]; guide?: boolean }
 type TaskAttachment = { name: string; url: string }
 type TaskStep = { step: string; done: boolean }
 type DailyTask = { id: string; task: string; person: string; date: string; createdAt?: string; status: string; source: string; freq: string; content?: string; direction?: string; aiPlan?: string; attachments?: TaskAttachment[]; flag?: string; steps?: TaskStep[] }
@@ -465,6 +486,21 @@ export default function Page() {
   // 聊天輸入框：跟著內容自動長高，長訊息才不會被截掉看不到（手機、電腦都適用）
   // 注意：這個 effect 依賴 chatInput，必須放在它宣告「之後」，否則會踩到暫時性死區讓整頁崩潰
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
+  // 新訊息出現時把它捲進畫面。剛送出、等回答時捲到底；AI 回好了（或叫出說明卡）就捲到
+  // 「那一則的開頭」——回答很長時直接跳到最後一行，前面的內容反而要往回找。
+  const chatListRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const box = chatListRef.current
+    if (!box || chatMessages.length === 0) return
+    const last = chatMessages[chatMessages.length - 1]
+    requestAnimationFrame(() => {
+      if (chatLoading || last.role === 'user') { box.scrollTop = box.scrollHeight; return }
+      const items = box.querySelectorAll<HTMLElement>(':scope > [data-msg]')
+      const el = items[items.length - 1]
+      if (!el) return
+      box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - 8
+    })
+  }, [chatMessages.length, chatLoading])
   useEffect(() => {
     const el = chatInputRef.current
     if (!el) return
@@ -1451,6 +1487,21 @@ export default function Page() {
     return false
   }
 
+  // 說明卡上的「帶入」：例句放進輸入框、游標停在最後，讓人改成自己的內容再送
+  function fillChat(text: string) {
+    setChatInput(text)
+    requestAnimationFrame(() => {
+      const el = chatInputRef.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(el.value.length, el.value.length)
+    })
+  }
+  // 「💡 能做什麼」：在對話最後再放一張說明卡（最後一則已經是說明卡就不重複放）
+  function showAiGuide() {
+    setChatMessages(prev => prev[prev.length - 1]?.guide ? prev : [...prev, { role: 'assistant', content: '', guide: true }])
+  }
+
   async function sendChat(override?: string) {
     // 防呆：若被當成事件處理器直接綁定（onClick={sendChat}），這裡會收到事件物件而不是字串
     const src = typeof override === 'string' ? override : chatInput
@@ -1459,6 +1510,11 @@ export default function Page() {
     if (!override && tryPickByNumber(text)) { setChatInput(''); return }
     // 點了某則答案的追問按鈕 → 清掉那些按鈕，避免重複點
     const base = override ? chatMessages.map(m => m.suggestions ? { ...m, suggestions: undefined } : m) : chatMessages
+    if (ASK_ABILITY_RE.test(text)) {
+      setChatMessages([...base, { role: 'user', content: text }, { role: 'assistant', content: '', guide: true }])
+      setChatInput('')
+      return
+    }
     const next: ChatMsg[] = [...base, { role: 'user', content: text, _ts: Date.now() } as any]
     setChatMessages(next)
     setChatInput('')
@@ -1471,7 +1527,7 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         // 人員名單以這裡為單一來源送給後端；私人身分只有管理者登入時才送出去
         body: JSON.stringify({
-          messages: next, projects: activeProjects,
+          messages: next.filter((m, i) => !m.guide && !(m.role === 'user' && next[i + 1]?.guide)), projects: activeProjects,
           people: assignablePeople.map(p => ({ name: p.name, skill: p.skill })),
           isAdmin, selfName: PRIVATE_PERSON,
         }),
@@ -2167,41 +2223,64 @@ export default function Page() {
   const wkDone = wkTasks.filter(t => t.status === '完成').length
   const wkRate = wkTasks.length ? Math.round((wkDone / wkTasks.length) * 100) : 0
 
+  // AI 助理「能做什麼」說明卡：對話是空的時候直接顯示；之後按「💡 能做什麼」或問「你能做什麼」再出現。
+  // 格子用 auto-fill：右下角小視窗只放得下一欄，整頁時自動排成兩三欄——看的是框的寬度，不是螢幕寬度。
+  const aiGuide = (
+    <div className="glass-card p-4 text-gray-700">
+      <p className="text-base font-semibold text-gray-900">👋 我是公司 AI 助理，可以幫你做這些事</p>
+      <p className="text-sm text-gray-500 mt-1">藍色的點一下就直接問；綠色的會帶進下面的輸入框，改成你的內容再按「送出」。</p>
+      <div className="mt-3 grid gap-2 grid-cols-[repeat(auto-fill,minmax(250px,1fr))]">
+        {AI_ABILITIES.map(a => (
+          <div key={a.title} className="rounded-xl border border-gray-200 bg-white p-3">
+            <p className="font-semibold text-gray-900">{a.icon} {a.title}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{a.desc}</p>
+            <div className="mt-2 flex flex-col items-start gap-1.5">
+              {a.ask?.map(q => (
+                <button key={q} onClick={() => sendChat(q)} disabled={chatLoading}
+                  className="text-left text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-100 disabled:opacity-40 transition-colors">
+                  問：{q}
+                </button>
+              ))}
+              {a.fill && (
+                <button onClick={() => fillChat(a.fill!)}
+                  className="text-left text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5 hover:bg-emerald-100 transition-colors">
+                  ✎ 帶入：{a.fill}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      {isAdmin && (
+        <p className="text-xs text-gray-500 mt-3">📄 管理者另外可以按輸入框左邊的 📄 上傳待辦清單 PDF（心智圖匯出的也讀得動），我只抽「掛在【自己】底下」的項目，勾選確認後才加進你的待辦。</p>
+      )}
+      <p className="text-xs text-gray-500 mt-3">🎤 不想打字，就按輸入框左邊的麥克風用講的。想再看這張說明，點上面的「💡 能做什麼」，或直接問我「你能做什麼」。</p>
+      <p className="text-xs text-gray-400 mt-1">※ 公司資料裡查不到的，我會直接說不知道，不會亂編。</p>
+    </div>
+  )
+
   // 聊天室介面只有一份：整頁的 AI 助理和右下角的小視窗共用這一塊。
   // 複製第二份的話，草稿卡片、影片、建議按鈕都會變成兩套各自壞掉。
   const chatBody = (
             <div className="flex flex-col h-full">
               {chatMessages.length > 0 && (
-                <div className="flex justify-end mb-2">
+                <div className="flex justify-between items-center gap-2 mb-2">
+                  <button onClick={showAiGuide}
+                    className="text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1 hover:bg-indigo-100 transition-colors">
+                    💡 能做什麼
+                  </button>
                   <button onClick={() => { if (confirm('確定清除所有對話記錄？')) setChatMessages([]) }}
                     className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">
                     🗑 清除對話
                   </button>
                 </div>
               )}
-              <div className="flex-1 overflow-y-auto space-y-3 pb-4">
-                {chatMessages.length === 0 && (
-                  <div className="glass-card p-5 text-sm text-gray-600">
-                    <p className="font-medium text-gray-800 mb-2">👋 我是公司 AI 助理</p>
-                    <p className="text-gray-500 mb-2">我會優先用「檔案庫」裡的公司資料回答。你可以問我：</p>
-                    <ul className="list-disc pl-5 space-y-1 text-gray-500">
-                      <li>客戶通話的話術建議</li>
-                      <li>公司機具的參數、保養方式</li>
-                      <li>幫忙整理某項作業的 SOP、排除困難</li>
-                    </ul>
-                    <p className="text-gray-500 mt-3 mb-1">也可以<span className="font-medium text-emerald-700">直接記錄專案進度</span>，例如：</p>
-                    <p className="text-gray-400 text-xs bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">「冠德的箱蓋今天噴好了」→ 我會幫你對應專案、確認後寫進進度紀錄</p>
-                    {isAdmin && (
-                      <>
-                        <p className="text-gray-500 mt-3 mb-1">也可以<span className="font-medium text-indigo-700">上傳待辦清單 PDF</span>（下面那顆 📄）：</p>
-                        <p className="text-gray-400 text-xs bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">心智圖匯出的 PDF 也讀得動。我只抽「掛在【自己】底下」的項目，勾選確認後才會加進你的待辦。</p>
-                      </>
-                    )}
-                    <p className="text-xs text-gray-400 mt-3">※ 公司內部資料若查不到，我會直接說不知道、不亂編；若引用網路資料會標註清楚。</p>
-                  </div>
-                )}
-                {chatMessages.map((m, i) => (
-                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div ref={chatListRef} className="flex-1 overflow-y-auto space-y-3 pb-4">
+                {chatMessages.length === 0 && aiGuide}
+                {chatMessages.map((m, i) => m.guide ? (
+                  <div key={i} data-msg>{aiGuide}</div>
+                ) : (
+                  <div key={i} data-msg className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`rounded-2xl px-4 py-3 ${m.role === 'user' ? 'text-sm whitespace-pre-wrap' : 'text-base'} ${m.images?.some(x => x.kind === 'video' || x.kind === 'embed') ? 'w-full max-w-[96%]' : 'max-w-[85%]'} ${m.role === 'user' ? 'aurora-grad text-white' : 'bg-white border border-gray-200/70 shadow-sm text-gray-800'}`}>
                       {/* AI 的回答用輕量排版器處理（粗體、條列、內文插圖），使用者自己打的字保持原樣 */}
                       {m.role === 'assistant' ? <RichText text={m.content} media={m.images} /> : m.content}

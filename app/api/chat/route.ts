@@ -398,6 +398,7 @@ export async function POST(req: NextRequest) {
     } catch { /* 知識庫讀取失敗不影響對話 */ }
 
     // ── 人員目前的工作 ────────────────────────────────────────
+    let asksPeople = false   // 這句是不是在問「某人手上還有什麼工作」——底下附圖要用（問資料不附教學影片）
     // 沒有這一段的時候，問「王治先手上有哪些任務」，AI 會從舊備忘錄裡撈出他的
     // 「職務描述」當成現在的待辦回答你——看起來像答案，其實不是真的。
     // 寧可它說不知道，也不要拿三個月前的職掌說明冒充今天的工作。
@@ -406,6 +407,7 @@ export async function POST(req: NextRequest) {
       const names = roster.map(p => p.name).filter(n => q.includes(n))
       const asksWorkload = /任務|工作|待辦|要做|沒做|未完成|還有什麼|手上|忙什麼|進度如何|幾件/.test(q)
       if (asksWorkload && (names.length > 0 || /誰|大家|所有人|每個人/.test(q))) {
+        asksPeople = true
         const all = await getDailyTasks(undefined, { activeOnly: true })
         const mine = names.length > 0 ? all.filter(t => names.includes(t.person)) : all
         if (mine.length > 0) {
@@ -491,8 +493,13 @@ export async function POST(req: NextRequest) {
       // 問「桃大27現在進度如何」時，圖庫裡那列「專案回報管理APP」只因為共用「進度」兩個字
       // 就被附上三支教學影片。問進度是在問資料，不是在問怎麼操作——除非他同時明講要看
       // 影片／圖片／SOP，否則這種題目不附素材。
+      // 問「阿蔡還有什麼工作沒做完」也一樣是在問任務資料。沒擋的時候，檔案庫〈專案回報管理APP〉
+      // 的摘要剛好寫了「工作」，三支 APP 教學影片就跟著附上來。
+      // 前面從引用來源自動抓的附件也一起清掉，不然這兩種題目還是會從那條路帶出素材。
       const asksHowTo = /影片|圖片|照片|圖|sop|怎麼做|怎麼用|教學|示範/i.test(retrievalQuery)
-      if (imageLib.length > 0 && !(asksBuild && !asksHowTo)) {
+      const dataOnly = (asksBuild || asksPeople) && !asksHowTo
+      if (dataOnly) imageResults.length = 0
+      if (imageLib.length > 0 && !dataOnly) {
         // 比對要分兩種份量：命中「使用者問題本身」的最準，命中「檢索到的內容」只能當輔助。
         // 早期兩者混在一起比對，結果問「防火標章」也附上鎖孔的圖——因為知識庫內容裡
         // 到處都有「位置」「方向」這種通用關鍵字。改成計分後只取前段。
@@ -631,7 +638,9 @@ export async function POST(req: NextRequest) {
 
     // 回答本身就說「知識庫查不到」時，就不要再附自動抓來的圖片／影片——
     // 那些是從被引用頁面掃出來的，跟問題無關，只會讓人以為那支影片有答案。
-    if (/查不到|找不到|無法確定|沒有找到|不在.{0,6}知識庫/.test(reply)) {
+    // 只認「整句在說查不到資料」的講法。以前只要出現「找不到」三個字就清掉，
+    // 結果門弓器 SOP 的回答裡有一句「才不會找不到孔位」，整組照片和影片都被拿掉了。
+    if (/(查不到|找不到|沒有找到|查無)[^。\n，,]{0,6}(資料|內容|紀錄)|(知識庫|公司資料)[^。\n]{0,8}(沒有|查無)[^。\n]{0,6}(資料|內容|紀錄)|不在.{0,6}知識庫/.test(reply)) {
       imageResults.length = 0
     }
 
