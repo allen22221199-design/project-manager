@@ -270,7 +270,8 @@ function CountUp({ value }: { value: number }) {
   useEffect(() => {
     const from = cur.current
     if (from === value) { setShown(value); return }
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { cur.current = value; setShown(value); return }
+    // 分頁在背景（或手機螢幕關著）時瀏覽器不跑動畫，數字會一直停在 0——反正沒人在看，直接給答案
+    if (document.hidden || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { cur.current = value; setShown(value); return }
     let raf = 0
     const t0 = performance.now()
     const tick = (t: number) => {
