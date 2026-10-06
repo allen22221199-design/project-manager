@@ -488,6 +488,7 @@ export default function Page() {
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
   // 新訊息出現時把它捲進畫面。剛送出、等回答時捲到底；AI 回好了（或叫出說明卡）就捲到
   // 「那一則的開頭」——回答很長時直接跳到最後一行，前面的內容反而要往回找。
+  // 打開右下角小視窗、切到 AI 助理頁時也要捲一次：不然看到的是最舊的那幾則。
   const chatListRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const box = chatListRef.current
@@ -500,7 +501,7 @@ export default function Page() {
       if (!el) return
       box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - 8
     })
-  }, [chatMessages.length, chatLoading])
+  }, [chatMessages.length, chatLoading, chatPop, view])
   useEffect(() => {
     const el = chatInputRef.current
     if (!el) return
