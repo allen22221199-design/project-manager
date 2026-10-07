@@ -93,6 +93,23 @@ h2.sec{font-size:20px;margin:34px 0 12px;padding-top:18px;border-top:1px solid v
 .files{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}.file{background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}.file .cover{aspect-ratio:4/3}.file .cover img{object-fit:contain;background:var(--soft)}.file .body{padding:10px 12px;font-size:14px;display:flex;flex-direction:column;gap:4px}.file .name{font-weight:600;word-break:break-all;line-height:1.4}.file .note{font-size:13px;color:var(--ink2);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.file .acts{display:flex;gap:12px;font-size:13px;margin-top:4px}video{width:100%;background:#000;display:block;aspect-ratio:16/9}
 .rec{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:0 0 14px}.rec .date{font-size:13px;color:var(--ink2)}.rec h3{margin:2px 0 6px;font-size:17px;line-height:1.4}.fchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.fchips span{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 9px;color:var(--ink2)}
 .empty{color:var(--ink2);font-size:14px}
+.tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0 0;font-size:13px;color:var(--ink2)}
+.cover-page{min-height:70vh;display:flex;flex-direction:column;justify-content:center;padding:40px 0}.cover-page h1{font-size:34px}.cover-page .meta{font-size:14px}
+.toc table{border-collapse:collapse;width:100%;font-size:14px}.toc th,.toc td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}.toc th{background:var(--soft)}
+section.proj{page-break-before:always;break-before:page;padding-top:10px}
+@media print{
+  :root{--bg:#fff;--paper:#fff;--ink:#111;--ink2:#444;--line:#ccc;--acc:#0f766e;--soft:#f2f2f2}
+  body{font-size:12px;line-height:1.5}.wrap{max-width:none;padding:0}
+  .chips,.tools,.back,.btn,footer .hide-print{display:none!important}
+  .card,.rec,.file,.tbl,.hero{break-inside:avoid;page-break-inside:avoid;box-shadow:none!important;transform:none!important}
+  .sum,.file .note{display:block;-webkit-line-clamp:unset;overflow:visible}
+  .grid{grid-template-columns:repeat(3,1fr);gap:10px}.files{grid-template-columns:repeat(3,1fr);gap:10px}
+  .cover{aspect-ratio:16/10}.hero img{max-height:300px}
+  video{display:none}
+  a{color:inherit}
+  h2.sec{margin-top:18px;padding-top:10px}
+  .cover-page{min-height:auto;page-break-after:always;break-after:page}
+}
 `
 
 function page(opt: { title: string; desc: string; body: string; ogImage?: string; url?: string }): string {
@@ -145,6 +162,7 @@ export function portfolioIndexHtml(p: Portfolio, key: string): string {
   <p class="intro">${esc(INTRO)}</p>
   <div class="stats"><div class="stat"><b>${p.stats.projects}</b><span>專案</span></div><div class="stat"><b>${p.stats.records}</b><span>工作紀錄</span></div><div class="stat"><b>${p.stats.files}</b><span>檔案</span></div></div>
   <div class="chips" id="chips">${chips}</div>
+  <div class="tools"><a class="btn" href="/portfolio/${esc(key)}?all=1">列印版（全部專案一頁，可另存 PDF）</a><span>線上版每次打開都是最新資料。</span></div>
 </header>
 ${sections}
 <footer>此頁由紀錄櫃 App 在 ${esc(tw(p.generatedAt))}（台北）產生，資料來自 Notion「紀錄櫃」；檔案與縮圖連結到 ${esc(tw(p.linkExpiresAt))} 前有效，之後重新整理即可。</footer>
@@ -173,21 +191,58 @@ function recordHtml(r: ShareRecord): string {
   return `<article class="rec"><div class="date">${esc(r.date || '（無日期）')}</div><h3>${esc(r.title)}</h3><div class="meta">${meta}</div>${r.note ? `<div class="rich">${noteHtml(r.note)}</div>` : ''}${files}${att}</article>`
 }
 
-export function projectHtml(p: Portfolio, pr: ShareProject, key: string): string {
+// 專案的主體（說明、檔案、紀錄），專案頁與列印版共用
+function projectBody(pr: ShareProject, opt: { print: boolean }): string {
   const files = pr.files
   const visual = files.filter(f => f.thumb || isVideo(f.name) || isImage(f.name))
   const others = files.filter(f => !visual.includes(f))
+  const fileTile = (f: ShareFile) => opt.print && isVideo(f.name)
+    ? fileHtml({ ...f, url: f.url, name: f.name, thumb: f.thumb }).replace(/<video[^>]*><\/video>/, f.thumb ? `<div class="cover"><img src="${esc(f.thumb)}" alt=""></div>` : `<div class="cover"><span class="ph">影片</span></div>`)
+    : fileHtml(f)
+  return `${pr.note ? `<div class="rich">${noteHtml(pr.note)}</div>` : ''}
+<h2 class="sec">成果檔案（${files.length}）</h2>
+${files.length ? `<div class="files">${[...visual, ...others].map(fileTile).join('\n')}</div>` : '<p class="empty">這個專案沒有放檔案（例如 SOP、說明書類只留紀錄）。</p>'}
+<h2 class="sec">工作紀錄（${pr.records.length}）</h2>
+${pr.records.length ? pr.records.map(recordHtml).join('\n') : '<p class="empty">沒有紀錄。</p>'}`
+}
+
+// 列印版：封面、專案一覽、每個專案一節（每節從新的一頁開始）。瀏覽器「列印 → 另存 PDF」就是書面版作品集。
+export function portfolioFullHtml(p: Portfolio, key: string): string {
+  const toc = p.projects.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.category || '其他')}</td><td><a href="#p${i + 1}">${esc(x.name)}</a></td><td>${esc(x.status || '')}</td><td>${esc(x.lastDate || '')}</td><td>${x.records.length}／${x.files.length}</td></tr>`).join('')
+  const sections = p.projects.map((pr, i) => `<section class="proj" id="p${i + 1}">
+<div class="brand">${esc(COMPANY)}｜${esc(OWNER)} 工作作品集　${i + 1}／${p.projects.length}</div>
+${pr.cover ? `<div class="hero" style="margin-top:10px"><img src="${esc(pr.cover)}" alt=""></div>` : ''}
+<h1 class="ph1">${esc(pr.name)}</h1>
+<div class="pmeta"><span class="tag" style="background:${catColor(pr.category)}">${esc(pr.category || '其他')}</span><span class="st">${esc(pr.status || '—')}</span>${pr.lastDate ? `<span>最近 ${esc(pr.lastDate)}</span>` : ''}<span>紀錄 ${pr.records.length}・檔案 ${pr.files.length}</span>${pr.link ? `<span>連結：<a href="${esc(pr.link)}">${esc(pr.link)}</a></span>` : ''}</div>
+${projectBody(pr, { print: true })}
+</section>`).join('\n')
+  const body = `<div class="wrap">
+<div class="tools"><a class="btn" href="/portfolio/${esc(key)}">← 回線上版</a><span>這一頁是列印版：用瀏覽器「列印」選「另存為 PDF」，就是書面版作品集。</span></div>
+<section class="cover-page">
+  <div class="brand">${esc(COMPANY)}｜PrinTex™ 數位紋理・藝格板</div>
+  <h1>${esc(OWNER)} 工作作品集</h1>
+  <p class="intro">${esc(INTRO)}</p>
+  <div class="stats"><div class="stat"><b>${p.stats.projects}</b><span>專案</span></div><div class="stat"><b>${p.stats.records}</b><span>工作紀錄</span></div><div class="stat"><b>${p.stats.files}</b><span>檔案</span></div></div>
+  <div class="meta">書面版產生於 ${esc(tw(p.generatedAt))}（台北）。線上版：<a href="${esc(p.origin)}/portfolio/${esc(key)}">${esc(p.origin)}/portfolio/${esc(key)}</a>（每次打開都是最新資料，檔案可直接開啟）。</div>
+</section>
+<section class="toc">
+<h2 class="sec" style="border-top:0;margin-top:0">專案一覽</h2>
+<table><tr><th>#</th><th>分類</th><th>專案</th><th>狀態</th><th>最近</th><th>紀錄／檔案</th></tr>${toc}</table>
+</section>
+${sections}
+<footer>此書面版由紀錄櫃 App 產生；文中「開啟／下載」連結到 ${esc(tw(p.linkExpiresAt))} 前有效，之後請用線上版重新取得。</footer>
+</div>`
+  return page({ title: `${OWNER} 工作作品集（列印版）｜${COMPANY}`, desc: INTRO, body, ogImage: p.projects.find(x => x.cover)?.cover, url: `${p.origin}/portfolio/${key}?all=1` })
+}
+
+export function projectHtml(p: Portfolio, pr: ShareProject, key: string): string {
   const body = `<div class="wrap">
 <a class="back" href="/portfolio/${esc(key)}">← 回作品集</a>
 <div class="brand"><a href="/portfolio/${esc(key)}">${esc(COMPANY)}｜${esc(OWNER)} 工作作品集</a></div>
 ${pr.cover ? `<div class="hero" style="margin-top:12px"><img src="${esc(pr.cover)}" alt=""></div>` : ''}
 <h1 class="ph1">${esc(pr.name)}</h1>
 <div class="pmeta"><span class="tag" style="background:${catColor(pr.category)}">${esc(pr.category || '其他')}</span><span class="st">${esc(pr.status || '—')}</span>${pr.lastDate ? `<span>最近 ${esc(pr.lastDate)}</span>` : ''}<span>紀錄 ${pr.records.length}・檔案 ${pr.files.length}</span>${pr.link ? `<a class="btn" href="${esc(pr.link)}" target="_blank" rel="noopener">開啟連結 ↗</a>` : ''}</div>
-${pr.note ? `<div class="rich">${noteHtml(pr.note)}</div>` : ''}
-<h2 class="sec">成果檔案（${files.length}）</h2>
-${files.length ? `<div class="files">${[...visual, ...others].map(fileHtml).join('\n')}</div>` : '<p class="empty">這個專案沒有放檔案（例如 SOP、說明書類只留紀錄）。</p>'}
-<h2 class="sec">工作紀錄（${pr.records.length}）</h2>
-${pr.records.length ? pr.records.map(recordHtml).join('\n') : '<p class="empty">沒有紀錄。</p>'}
+${projectBody(pr, { print: false })}
 <footer>此頁由紀錄櫃 App 在 ${esc(tw(p.generatedAt))}（台北）產生；檔案與縮圖連結到 ${esc(tw(p.linkExpiresAt))} 前有效。</footer>
 </div>`
   return page({ title: `${pr.name}｜${OWNER} 工作作品集`, desc: pr.summary || INTRO, body, ogImage: pr.cover || undefined, url: `${p.origin}/portfolio/${key}/${pr.id}` })
