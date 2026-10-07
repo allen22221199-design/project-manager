@@ -107,7 +107,7 @@ section.proj{page-break-before:always;break-before:page;padding-top:10px}
   .cover{aspect-ratio:16/10}.hero img{max-height:300px}
   video{display:none}
   a{color:inherit}
-  h2.sec{margin-top:18px;padding-top:10px}
+  h2.sec{margin-top:18px;padding-top:10px;break-after:avoid-page;page-break-after:avoid}.hero{break-after:avoid-page;page-break-after:avoid}.ph1,.pmeta{break-after:avoid-page;page-break-after:avoid}
   .cover-page{min-height:auto;page-break-after:always;break-after:page}
 }
 `
