@@ -105,8 +105,7 @@ a{color:var(--gold);text-decoration:none}a:hover{text-decoration:underline}
 section.cat{padding:38px 0 6px}.sec-head{display:flex;align-items:baseline;gap:14px;margin:0 0 18px}
 .sec-head h2{font-family:"Noto Serif TC",serif;font-size:26px;margin:0;font-weight:700}.sec-head .en{font-size:11px;letter-spacing:.24em;color:var(--gold);font-weight:600}.sec-head .n{font-size:13px;color:var(--muted);margin-left:auto}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:22px}
-.featured{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
-@media(min-width:900px){.featured .card:first-child{grid-column:span 2;grid-row:span 2}.featured .card:first-child .cover{aspect-ratio:auto;height:100%;min-height:360px}.featured .card:first-child h3{font-size:24px}}
+.featured{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}.featured .card{border-top:3px solid var(--gold)}.featured .card h3{font-size:20px}
 @media(max-width:899px){.featured{grid-template-columns:1fr}}
 .card{position:relative;background:var(--paper);border-radius:18px;overflow:hidden;text-decoration:none;color:inherit;display:flex;flex-direction:column;box-shadow:var(--shadow);transition:transform .25s ease,box-shadow .25s ease}
 .card:hover{transform:translateY(-4px);box-shadow:0 2px 4px rgba(20,16,10,.05),0 30px 50px -24px rgba(20,16,10,.45);text-decoration:none}
@@ -233,8 +232,9 @@ export function portfolioIndexHtml(p: Portfolio, key: string): string {
   const cats = CATEGORY_ORDER.filter(c => p.projects.some(x => (x.category || '其他') === c))
   const extra = Array.from(new Set(p.projects.map(x => x.category || '其他'))).filter(c => !cats.includes(c))
   const allCats = [...cats, ...extra]
-  // 精選：有封面、檔案與紀錄最多的三個
-  const score = (x: ShareProject) => (x.cover ? 3 : -99) + x.files.length + x.records.length * 2
+  // 精選：有封面與檔案，優先挑有第三方留痕（媒體露出、客戶回饋、平台數字）的，再看檔案與紀錄多寡
+  const evidence = (x: ShareProject) => /媒體露出|客戶回饋|第三方|佐證|使用數據/.test(x.note || '') ? 8 : 0
+  const score = (x: ShareProject) => (x.cover ? 3 : -99) + evidence(x) + x.files.length + x.records.length * 2
   const featured = [...p.projects].filter(x => x.cover && x.files.length).sort((a, b) => score(b) - score(a)).slice(0, 3)
   const sections = allCats.map(c => {
     const items = p.projects.filter(x => (x.category || '其他') === c)
