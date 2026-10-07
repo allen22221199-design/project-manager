@@ -124,7 +124,9 @@ section.cat{padding:44px 0 10px}.sec-head{display:flex;align-items:baseline;gap:
 .band{background:var(--dark);color:#f4efe6;position:relative;isolation:isolate;padding:54px 0 60px;margin:34px 0 0}
 .band:before{content:"";position:absolute;inset:0;z-index:-2;background:radial-gradient(900px 420px at 0% 0%,rgba(216,189,138,.16),transparent 60%),linear-gradient(180deg,#121417,#17191d)}
 .band:after{content:"";position:absolute;inset:0;z-index:-1;background-image:${NOISE};opacity:.12;mix-blend-mode:overlay;pointer-events:none}
-.band .sec-head h2{color:#fff}.band .sec-head .n{color:#a79f92}.band .sec-head .num{-webkit-text-stroke-color:var(--gold-2)}
+.band .sec-head h2{color:#fff}.band .sec-head .n{color:#a79f92}.band .sec-head .num{-webkit-text-stroke-color:var(--gold-2)}.band .card{color:var(--ink)}
+.sec-head{flex-wrap:wrap}.sec-head h2{white-space:nowrap}
+@media(max-width:600px){.scroll-hint{display:none}.hero .wrap{padding:64px 20px 48px}.hero h1 .sp{display:block;height:0;overflow:hidden}.hero h1{font-size:40px}.stats{gap:28px}.stat b{font-size:42px}}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:22px}
 .featured{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}.featured .card{border-top:3px solid var(--gold-2)}.featured .card h3{font-size:21px}
 @media(max-width:899px){.featured{grid-template-columns:1fr}}
@@ -305,7 +307,7 @@ export function portfolioIndexHtml(p: Portfolio, key: string): string {
   const chips = ['全部', ...allCats].map((c, i) => `<button class="chip${i === 0 ? ' on' : ''}" data-cat="${esc(c)}" type="button">${esc(c)}</button>`).join('')
   const body = `<header class="hero"><div class="veins"></div><div class="spot"></div><div class="wm">EGRRA</div><div class="wrap">
   <div class="eyebrow rv" style="--d:.05s">${esc(COMPANY)}　·　PrinTex™ 數位紋理・藝格板</div>
-  <h1 class="rv" style="--d:.15s">${esc(OWNER)}　<span class="gold">工作作品集</span></h1>
+  <h1 class="rv" style="--d:.15s">${esc(OWNER)}<span class="sp">　</span><span class="gold">工作作品集</span></h1>
   <p class="sub rv" style="--d:.25s">PORTFOLIO OF ${esc(OWNER_EN.toUpperCase())}　·　2019 — ${esc(String(new Date().getFullYear()))}</p>
   <div class="rule rv" style="--d:.3s"></div>
   <p class="intro rv" style="--d:.35s">${esc(INTRO)}</p>
