@@ -232,7 +232,8 @@ ${projectBody(pr, { print: true })}
 ${sections}
 <footer>此書面版由紀錄櫃 App 產生；文中「開啟／下載」連結到 ${esc(tw(p.linkExpiresAt))} 前有效，之後請用線上版重新取得。</footer>
 </div>`
-  return page({ title: `${OWNER} 工作作品集（列印版）｜${COMPANY}`, desc: INTRO, body, ogImage: p.projects.find(x => x.cover)?.cover, url: `${p.origin}/portfolio/${key}?all=1` })
+  // 列印版不用延遲載圖，否則「另存 PDF」時下方的縮圖會是空的
+  return page({ title: `${OWNER} 工作作品集（列印版）｜${COMPANY}`, desc: INTRO, body: body.replace(/ loading="lazy"/g, ''), ogImage: p.projects.find(x => x.cover)?.cover, url: `${p.origin}/portfolio/${key}?all=1` })
 }
 
 export function projectHtml(p: Portfolio, pr: ShareProject, key: string): string {
