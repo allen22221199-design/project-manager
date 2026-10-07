@@ -142,17 +142,26 @@ section.cat{padding:44px 0 10px}.sec-head{display:flex;align-items:baseline;gap:
 .card h3 span{background-image:linear-gradient(var(--gold-2),var(--gold-2));background-size:0 2px;background-repeat:no-repeat;background-position:0 100%;transition:background-size .4s cubic-bezier(.2,.7,.2,1);padding-bottom:2px}.card:hover h3 span{background-size:100% 2px}
 .sum{font-size:14px;color:var(--muted);line-height:1.7;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .card .meta{margin-top:auto;padding-top:10px;font-size:12px;color:var(--muted);display:flex;gap:12px;border-top:1px solid var(--line);align-items:center}.card .meta .go{margin-left:auto;color:var(--gold);letter-spacing:.1em;opacity:0;transform:translateX(-6px);transition:all .3s}.card:hover .meta .go{opacity:1;transform:none}
-/* 年表（甘特） */
-.gantt{position:relative;background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:18px 20px 12px;box-shadow:var(--shadow)}
-.g-head,.g-row{display:grid;grid-template-columns:230px 1fr;gap:14px;align-items:center}
-.g-axis{position:relative;height:30px}.g-axis .y{position:absolute;top:0;font-family:"Noto Serif TC",serif;font-size:15px;color:var(--gold);font-weight:700;transform:translateX(-50%);white-space:nowrap}.g-axis .y:after{content:"";position:absolute;left:50%;top:24px;height:6px;width:1px;background:var(--gold)}
-.g-axis .now{position:absolute;top:2px;font-size:10px;letter-spacing:.18em;color:var(--ink);transform:translateX(-100%);padding-right:6px;white-space:nowrap}
-.g-row{padding:7px 0;border-top:1px dashed var(--line);text-decoration:none;color:inherit;transition:background .2s;border-radius:6px}.g-row:hover{background:#fbf8f2;text-decoration:none}
-.g-label{font-size:13.5px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.g-label .k{font-size:10px;letter-spacing:.16em;color:var(--gold);margin-right:8px;font-weight:600}
-.g-track{position:relative;height:18px}.g-track .yl{position:absolute;top:-8px;bottom:-8px;width:1px;background:var(--line)}.g-track .nl{position:absolute;top:-8px;bottom:-8px;width:1px;background:var(--ink);opacity:.35}
-.g-bar{position:absolute;top:4px;height:10px;border-radius:999px;background:linear-gradient(90deg,var(--gold-2),var(--gold));box-shadow:0 2px 6px rgba(168,136,79,.35);min-width:10px;transition:transform .2s,box-shadow .2s;transform-origin:center}.g-row:hover .g-bar{transform:scaleY(1.5);box-shadow:0 4px 12px rgba(168,136,79,.5)}
-.g-foot{font-size:12px;color:var(--muted);margin-top:10px}
-@media(max-width:700px){.g-head,.g-row{grid-template-columns:1fr;gap:4px}.g-head>div:first-child{display:none}.g-label{white-space:normal}}
+/* 經歷年表：依年、月分組的工作紀錄 */
+.exp{position:relative}
+.xyear{display:grid;grid-template-columns:150px minmax(0,1fr);gap:28px;padding:14px 0 22px;border-top:1px solid var(--line)}
+.xyear .y{position:sticky;top:66px;align-self:start;display:flex;flex-direction:column;gap:6px}
+.xyear .y b{font-family:"Noto Serif TC",serif;font-size:62px;line-height:1;color:transparent;-webkit-text-stroke:1px var(--gold);letter-spacing:-.02em;font-weight:700}
+.xyear .y span{font-size:11px;letter-spacing:.2em;color:var(--muted)}
+.ylist{position:relative;padding-left:28px}.ylist:before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:linear-gradient(var(--gold-2),var(--line))}
+.xmon{position:relative;font-size:11px;letter-spacing:.24em;color:var(--gold);font-weight:600;margin:16px 0 10px}.xmon:first-child{margin-top:2px}
+.xmon:before{content:"";position:absolute;left:-25px;top:3px;width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 4px var(--bg)}
+.xi{position:relative;display:grid;grid-template-columns:70px minmax(0,1fr);gap:14px;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin:0 0 10px;text-decoration:none;color:inherit;box-shadow:var(--shadow);transition:transform .25s,border-color .25s,box-shadow .3s}
+.xi:hover{transform:translateX(6px);border-color:var(--gold-2);text-decoration:none;box-shadow:0 2px 4px rgba(20,16,10,.05),0 22px 40px -22px rgba(20,16,10,.4)}
+.xi:before{content:"";position:absolute;left:-25px;top:22px;width:8px;height:8px;border-radius:50%;background:var(--paper);border:2px solid var(--gold);box-shadow:0 0 0 4px var(--bg);transition:transform .25s,background .25s}.xi:hover:before{background:var(--gold);transform:scale(1.3)}
+.xi .xd{font-family:"Noto Serif TC",serif;font-size:17px;color:var(--gold);font-weight:700;font-variant-numeric:tabular-nums;padding-top:2px;letter-spacing:.04em}
+.xi .xp{font-size:12px;letter-spacing:.06em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.xi .xp b{font-size:10px;letter-spacing:.16em;color:var(--gold);margin-right:8px;font-weight:600}
+.xi h3{font-family:"Noto Serif TC",serif;font-size:17px;margin:3px 0 4px;line-height:1.5;font-weight:700}
+.xi p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.65;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.xi .xs{margin-top:8px;font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center}.xi .xs span{border:1px solid var(--line);border-radius:999px;padding:1px 9px}
+.xi .xs .go{margin-left:auto;border:0;padding:0;color:var(--gold);letter-spacing:.1em;opacity:0;transform:translateX(-6px);transition:all .3s}.xi:hover .xs .go{opacity:1;transform:none}
+@media(max-width:700px){.xyear{grid-template-columns:1fr;gap:10px}.xyear .y{position:static;flex-direction:row;align-items:baseline;gap:12px}.xyear .y b{font-size:44px}.xi{grid-template-columns:1fr;gap:2px;padding:12px 14px}.xi .xd{font-size:14px}}
+@media print{.xprint{page-break-before:always;break-before:page;padding-top:14px}.xyear{grid-template-columns:110px 1fr;gap:16px}.xyear .y{position:static}.xyear .y b{font-size:40px;color:var(--gold);-webkit-text-stroke:0}.xi{break-inside:avoid;page-break-inside:avoid;margin-bottom:8px;padding:10px 14px}.xi:hover{transform:none}.xi .xs .go{display:none}.xi:before,.xmon:before{box-shadow:0 0 0 4px #fff}}
 /* 專案頁 */
 .phead{position:relative;background:var(--dark);color:#f4efe6;overflow:hidden;isolation:isolate}
 .phead .bg{position:absolute;inset:-4%;z-index:-3;background-size:cover;background-position:center;filter:saturate(.9);animation:drift 24s ease-in-out infinite}
@@ -303,31 +312,47 @@ function footHtml(p: Portfolio): string {
 </div></footer>`
 }
 
-// 年表：2024-01 到今天，每個專案一條（期間＝它的紀錄與檔案日期的最早到最晚）
+// 經歷年表：2024 年起的每一筆工作紀錄，依年、月分組，由新到舊；每筆可點進專案（列印版連到書內該專案那一節）
 const TL_START_YEAR = 2024
-function timelineHtml(p: Portfolio, key: string): string {
+const firstLine = (note: string): string => {
+  for (const raw of String(note || '').split(/\r?\n/)) {
+    const l = raw.trim()
+    if (!l || l.startsWith('|') || /^#{1,6}\s/.test(l) || /^【[^】]*】$/.test(l) || /^[-*]\s/.test(l) || /^\d+\.\s/.test(l)) continue
+    return l.replace(/\*\*/g, '')
+  }
+  return ''
+}
+function timelineHtml(p: Portfolio, key: string, print = false): string {
+  type E = { pr: ShareProject; idx: number; r: ShareRecord; t: number }
   const toT = (d: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : NaN }
-  const now = new Date()
   const START = Date.UTC(TL_START_YEAR, 0, 1)
-  const END = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)   // 本月底
-  const span = END - START
-  const pct = (t: number) => Math.max(0, Math.min(100, (t - START) / span * 100))
-  const rows = p.projects.map(pr => {
-    const ds = [...pr.records.map(r => r.date), ...pr.files.map(f => f.date), pr.lastDate].map(toT).filter(t => !isNaN(t) && t >= START && t <= END)
-    return ds.length ? { pr, s: Math.min(...ds), e: Math.max(...ds) } : null
-  }).filter((x): x is { pr: ShareProject; s: number; e: number } => !!x).sort((a, b) => a.s - b.s || a.e - b.e)
-  if (!rows.length) return ''
-  const years: number[] = []
-  for (let y = TL_START_YEAR; y <= now.getUTCFullYear(); y++) years.push(y)
-  const yl = years.map(y => `<i class="yl" style="left:${pct(Date.UTC(y, 0, 1)).toFixed(2)}%"></i>`).join('') + `<i class="nl" style="left:${pct(now.getTime()).toFixed(2)}%"></i>`
-  const fmt = (t: number) => new Date(t).toISOString().slice(0, 10)
-  const list = rows.map(r => {
-    const left = pct(r.s), w = Math.max(0.8, pct(r.e) - left)
-    return `<a class="g-row" href="/portfolio/${esc(key)}/${esc(r.pr.id)}" title="${esc(r.pr.name)}　${fmt(r.s)} → ${fmt(r.e)}"><div class="g-label"><span class="k">${esc(catEn(r.pr.category))}</span>${esc(r.pr.name)}</div><div class="g-track">${yl}<span class="g-bar" style="left:${left.toFixed(2)}%;width:${w.toFixed(2)}%"></span></div></a>`
+  const es: E[] = []
+  p.projects.forEach((pr, idx) => pr.records.forEach(r => { const t = toT(r.date); if (!isNaN(t) && t >= START) es.push({ pr, idx, r, t }) }))
+  if (!es.length) return ''
+  es.sort((a, b) => b.t - a.t || a.pr.name.localeCompare(b.pr.name))
+  const years = new Map<string, Map<string, E[]>>()
+  for (const e of es) {
+    const y = e.r.date.slice(0, 4), m = e.r.date.slice(5, 7)
+    if (!years.has(y)) years.set(y, new Map())
+    const ym = years.get(y) as Map<string, E[]>
+    if (!ym.has(m)) ym.set(m, [])
+    ;(ym.get(m) as E[]).push(e)
+  }
+  const item = (e: E) => {
+    const href = print ? `#p${e.idx + 1}` : `/portfolio/${esc(key)}/${esc(e.pr.id)}`
+    const sum = firstLine(e.r.note)
+    const tags = [e.r.status ? `<span>${esc(e.r.status)}</span>` : '', e.r.files.length ? `<span>檔案 ${e.r.files.length}</span>` : ''].filter(Boolean).join('')
+    return `<a class="xi rv" href="${href}"><div class="xd">${esc(e.r.date.slice(5))}</div><div class="xb"><div class="xp"><b>${esc(catEn(e.r.category || e.pr.category))}</b>${esc(e.pr.name)}</div><h3>${esc(e.r.title)}</h3>${sum ? `<p>${esc(sum)}</p>` : ''}<div class="xs">${tags}<span class="go">查看專案 →</span></div></div></a>`
+  }
+  const blocks = Array.from(years.entries()).map(([y, ym]) => {
+    const n = Array.from(ym.values()).reduce((s, a) => s + a.length, 0)
+    const months = Array.from(ym.entries()).map(([m, list]) => `<div class="xmon rv">${+m} 月</div>${list.map(item).join('\n')}`).join('\n')
+    return `<div class="xyear"><div class="y rv"><b>${esc(y)}</b><span>${n} 筆經歷</span></div><div class="ylist">${months}</div></div>`
   }).join('\n')
-  const axis = years.map(y => `<span class="y" style="left:${pct(Date.UTC(y, 0, 1)).toFixed(2)}%">${y}</span>`).join('') + `<span class="now" style="left:${pct(now.getTime()).toFixed(2)}%">今天</span>`
-  return `<section class="cat" data-cat="年表" id="timeline"><div class="wrap"><div class="sec-head rv"><span class="num">⟶</span><div><div class="en">TIMELINE</div><h2>年表 ${TL_START_YEAR} — ${now.getUTCFullYear()}</h2></div><span class="n">${rows.length} 個專案的活動期間，點一下進專案</span></div>
-<div class="gantt rv"><div class="g-head"><div></div><div class="g-axis">${axis}</div></div>${list}<div class="g-foot">期間依每個專案的紀錄與檔案日期取最早到最晚；只有一天的顯示成一點。</div></div></div></section>`
+  const yrs = Array.from(years.keys())
+  const range = `${esc(yrs[yrs.length - 1])} — ${esc(yrs[0])}`
+  if (print) return `<section class="xprint"><h2 class="sec" style="margin-top:0"><span class="en">TIMELINE</span>經歷年表 ${range}</h2><p style="font-size:13px;color:var(--muted);margin:0 0 14px">${es.length} 筆工作紀錄，由新到舊；每一筆都連到書內該專案那一節。</p><div class="exp">${blocks}</div></section>`
+  return `<section class="cat" data-cat="年表" id="timeline"><div class="wrap"><div class="sec-head rv"><span class="num">⟶</span><div><div class="en">TIMELINE</div><h2>經歷年表 ${range}</h2></div><span class="n">${es.length} 筆經歷，由新到舊，點一下進專案</span></div><div class="exp">${blocks}</div></div></section>`
 }
 
 export function portfolioIndexHtml(p: Portfolio, key: string): string {
@@ -439,6 +464,7 @@ ${projectBody(pr, { print: true })}
 <h2 class="sec" style="margin-top:0"><span class="en">INDEX</span>專案一覽</h2>
 <table><tr><th>#</th><th>分類</th><th>專案</th><th>狀態</th><th>最近</th><th>紀錄／檔案</th></tr>${toc}</table>
 </section>
+${timelineHtml(p, key, true)}
 ${sections}
 <div style="padding:30px 0;font-size:12px;color:var(--muted)">此書面版由紀錄櫃 App 產生；文中「開啟／下載」連結到 ${esc(tw(p.linkExpiresAt))} 前有效，之後請用線上版重新取得。</div>
 </div>`
