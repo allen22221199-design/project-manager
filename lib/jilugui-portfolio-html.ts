@@ -142,6 +142,17 @@ section.cat{padding:44px 0 10px}.sec-head{display:flex;align-items:baseline;gap:
 .card h3 span{background-image:linear-gradient(var(--gold-2),var(--gold-2));background-size:0 2px;background-repeat:no-repeat;background-position:0 100%;transition:background-size .4s cubic-bezier(.2,.7,.2,1);padding-bottom:2px}.card:hover h3 span{background-size:100% 2px}
 .sum{font-size:14px;color:var(--muted);line-height:1.7;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .card .meta{margin-top:auto;padding-top:10px;font-size:12px;color:var(--muted);display:flex;gap:12px;border-top:1px solid var(--line);align-items:center}.card .meta .go{margin-left:auto;color:var(--gold);letter-spacing:.1em;opacity:0;transform:translateX(-6px);transition:all .3s}.card:hover .meta .go{opacity:1;transform:none}
+/* 年表（甘特） */
+.gantt{position:relative;background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:18px 20px 12px;box-shadow:var(--shadow)}
+.g-head,.g-row{display:grid;grid-template-columns:230px 1fr;gap:14px;align-items:center}
+.g-axis{position:relative;height:30px}.g-axis .y{position:absolute;top:0;font-family:"Noto Serif TC",serif;font-size:15px;color:var(--gold);font-weight:700;transform:translateX(-50%);white-space:nowrap}.g-axis .y:after{content:"";position:absolute;left:50%;top:24px;height:6px;width:1px;background:var(--gold)}
+.g-axis .now{position:absolute;top:2px;font-size:10px;letter-spacing:.18em;color:var(--ink);transform:translateX(-100%);padding-right:6px;white-space:nowrap}
+.g-row{padding:7px 0;border-top:1px dashed var(--line);text-decoration:none;color:inherit;transition:background .2s;border-radius:6px}.g-row:hover{background:#fbf8f2;text-decoration:none}
+.g-label{font-size:13.5px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.g-label .k{font-size:10px;letter-spacing:.16em;color:var(--gold);margin-right:8px;font-weight:600}
+.g-track{position:relative;height:18px}.g-track .yl{position:absolute;top:-8px;bottom:-8px;width:1px;background:var(--line)}.g-track .nl{position:absolute;top:-8px;bottom:-8px;width:1px;background:var(--ink);opacity:.35}
+.g-bar{position:absolute;top:4px;height:10px;border-radius:999px;background:linear-gradient(90deg,var(--gold-2),var(--gold));box-shadow:0 2px 6px rgba(168,136,79,.35);min-width:10px;transition:transform .2s,box-shadow .2s;transform-origin:center}.g-row:hover .g-bar{transform:scaleY(1.5);box-shadow:0 4px 12px rgba(168,136,79,.5)}
+.g-foot{font-size:12px;color:var(--muted);margin-top:10px}
+@media(max-width:700px){.g-head,.g-row{grid-template-columns:1fr;gap:4px}.g-head>div:first-child{display:none}.g-label{white-space:normal}}
 /* 專案頁 */
 .phead{position:relative;background:var(--dark);color:#f4efe6;overflow:hidden;isolation:isolate}
 .phead .bg{position:absolute;inset:-4%;z-index:-3;background-size:cover;background-position:center;filter:saturate(.9);animation:drift 24s ease-in-out infinite}
@@ -292,6 +303,33 @@ function footHtml(p: Portfolio): string {
 </div></footer>`
 }
 
+// 年表：2024-01 到今天，每個專案一條（期間＝它的紀錄與檔案日期的最早到最晚）
+const TL_START_YEAR = 2024
+function timelineHtml(p: Portfolio, key: string): string {
+  const toT = (d: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : NaN }
+  const now = new Date()
+  const START = Date.UTC(TL_START_YEAR, 0, 1)
+  const END = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)   // 本月底
+  const span = END - START
+  const pct = (t: number) => Math.max(0, Math.min(100, (t - START) / span * 100))
+  const rows = p.projects.map(pr => {
+    const ds = [...pr.records.map(r => r.date), ...pr.files.map(f => f.date), pr.lastDate].map(toT).filter(t => !isNaN(t) && t >= START && t <= END)
+    return ds.length ? { pr, s: Math.min(...ds), e: Math.max(...ds) } : null
+  }).filter((x): x is { pr: ShareProject; s: number; e: number } => !!x).sort((a, b) => a.s - b.s || a.e - b.e)
+  if (!rows.length) return ''
+  const years: number[] = []
+  for (let y = TL_START_YEAR; y <= now.getUTCFullYear(); y++) years.push(y)
+  const yl = years.map(y => `<i class="yl" style="left:${pct(Date.UTC(y, 0, 1)).toFixed(2)}%"></i>`).join('') + `<i class="nl" style="left:${pct(now.getTime()).toFixed(2)}%"></i>`
+  const fmt = (t: number) => new Date(t).toISOString().slice(0, 10)
+  const list = rows.map(r => {
+    const left = pct(r.s), w = Math.max(0.8, pct(r.e) - left)
+    return `<a class="g-row" href="/portfolio/${esc(key)}/${esc(r.pr.id)}" title="${esc(r.pr.name)}　${fmt(r.s)} → ${fmt(r.e)}"><div class="g-label"><span class="k">${esc(catEn(r.pr.category))}</span>${esc(r.pr.name)}</div><div class="g-track">${yl}<span class="g-bar" style="left:${left.toFixed(2)}%;width:${w.toFixed(2)}%"></span></div></a>`
+  }).join('\n')
+  const axis = years.map(y => `<span class="y" style="left:${pct(Date.UTC(y, 0, 1)).toFixed(2)}%">${y}</span>`).join('') + `<span class="now" style="left:${pct(now.getTime()).toFixed(2)}%">今天</span>`
+  return `<section class="cat" data-cat="年表" id="timeline"><div class="wrap"><div class="sec-head rv"><span class="num">⟶</span><div><div class="en">TIMELINE</div><h2>年表 ${TL_START_YEAR} — ${now.getUTCFullYear()}</h2></div><span class="n">${rows.length} 個專案的活動期間，點一下進專案</span></div>
+<div class="gantt rv"><div class="g-head"><div></div><div class="g-axis">${axis}</div></div>${list}<div class="g-foot">期間依每個專案的紀錄與檔案日期取最早到最晚；只有一天的顯示成一點。</div></div></div></section>`
+}
+
 export function portfolioIndexHtml(p: Portfolio, key: string): string {
   const cats = CATEGORY_ORDER.filter(c => p.projects.some(x => (x.category || '其他') === c))
   const extra = Array.from(new Set(p.projects.map(x => x.category || '其他'))).filter(c => !cats.includes(c))
@@ -308,7 +346,7 @@ export function portfolioIndexHtml(p: Portfolio, key: string): string {
   const body = `<header class="hero"><div class="veins"></div><div class="spot"></div><div class="wm">EGRRA</div><div class="wrap">
   <div class="eyebrow rv" style="--d:.05s">${esc(COMPANY)}　·　PrinTex™ 數位紋理・藝格板</div>
   <h1 class="rv" style="--d:.15s">${esc(OWNER)}<span class="sp">　</span><span class="gold">工作作品集</span></h1>
-  <p class="sub rv" style="--d:.25s">PORTFOLIO OF ${esc(OWNER_EN.toUpperCase())}　·　2019 — ${esc(String(new Date().getFullYear()))}</p>
+  <p class="sub rv" style="--d:.25s">PORTFOLIO OF ${esc(OWNER_EN.toUpperCase())}　·　${TL_START_YEAR} — ${esc(String(new Date().getFullYear()))}</p>
   <div class="rule rv" style="--d:.3s"></div>
   <p class="intro rv" style="--d:.35s">${esc(INTRO)}</p>
   <div class="stats rv" style="--d:.45s"><div class="stat"><b data-n="${p.stats.projects}">0</b><span>專案 PROJECTS</span></div><div class="stat"><b data-n="${p.stats.records}">0</b><span>工作紀錄 RECORDS</span></div><div class="stat"><b data-n="${p.stats.files}">0</b><span>檔案 FILES</span></div></div>
@@ -318,6 +356,7 @@ export function portfolioIndexHtml(p: Portfolio, key: string): string {
 <nav class="catnav"><div class="wrap" id="chips"><span class="brandmini">${esc(OWNER)}・作品集</span>${chips}</div></nav>
 <main>
 ${featured.length ? `<section class="band cat" data-cat="精選" id="featured"><div class="wrap"><div class="sec-head rv"><span class="num">★</span><div><div class="en">FEATURED</div><h2>精選作品</h2></div><span class="n">有客戶回饋、媒體露出或平台數字的案子</span></div><div class="featured">${featured.map((x, i) => cardHtml(x, key, i)).join('\n')}</div></div></section>` : ''}
+${timelineHtml(p, key)}
 ${sections}
 </main>
 ${footHtml(p)}`
