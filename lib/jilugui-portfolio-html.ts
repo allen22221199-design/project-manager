@@ -160,7 +160,8 @@ section.cat{padding:44px 0 10px}.sec-head{display:flex;align-items:baseline;gap:
 .xi p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.65;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .xi .xs{margin-top:8px;font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center}.xi .xs span{border:1px solid var(--line);border-radius:999px;padding:1px 9px}
 .xi .xs .go{margin-left:auto;border:0;padding:0;color:var(--gold);letter-spacing:.1em;opacity:0;transform:translateX(-6px);transition:all .3s}.xi:hover .xs .go{opacity:1;transform:none}
-@media(max-width:700px){.xyear{grid-template-columns:1fr;gap:10px}.xyear .y{position:static;flex-direction:row;align-items:baseline;gap:12px}.xyear .y b{font-size:44px}.xi{grid-template-columns:1fr;gap:2px;padding:12px 14px}.xi .xd{font-size:14px}}
+.xi .xb{min-width:0}
+@media(max-width:700px){.xyear{grid-template-columns:minmax(0,1fr);gap:10px}.xyear .y{position:static;flex-direction:row;align-items:baseline;gap:12px}.xyear .y b{font-size:44px}.ylist{padding-left:22px}.xmon:before,.xi:before{left:-19px}.xi{grid-template-columns:minmax(0,1fr);gap:2px;padding:12px 14px}.xi .xd{font-size:14px}.xi .xp{white-space:normal}}
 @media print{.xprint{page-break-before:always;break-before:page;padding-top:14px}.xyear{grid-template-columns:110px 1fr;gap:16px}.xyear .y{position:static}.xyear .y b{font-size:40px;color:var(--gold);-webkit-text-stroke:0}.xi{break-inside:avoid;page-break-inside:avoid;margin-bottom:8px;padding:10px 14px}.xi:hover{transform:none}.xi .xs .go{display:none}.xi:before,.xmon:before{box-shadow:0 0 0 4px #fff}}
 /* 專案頁 */
 .phead{position:relative;background:var(--dark);color:#f4efe6;overflow:hidden;isolation:isolate}
