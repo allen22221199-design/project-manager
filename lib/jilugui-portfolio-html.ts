@@ -163,6 +163,25 @@ section.cat{padding:44px 0 10px}.sec-head{display:flex;align-items:baseline;gap:
 .xi .xb{min-width:0}
 @media(max-width:700px){.xyear{grid-template-columns:minmax(0,1fr);gap:10px}.xyear .y{position:static;flex-direction:row;align-items:baseline;gap:12px}.xyear .y b{font-size:44px}.ylist{padding-left:22px}.xmon:before,.xi:before{left:-19px}.xi{grid-template-columns:minmax(0,1fr);gap:2px;padding:12px 14px}.xi .xd{font-size:14px}.xi .xp{white-space:normal}}
 @media print{.xprint{page-break-before:always;break-before:page;padding-top:14px}.xyear{grid-template-columns:110px 1fr;gap:16px}.xyear .y{position:static}.xyear .y b{font-size:40px;color:var(--gold);-webkit-text-stroke:0}.xi{break-inside:avoid;page-break-inside:avoid;margin-bottom:8px;padding:10px 14px}.xi:hover{transform:none}.xi .xs .go{display:none}.xi:before,.xmon:before{box-shadow:0 0 0 4px #fff}}
+/* 首頁卡片原地展開的面板 */
+.xpanel{grid-column:1/-1;background:var(--paper);border:1px solid var(--gold-2);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;animation:pop .3s ease}
+.xpanel[hidden]{display:none}
+.xpin{padding:22px 24px 24px}
+.xphead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.xphead .en{font-size:11px;letter-spacing:.22em;color:var(--gold);font-weight:600}.xphead h3{font-family:"Noto Serif TC",serif;font-size:22px;margin:4px 0 0;line-height:1.4;font-weight:700}
+.xpacts{display:flex;gap:8px;flex-wrap:wrap}.xpacts .btnp{padding:9px 18px;font-size:13px}.xpacts .btno{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:13px;color:var(--ink);cursor:pointer;background:var(--paper);font-family:inherit;transition:all .2s}.xpacts .btno:hover{border-color:var(--gold);color:var(--gold)}
+.xpsum{font-size:15px;line-height:1.85;color:var(--ink);margin:12px 0 10px;max-width:860px}
+.xpfacts{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted)}.xpfacts span,.xpfacts a{border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+.xpsec{font-family:"Noto Serif TC",serif;font-size:16px;font-weight:700;margin:20px 0 10px;display:flex;align-items:baseline;gap:10px}.xpsec .en{font-size:10px;letter-spacing:.24em;color:var(--gold);font-family:"Noto Sans TC",sans-serif;font-weight:600}
+.xfiles{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 8px;scrollbar-width:thin;align-items:flex-start}
+.xf{flex:0 0 150px;text-decoration:none;color:inherit}.xf .xft{width:150px;height:110px;border-radius:12px;background:#efe9df;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);transition:transform .25s,border-color .25s}.xf .xft img{width:100%;height:100%;object-fit:cover;display:block}.xf .xft span{font-size:12px;letter-spacing:.2em;color:rgba(80,64,40,.5)}.xf:hover .xft{transform:translateY(-3px);border-color:var(--gold-2)}.xf:hover{text-decoration:none}
+.xf .xfn{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+.xmore{flex:0 0 auto;align-self:center;font-size:13px;color:var(--gold);white-space:nowrap;padding:0 10px}.xrecs+.xmore{display:inline-block;margin-top:10px;padding:0}
+.xrecs{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:0 24px}
+.xrecs li{display:flex;gap:12px;font-size:14px;line-height:1.6;padding:7px 0;border-bottom:1px dashed var(--line)}.xrecs .d{color:var(--gold);font-weight:600;font-variant-numeric:tabular-nums;flex:0 0 auto;font-size:12.5px;letter-spacing:.06em;padding-top:2px}
+.card.open{box-shadow:0 0 0 2px var(--gold-2),var(--shadow)}.card.open .meta .go{opacity:1;transform:none}
+.band .xpanel{color:var(--ink)}
+@media(max-width:600px){.xpin{padding:16px 16px 18px}.xrecs{grid-template-columns:1fr}.xf{flex-basis:124px}.xf .xft{width:124px;height:92px}.xphead h3{font-size:19px}}
 /* 專案頁 */
 .phead{position:relative;background:var(--dark);color:#f4efe6;overflow:hidden;isolation:isolate}
 .phead .bg{position:absolute;inset:-4%;z-index:-3;background-size:cover;background-position:center;filter:saturate(.9);animation:drift 24s ease-in-out infinite}
@@ -224,7 +243,7 @@ section.proj .pmeta{color:var(--muted)}section.proj .pmeta .tag{border-color:var
 @media print{
   :root{--bg:#fff;--paper:#fff;--line:#d5cfc6;--shadow:none}
   body{font-size:12px;line-height:1.55}.wrap{max-width:none;padding:0}
-  .catnav,.tools,.topbar,.foot,.side .acts,.totop,.lb,.toast,.scroll-hint,.veins,.spot,.wm,.card .meta .go{display:none!important}
+  .catnav,.tools,.topbar,.foot,.side .acts,.totop,.lb,.toast,.scroll-hint,.veins,.spot,.wm,.card .meta .go,.xpanel{display:none!important}
   .rv{opacity:1!important;transform:none!important}.card,.card:hover{transform:none!important}
   .hero,.phead,.band{background:#fff;color:var(--ink);min-height:auto}.hero:before,.hero:after,.phead .bg,.phead .veil,.phead .spot,.band:before,.band:after{display:none}.hero .intro{color:var(--muted)}.stat b{color:var(--ink)}.hero h1 .gold{color:var(--ink);background:none;-webkit-text-fill-color:initial}.band .sec-head h2{color:var(--ink)}
   .card,.rec,.file,.tbl,.hero-img{break-inside:avoid;page-break-inside:avoid;box-shadow:none!important;border:1px solid var(--line)}
@@ -262,6 +281,14 @@ imgs.forEach(function(a,i){a.addEventListener('click',function(e){e.preventDefau
 lb.querySelector('.x').addEventListener('click',hide);lb.addEventListener('click',function(e){if(e.target===lb)hide()});
 lb.querySelector('.prev').addEventListener('click',function(){show(cur-1)});lb.querySelector('.next').addEventListener('click',function(){show(cur+1)});
 addEventListener('keydown',function(e){if(!lb.classList.contains('on'))return;if(e.key==='Escape')hide();if(e.key==='ArrowLeft')show(cur-1);if(e.key==='ArrowRight')show(cur+1)})}
+var cards=[].slice.call(document.querySelectorAll('.card[data-x]'));
+function panelOf(c){return document.getElementById('xp-'+c.getAttribute('data-x'))}
+function setGo(id,open){document.querySelectorAll('.card[data-x="'+id+'"]').forEach(function(c){c.classList.toggle('open',open);var g=c.querySelector('.go');if(g)g.textContent=open?'收合 ▴':'展開 ▾'})}
+function closeAll(){document.querySelectorAll('.xpanel').forEach(function(p){if(!p.hidden){p.hidden=true;setGo(p.id.slice(3),false)}})}
+function place(c,p){var grid=c.parentNode,top=c.offsetTop,last=c,n=c.nextElementSibling;while(n){if(n.classList.contains('card')){if(Math.abs(n.offsetTop-top)<2)last=n;else break}n=n.nextElementSibling}if(last.nextSibling!==p)grid.insertBefore(p,last.nextSibling)}
+function openCard(c){var p=panelOf(c);if(!p)return;closeAll();place(c,p);p.hidden=false;setGo(c.getAttribute('data-x'),true);setTimeout(function(){var r=p.getBoundingClientRect();if(r.bottom>innerHeight||r.top<0)scrollTo({top:scrollY+c.getBoundingClientRect().top-72,behavior:rm?'auto':'smooth'})},30)}
+cards.forEach(function(c){c.addEventListener('click',function(e){if(e.metaKey||e.ctrlKey||e.shiftKey||e.altKey||e.button!==0)return;var p=panelOf(c);if(!p)return;e.preventDefault();if(p.hidden)openCard(c);else{p.hidden=true;setGo(c.getAttribute('data-x'),false)}})});
+document.querySelectorAll('.xpanel .xclose').forEach(function(b){b.addEventListener('click',function(){var p=b.closest('.xpanel');p.hidden=true;setGo(p.id.slice(3),false);var c=document.querySelector('.card[data-x="'+p.id.slice(3)+'"]');if(c&&c.getBoundingClientRect().top<0)scrollTo({top:scrollY+c.getBoundingClientRect().top-72,behavior:rm?'auto':'smooth'})})});
 })();
 `
 
@@ -294,13 +321,13 @@ ${opt.url ? `<meta property="og:url" content="${esc(opt.url)}">` : ''}
 function cardHtml(p: ShareProject, key: string, i = 0): string {
   const cover = p.cover ? `<img src="${esc(p.cover)}" alt="" loading="lazy">` : `<span class="ph">${esc((p.name || '＃').slice(0, 1))}</span>`
   const meta = [p.lastDate ? year(p.lastDate) : '', `紀錄 ${p.records.length}`, `檔案 ${p.files.length}`].filter(Boolean)
-  return `<a class="card rv" style="--d:${Math.min(i, 5) * 0.07}s" href="/portfolio/${esc(key)}/${esc(p.id)}">
+  return `<a class="card rv" style="--d:${Math.min(i, 5) * 0.07}s" href="/portfolio/${esc(key)}/${esc(p.id)}" data-x="${esc(p.id)}">
   <div class="cover">${cover}</div>
   <div class="body">
     <div class="kicker"><span>${esc(catEn(p.category))}・${esc(p.category || '其他')}</span><span class="st">${esc(p.status || '')}</span></div>
     <h3><span>${esc(p.name)}</span></h3>
     <div class="sum">${esc(p.summary)}</div>
-    <div class="meta">${meta.map(m => `<span>${esc(m)}</span>`).join('')}<span class="go">查看 →</span></div>
+    <div class="meta">${meta.map(m => `<span>${esc(m)}</span>`).join('')}<span class="go">展開 ▾</span></div>
   </div>
 </a>`
 }
@@ -311,6 +338,29 @@ function footHtml(p: Portfolio): string {
   <div class="links"><a href="https://egrra.vercel.app/" target="_blank" rel="noopener">官方網站</a><a href="https://www.tiktok.com/@marblemetal" target="_blank" rel="noopener">TikTok 大理石魔術師呂哥</a><a href="https://www.youtube.com/@marblemetal" target="_blank" rel="noopener">YouTube</a><a href="https://www.instagram.com/egrra1199/" target="_blank" rel="noopener">Instagram</a></div>
   <div style="flex-basis:100%;font-size:12px;color:#8e877c">此頁由紀錄櫃 App 在 ${esc(tw(p.generatedAt))}（台北）產生；檔案與縮圖連結到 ${esc(tw(p.linkExpiresAt))} 前有效，之後重新整理即可。</div>
 </div></footer>`
+}
+
+// 首頁卡片點一下在原地展開的面板：一句摘要、檔案縮圖一列、紀錄清單；完整內容在專案頁
+function panelHtml(p: ShareProject, key: string): string {
+  const href = `/portfolio/${esc(key)}/${esc(p.id)}`
+  const sum = firstLine(p.note) || p.summary
+  const facts = [p.status ? `<span>狀態 ${esc(p.status)}</span>` : '', p.lastDate ? `<span>最近 ${esc(p.lastDate)}</span>` : '', `<span>紀錄 ${p.records.length}</span>`, `<span>檔案 ${p.files.length}</span>`, p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">連結 ↗</a>` : ''].filter(Boolean).join('')
+  const visual = p.files.filter(f => f.thumb || isVideo(f.name) || isImage(f.name))
+  const files = [...visual, ...p.files.filter(f => !visual.includes(f))]
+  const tile = (f: ShareFile) => {
+    const lb = f.url && isImage(f.name) ? ` data-lb="${esc(f.url)}" data-cap="${esc(f.name)}"` : ''
+    const th = f.thumb ? `<img src="${esc(f.thumb)}" alt="" loading="lazy">` : `<span>${esc(isVideo(f.name) ? '影片' : extOf(f.name))}</span>`
+    return `<a class="xf" href="${esc(f.url || href)}"${lb} target="_blank" rel="noopener"><div class="xft">${th}</div><div class="xfn">${esc(f.name)}</div></a>`
+  }
+  const MAXF = 12, MAXR = 6
+  const fl = files.length ? `<div class="xfiles">${files.slice(0, MAXF).map(tile).join('')}${files.length > MAXF ? `<a class="xmore" href="${href}">還有 ${files.length - MAXF} 個 →</a>` : ''}</div>` : '<p class="empty">這個專案沒有放檔案（例如 SOP、說明書類只留紀錄）。</p>'
+  const rl = p.records.length ? `<ul class="xrecs">${p.records.slice(0, MAXR).map(r => `<li><span class="d">${esc(r.date || '')}</span><span class="t">${esc(r.title)}</span></li>`).join('')}</ul>${p.records.length > MAXR ? `<a class="xmore" href="${href}">全部 ${p.records.length} 筆紀錄 →</a>` : ''}` : '<p class="empty">沒有紀錄。</p>'
+  return `<div class="xpanel" id="xp-${esc(p.id)}" hidden><div class="xpin">
+  <div class="xphead"><div><div class="en">${esc(catEn(p.category))}・${esc(p.category || '其他')}</div><h3>${esc(p.name)}</h3></div><div class="xpacts"><a class="btnp" href="${href}">開啟專案頁 →</a><button class="btno xclose" type="button">收合 ▴</button></div></div>
+  ${sum ? `<p class="xpsum">${esc(sum)}</p>` : ''}<div class="xpfacts">${facts}</div>
+  <div class="xpsec"><span class="en">WORKS</span>成果檔案（${p.files.length}）</div>${fl}
+  <div class="xpsec"><span class="en">TIMELINE</span>工作紀錄（${p.records.length}）</div>${rl}
+</div></div>`
 }
 
 // 經歷年表：2024 年起的每一筆工作紀錄，依年、月分組，由新到舊；每筆可點進專案（列印版連到書內該專案那一節）
@@ -366,7 +416,7 @@ export function portfolioIndexHtml(p: Portfolio, key: string): string {
   const featured = [...p.projects].filter(x => x.cover && x.files.length).sort((a, b) => score(b) - score(a)).slice(0, 3)
   const sections = allCats.map((c, ci) => {
     const items = p.projects.filter(x => (x.category || '其他') === c)
-    return `<section class="cat" data-cat="${esc(c)}" id="cat-${esc(c)}"><div class="wrap"><div class="sec-head rv"><span class="num">${pad2(ci + 1)}</span><div><div class="en">${esc(catEn(c))}</div><h2>${esc(c)}</h2></div><span class="n">${items.length} 個專案</span></div><div class="grid">${items.map((x, i) => cardHtml(x, key, i)).join('\n')}</div></div></section>`
+    return `<section class="cat" data-cat="${esc(c)}" id="cat-${esc(c)}"><div class="wrap"><div class="sec-head rv"><span class="num">${pad2(ci + 1)}</span><div><div class="en">${esc(catEn(c))}</div><h2>${esc(c)}</h2></div><span class="n">${items.length} 個專案</span></div><div class="grid">${items.map((x, i) => cardHtml(x, key, i) + panelHtml(x, key)).join('\n')}</div></div></section>`
   }).join('\n')
   const chips = ['全部', ...allCats].map((c, i) => `<button class="chip${i === 0 ? ' on' : ''}" data-cat="${esc(c)}" type="button">${esc(c)}</button>`).join('')
   const body = `<header class="hero"><div class="veins"></div><div class="spot"></div><div class="wm">EGRRA</div><div class="wrap">
