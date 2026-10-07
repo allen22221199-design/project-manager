@@ -1430,10 +1430,15 @@
     sh.body.appendChild(info);
     try {
       const d = await api('GET', '/share-link');
-      info.textContent = '把下面的網址貼給任何 AI（Claude、ChatGPT、Gemini…），它就能讀到整份作品集：專案、紀錄、檔案說明，以及 7 天內有效的檔案與縮圖連結。只能讀，不能改。';
+      info.textContent = '第一個網址給人看（作品集網頁，不用登入）；後面兩個給 AI 讀（Claude、ChatGPT、Gemini…）。三個都只能讀，不能改；檔案與縮圖連結 7 天內有效。';
+      const pg = h('textarea', { class: 'share-url', rows: 2, readonly: 'readonly' }); pg.value = d.page || '';
       const md = h('textarea', { class: 'share-url', rows: 3, readonly: 'readonly' }); md.value = d.url;
       const js = h('textarea', { class: 'share-url', rows: 3, readonly: 'readonly' }); js.value = d.json;
-      md.addEventListener('focus', () => md.select()); js.addEventListener('focus', () => js.select());
+      pg.addEventListener('focus', () => pg.select()); md.addEventListener('focus', () => md.select()); js.addEventListener('focus', () => js.select());
+      if (d.page) {
+        sh.body.appendChild(field('作品集網頁（給人看）', pg));
+        sh.body.appendChild(h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'button', text: '複製作品集網址', onclick: () => copyText(d.page) }), h('a', { class: 'btn', href: d.page, target: '_blank', rel: 'noopener', text: '開啟' })));
+      }
       sh.body.appendChild(field('Markdown 版（給會讀網頁的 AI）', md));
       sh.body.appendChild(h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'button', text: '複製 Markdown 網址', onclick: () => copyText(d.url) })));
       sh.body.appendChild(field('JSON 版（給程式或工具）', js));
