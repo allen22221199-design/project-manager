@@ -3,6 +3,11 @@ import { getKnowledgeBase, readPagePlainText, getPageMedia, getImageLibrary, cla
 import { chatWithAssistant, routeChatIntent, suggestFollowups } from '@/lib/gemini'
 import { detectBuildTick } from '@/lib/buildIntent'
 import { rankKnowledge, rankChunks, extractTerms, type Chunk } from '@/lib/kbsearch'
+import { verifySession, SESSION_COOKIE } from '@/lib/auth'
+
+// 跟 app/page.tsx 的 PRIVATE_PERSON 是同一個人：總經理的私人待辦跟大家放在同一張任務表，
+// 畫面上只有管理者登入才看得到。AI 這邊也要擋，不然問「還有哪些任務沒做完」就整批講出來了。
+const PRIVATE_PERSON = '呂理論'
 
 // 進度回報草稿：聊天室偵測到「要記進度」時回傳給前端，讓使用者確認後才真正寫入
 export type ProgressDraft = {
@@ -406,13 +411,36 @@ export async function POST(req: NextRequest) {
       const q = retrievalQuery
       const names = roster.map(p => p.name).filter(n => q.includes(n))
       const asksWorkload = /任務|工作|待辦|要做|沒做|未完成|還有什麼|手上|忙什麼|進度如何|幾件/.test(q)
-      if (asksWorkload && (names.length > 0 || /誰|大家|所有人|每個人/.test(q))) {
+      // 沒點名、直接問「還有哪些任務沒做完」「逾期的工作有哪些」，一樣是在問看板上的任務。
+      // 以前一定要講到人名（或「誰／大家」）才會去讀任務表，這種問法就跑去翻舊的通話紀錄，
+      // 把六月的備忘錄當成現在的待辦。要同時講到「任務／工作」和「沒做完／逾期」才算，
+      // 免得「滾塗機開機前要做什麼」這種操作問題也被當成在問待辦。
+      const asksUnfinished = /任務|工作|待辦|事情/.test(q)
+        && /沒做完|沒有做完|未完成|沒完成|還沒做|還沒完成|逾期|過期|延誤|待辦|還剩|剩下/.test(q)
+      if (asksWorkload && (names.length > 0 || /誰|大家|所有人|每個人/.test(q) || asksUnfinished)) {
         asksPeople = true
-        const all = await getDailyTasks(undefined, { activeOnly: true })
+        // 管理者有沒有登入以伺服器上的 cookie 為準，不看前端送來的 isAdmin
+        const adminOk = verifySession(req.cookies.get(SESSION_COOKIE)?.value)
+        const all = (await getDailyTasks(undefined, { activeOnly: true }))
+          .filter(t => adminOk || t.person !== PRIVATE_PERSON)
         const mine = names.length > 0 ? all.filter(t => names.includes(t.person)) : all
         if (mine.length > 0) {
           // 逾期的排前面，其次照截止日。一次最多 60 筆，避免把整個看板塞進提示詞。
           const today = taipeiToday().replace(/\//g, '-')
+          // 沒點名＝問全體：先給每個人的件數和逾期數。明細最多只列 60 筆，
+          // 沒有這行的話 AI 會以為就這 60 筆，答不出「總共幾件、誰最多」。
+          const perPerson = names.length > 0 ? '' : (() => {
+            const by = new Map<string, { n: number; late: number }>()
+            for (const t of mine) {
+              const x = by.get(t.person) ?? { n: 0, late: 0 }
+              x.n++
+              if (t.date && t.date < today) x.late++
+              by.set(t.person, x)
+            }
+            return '各人未完成件數（括號內是其中已逾期的）：'
+              + Array.from(by.entries()).sort((a, b) => b[1].n - a[1].n)
+                .map(([p, x]) => `${p} ${x.n} 件（逾期 ${x.late}）`).join('、') + '\n\n'
+          })()
           const sorted = mine.slice().sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))
           const lines = sorted.slice(0, 60).map(t => {
             const late = t.date && t.date < today ? '【逾期】' : ''
@@ -426,7 +454,7 @@ export async function POST(req: NextRequest) {
             + `以下是【${who}】目前「還沒完成」的任務（已排除完成與已封存，共 ${mine.length} 筆`
             + (mine.length > 60 ? '，只列前 60 筆' : '') + '）。'
             + '問到某人手上有什麼工作、還剩幾件、有沒有逾期時，一律以這份為準，'
-            + '不要拿職務說明或舊會議記錄當成他現在的工作：\n\n' + lines.join('\n')
+            + '不要拿職務說明或舊會議記錄當成他現在的工作：\n\n' + perPerson + lines.join('\n')
         } else if (names.length > 0) {
           knowledge = (knowledge ? knowledge + '\n\n---\n\n' : '')
             + `【${names.join('、')}】目前沒有任何未完成的任務。回答時就直接說沒有，不要改用職務說明來湊答案。`

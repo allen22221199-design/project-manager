@@ -296,7 +296,7 @@ function CountUp({ value }: { value: number }) {
 const AI_ABILITIES: { icon: string; title: string; desc: string; ask?: string[]; fill?: string }[] = [
   { icon: '📚', title: '查公司資料', desc: 'SOP、丈量方法、機具保養、防火標章，有圖片和影片會一起附上', ask: ['丈量要帶哪些東西？', '防火標章是什麼？'] },
   { icon: '🦺', title: '安全巡檢', desc: '廠內巡檢要看的 5 個地方，附照片和完成後的影片', ask: ['安全巡檢要檢查什麼？'] },
-  { icon: '👷', title: '查誰還有什麼工作', desc: '用的是今日工作裡真實的任務', ask: ['阿蔡還有什麼工作沒做完？'] },
+  { icon: '👷', title: '查還有什麼工作沒做完', desc: '點名問某個人，或直接問全部還有哪些；用的是今日工作裡真實的任務', ask: ['阿蔡還有什麼工作沒做完？', '還有哪些任務沒做完？'] },
   { icon: '🏗️', title: '查施工進度', desc: '各案場、各棟做到哪一道工序', ask: ['桃大27 現在做到哪了？'] },
   { icon: '✏️', title: '記進度', desc: '講一句話，我幫你對應到案子；按確認才會寫進去', fill: '惠宇大然的箱體今天噴好了' },
   { icon: '📋', title: '交辦工作', desc: '講誰、做什麼、什麼時候；按確認才會派下去', fill: '叫治先明天把桃大27的圖面畫完' },
