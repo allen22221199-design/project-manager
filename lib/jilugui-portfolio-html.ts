@@ -17,7 +17,7 @@ const no2 = (n: number) => (n < 10 ? '0' : '') + n
 // 每個分類用一款 PrinTex 花色（編號與名稱照官網花色庫）
 type Tex = { code: string; name: string; file: string }
 const TEX: Record<string, Tex> = {
-  '系統開發': { code: 'PT-M118', name: '石墨灰', file: 'PTM118.jpg' },
+  '系統開發': { code: 'PT-M111', name: '水墨灰', file: 'PTM111.jpg' },
   '行銷': { code: 'PT-M201', name: '新米黃', file: 'PTM201.jpg' },
   '工程': { code: 'PT-G102', name: '喬治亞灰', file: 'PTG102.jpg' },
   '行政': { code: 'PT-W204', name: '灰橡', file: 'PTW204.jpg' },
@@ -128,7 +128,7 @@ b,strong{font-weight:500}
 .links{display:flex;flex-wrap:wrap;gap:8px 28px;padding:22px 0 0;font-size:15px}
 .links a{text-decoration:none;border-bottom:1px solid var(--ink);padding-bottom:1px}.links a:hover{opacity:.6}
 @media(max-width:900px){.hero{grid-template-columns:minmax(0,1fr);gap:40px;padding-top:40px}.figs{grid-template-columns:repeat(2,minmax(0,1fr))}.figs div:nth-child(3){padding-left:0;border-left:0}.figs div:nth-child(n+3){border-top:1px solid var(--rule)}}
-@media(max-width:560px){.figs b{font-size:34px}.hero h1{font-size:56px}}
+@media(max-width:560px){.figs b{font-size:34px}.hero h1{font-size:56px}.top>.lat{display:none}}
 /* 目錄列 */
 .idx{position:sticky;top:0;z-index:20;background:rgba(246,244,240,.94);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--rule)}
 .idx .wrap{display:flex;align-items:center;gap:26px;overflow-x:auto;scrollbar-width:none}.idx .wrap::-webkit-scrollbar{display:none}
