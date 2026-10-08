@@ -437,12 +437,24 @@ export async function POST(req: NextRequest) {
               if (t.date && t.date < today) x.late++
               by.set(t.person, x)
             }
-            return '各人未完成件數（括號內是其中已逾期的）：'
+            return '回答全體的問題時：先講總共幾件、每個人各幾件（其中逾期幾件），再每人列最該先處理的幾件，'
+              + '其餘寫「另外還有 N 件」，不要把明細一筆一筆全部列完。
+'
+              + '各人未完成件數（括號內是其中已逾期的）：'
               + Array.from(by.entries()).sort((a, b) => b[1].n - a[1].n)
                 .map(([p, x]) => `${p} ${x.n} 件（逾期 ${x.late}）`).join('、') + '\n\n'
           })()
           const sorted = mine.slice().sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))
-          const lines = sorted.slice(0, 60).map(t => {
+          // 問全體時每個人只挑最舊的 5 件當明細。照日期取前 60 筆的話，
+          // 可能整整 60 筆都是同一兩個人的，其他人一筆都看不到。
+          const perCount = new Map<string, number>()
+          const picked = names.length > 0 ? sorted.slice(0, 60) : sorted.filter(t => {
+            const c = perCount.get(t.person) ?? 0
+            if (c >= 5) return false
+            perCount.set(t.person, c + 1)
+            return true
+          })
+          const lines = picked.map(t => {
             const late = t.date && t.date < today ? '【逾期】' : ''
             const steps = (t.steps ?? []) as { step: string; done: boolean }[]
             const undone = steps.filter(x => !x.done).length
@@ -452,7 +464,7 @@ export async function POST(req: NextRequest) {
           const who = names.length > 0 ? names.join('、') : '全體'
           knowledge = (knowledge ? knowledge + '\n\n---\n\n' : '')
             + `以下是【${who}】目前「還沒完成」的任務（已排除完成與已封存，共 ${mine.length} 筆`
-            + (mine.length > 60 ? '，只列前 60 筆' : '') + '）。'
+            + (names.length === 0 ? '，明細每人只列最舊的 5 筆' : mine.length > 60 ? '，只列前 60 筆' : '') + '）。'
             + '問到某人手上有什麼工作、還剩幾件、有沒有逾期時，一律以這份為準，'
             + '不要拿職務說明或舊會議記錄當成他現在的工作：\n\n' + perPerson + lines.join('\n')
         } else if (names.length > 0) {
