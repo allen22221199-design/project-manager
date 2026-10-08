@@ -7,7 +7,7 @@ import { listProjects, listRecords, listFiles, shareSign, type JProject, type JR
 const LINK_DAYS = 7
 const CATEGORY_ORDER = ['系統開發', '行銷', '工程', '行政', '業務', '會議', '採購', '其他']
 
-export type ShareFile = { id: string; name: string; category: string; date: string; note: string; tags: string[]; by: string; url: string; download: string; thumb: string }
+export type ShareFile = { id: string; name: string; category: string; date: string; note: string; tags: string[]; by: string; url: string; download: string; thumb: string; confidential: boolean }
 export type ShareRecord = { id: string; title: string; date: string; status: string; category: string; tags: string[]; by: string; link: string; note: string; files: string[]; attachments: { name: string; url: string }[] }
 export type ShareProject = { id: string; name: string; category: string; status: string; lastDate: string; link: string; cover: string; summary: string; note: string; records: ShareRecord[]; files: ShareFile[] }
 export type Portfolio = {
@@ -23,6 +23,11 @@ export function originOf(req: NextRequest): string {
   const proto = req.headers.get('x-forwarded-proto') || (host.startsWith('localhost') ? 'http' : 'https')
   return `${proto}://${host}`
 }
+
+// 機密資料：檔案「標籤」有「機密」的，作品集與分享網址只列出來（檔名、說明、日期），不給開啟、下載、縮圖。
+export const CONFIDENTIAL_TAG = '機密'
+export const isConfidential = (tags?: string[] | null) => (tags || []).includes(CONFIDENTIAL_TAG)
+const stripUrls = (s: string) => String(s || '').replace(/[（(]?\s*(?:網頁版|互動網頁版|線上版)[^。\n]*?https?:\/\/\S+?\s*[)）]?\s*。?/g, '').replace(/https?:\/\/\S+/g, '').replace(/[ \t]+\n/g, '\n').trim()
 
 export function fileLink(origin: string, id: string, idx: number, exp: number, download = false): string {
   return `${origin}/api/jilugui/share/file/${id}/${idx}?exp=${exp}&sig=${shareSign(`file:${id}:${idx}:${exp}`)}${download ? '&download=1' : ''}`
@@ -84,12 +89,23 @@ export async function buildPortfolio(origin: string): Promise<Portfolio> {
   const exp = Date.now() + LINK_DAYS * 86400000
   const [projects, records, files] = await Promise.all([listProjects(), allRecords(), allFiles()])
   const fileName = new Map(files.map(f => [f.id, f.name]))
-  const toFile = (f: JFile): ShareFile => ({
-    id: f.id, name: f.name, category: f.category, date: f.date, note: f.note, tags: f.tags, by: f.by,
-    url: f.files[0] ? fileLink(origin, f.id, 0, exp) : '',
-    download: f.files[0] ? fileLink(origin, f.id, 0, exp, true) : '',
-    thumb: f.thumb ? (f.thumb.startsWith('/api/jilugui/thumb/') ? thumbLink(origin, f.id, 'file', exp) : f.thumb) : '',
-  })
+  const toFile = (f: JFile): ShareFile => isConfidential(f.tags)
+    ? { id: f.id, name: f.name, category: f.category, date: f.date, note: stripUrls(f.note), tags: f.tags, by: f.by, url: '', download: '', thumb: '', confidential: true }
+    : {
+      id: f.id, name: f.name, category: f.category, date: f.date, note: f.note, tags: f.tags, by: f.by,
+      url: f.files[0] ? fileLink(origin, f.id, 0, exp) : '',
+      download: f.files[0] ? fileLink(origin, f.id, 0, exp, true) : '',
+      thumb: f.thumb ? (f.thumb.startsWith('/api/jilugui/thumb/') ? thumbLink(origin, f.id, 'file', exp) : f.thumb) : '',
+      confidential: false,
+    }
+  // 專案封面若是機密檔案的縮圖，就改用同專案第一個不機密、有縮圖的檔案（照片、圖面優先）；都沒有就不放封面
+  const secret = new Set(files.filter(f => isConfidential(f.tags)).map(f => f.id.replace(/-/g, '')))
+  const coverOf = (p: JProject): string => {
+    const m = /^\/api\/jilugui\/thumb\/([0-9a-f-]+)(\?kind=project)?/i.exec(p.cover || '')
+    if (!m || m[2] || !secret.has(m[1].replace(/-/g, ''))) return coverLink(origin, p.cover, exp)
+    const pick = files.filter(f => f.projectId === p.id && f.thumb && !isConfidential(f.tags)).sort((a, b) => Number(!['照片', '圖面'].includes(a.category)) - Number(!['照片', '圖面'].includes(b.category)) || (b.date || '').localeCompare(a.date || ''))[0]
+    return pick ? coverLink(origin, pick.thumb, exp) : ''
+  }
   const toRecord = (r: JRecord): ShareRecord => ({
     id: r.id, title: r.title, date: r.date, status: r.status, category: r.category, tags: r.tags, by: r.by, link: r.link, note: r.note,
     files: r.fileIds.map(id => fileName.get(id) || '').filter(Boolean),
@@ -100,7 +116,7 @@ export async function buildPortfolio(origin: string): Promise<Portfolio> {
   const sortedProjects = [...projects].sort((a, b) => rank(a.category) - rank(b.category) || (b.lastDate || '').localeCompare(a.lastDate || ''))
   const out: ShareProject[] = sortedProjects.map((p: JProject) => ({
     id: p.id, name: p.name, category: p.category, status: p.status, lastDate: p.lastDate, link: p.link,
-    cover: coverLink(origin, p.cover, exp), summary: summaryOf(p.note), note: p.note,
+    cover: coverOf(p), summary: summaryOf(p.note), note: p.note,
     records: records.filter(r => r.projectId === p.id).sort(byDate).map(toRecord),
     files: files.filter(f => f.projectId === p.id).sort(byDate).map(toFile),
   }))
@@ -129,7 +145,7 @@ function recordMd(r: ShareRecord): string {
 }
 function filesMd(files: ShareFile[]): string {
   if (!files.length) return '（沒有檔案）'
-  const rows = files.map(f => `| ${esc(f.name)} | ${f.category || ''} | ${f.date || ''} | ${esc(f.note)} | ${f.url ? `[開啟](${f.url}) ／ [下載](${f.download})` : '—'} | ${f.thumb ? `[縮圖](${f.thumb})` : '—'} |`)
+  const rows = files.map(f => `| ${esc(f.name)} | ${f.category || ''} | ${f.date || ''} | ${esc(f.note)} | ${f.confidential ? '機密資料，只記錄不開放查閱' : f.url ? `[開啟](${f.url}) ／ [下載](${f.download})` : '—'} | ${f.thumb ? `[縮圖](${f.thumb})` : '—'} |`)
   return ['| 檔名 | 分類 | 日期 | 說明 | 檔案 | 縮圖 |', '|---|---|---|---|---|---|', ...rows].join('\n')
 }
 

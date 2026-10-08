@@ -163,6 +163,13 @@ section.cat{padding:44px 0 10px}.sec-head{display:flex;align-items:baseline;gap:
 .xi .xb{min-width:0}
 @media(max-width:700px){.xyear{grid-template-columns:minmax(0,1fr);gap:10px}.xyear .y{position:static;flex-direction:row;align-items:baseline;gap:12px}.xyear .y b{font-size:44px}.ylist{padding-left:22px}.xmon:before,.xi:before{left:-19px}.xi{grid-template-columns:minmax(0,1fr);gap:2px;padding:12px 14px}.xi .xd{font-size:14px}.xi .xp{white-space:normal}}
 @media print{.xprint{page-break-before:always;break-before:page;padding-top:14px}.xyear{grid-template-columns:110px 1fr;gap:16px}.xyear .y{position:static}.xyear .y b{font-size:40px;color:var(--gold);-webkit-text-stroke:0}.xi{break-inside:avoid;page-break-inside:avoid;margin-bottom:8px;padding:10px 14px}.xi:hover{transform:none}.xi .xs .go{display:none}.xi:before,.xmon:before{box-shadow:0 0 0 4px #fff}}
+/* 機密檔案：只記錄不查閱 */
+.file.locked .cover{background:repeating-linear-gradient(135deg,#ece6dc 0 14px,#e4ddd0 14px 28px);display:flex;align-items:center;justify-content:center}
+.file.locked .cover .ph{position:static;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;letter-spacing:.1em;color:#6b5e49}
+.file.locked .cover .lk{font-family:"Noto Serif TC",serif;font-size:22px;letter-spacing:.3em;color:#6b5e49;border:1.5px solid #a8884f;border-radius:999px;padding:4px 16px 4px 22px;background:rgba(255,255,255,.55)}
+.file.locked .cover small{font-size:11px;letter-spacing:.16em;color:#8a7d66}
+.file.locked:hover{transform:none}.lockline{margin-top:auto;padding-top:8px;font-size:12px;color:#8a7d66;letter-spacing:.04em}
+.xf.locked .xft{background:repeating-linear-gradient(135deg,#ece6dc 0 10px,#e4ddd0 10px 20px)}.xf.locked .xft span{letter-spacing:.3em;color:#6b5e49}.xf.locked:hover .xft{transform:none}
 /* 首頁卡片原地展開的面板 */
 .xpanel{grid-column:1/-1;background:var(--paper);border:1px solid var(--gold-2);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;animation:pop .3s ease}
 .xpanel[hidden]{display:none}
@@ -348,6 +355,7 @@ function panelHtml(p: ShareProject, key: string): string {
   const visual = p.files.filter(f => f.thumb || isVideo(f.name) || isImage(f.name))
   const files = [...visual, ...p.files.filter(f => !visual.includes(f))]
   const tile = (f: ShareFile) => {
+    if (f.confidential) return `<div class="xf locked"><div class="xft"><span>機密</span></div><div class="xfn">${esc(f.name)}</div></div>`
     const lb = f.url && isImage(f.name) ? ` data-lb="${esc(f.url)}" data-cap="${esc(f.name)}"` : ''
     const th = f.thumb ? `<img src="${esc(f.thumb)}" alt="" loading="lazy">` : `<span>${esc(isVideo(f.name) ? '影片' : extOf(f.name))}</span>`
     return `<a class="xf" href="${esc(f.url || href)}"${lb} target="_blank" rel="noopener"><div class="xft">${th}</div><div class="xfn">${esc(f.name)}</div></a>`
@@ -441,6 +449,7 @@ ${footHtml(p)}`
 }
 
 function fileHtml(f: ShareFile, print = false): string {
+  if (f.confidential) return `<div class="file locked rv"><div class="cover"><span class="ph"><span class="lk">機密</span><small>只記錄，不開放查閱</small></span></div><div class="body"><div class="name">${esc(f.name)}</div><div class="fmeta">${f.category ? `<span>${esc(f.category)}</span>` : ''}${f.date ? `<span>${esc(f.date)}</span>` : ''}</div>${f.note ? `<div class="note">${esc(f.note)}</div>` : ''}<div class="lockline">內含機密資料，只列出紀錄，不提供開啟與下載</div></div></div>`
   let media: string
   if (f.url && isVideo(f.name) && !print) media = `<video controls preload="metadata"${f.thumb ? ` poster="${esc(f.thumb)}"` : ''} src="${esc(f.url)}"></video>`
   else if (f.thumb && f.url && isImage(f.name)) media = `<a class="cover" href="${esc(f.url)}" data-lb="${esc(f.url)}" data-cap="${esc(f.name)}" target="_blank" rel="noopener"><img src="${esc(f.thumb)}" alt="" loading="lazy"></a>`

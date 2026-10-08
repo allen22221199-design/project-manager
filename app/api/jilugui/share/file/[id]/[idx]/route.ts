@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveFileUrl, shareSigOk } from '@/lib/jilugui'
+import { resolveFileUrl, shareSigOk, getFile } from '@/lib/jilugui'
+import { isConfidential } from '@/lib/jilugui-share'
 import { errMsg } from '@/lib/jilugui-http'
 
 // 分享頁裡的檔案連結：/api/jilugui/share/file/<頁面id>/<第幾個>?exp=&sig=[&download=1]
@@ -12,6 +13,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
   const q = req.nextUrl.searchParams
   if (!shareSigOk(`file:${params.id}:${idx}`, q.get('exp'), q.get('sig'))) return new NextResponse('not found', { status: 404 })
   try {
+    const jf = await getFile(params.id).catch(() => null)
+    if (jf && isConfidential(jf.tags)) return new NextResponse('not found', { status: 404 })   // 機密資料只記錄不查閱
     const f = await resolveFileUrl(params.id, idx)
     if (!f) return new NextResponse('not found', { status: 404 })
     let url = f.url
