@@ -118,7 +118,7 @@ a{color:inherit}
 .seal.sm{width:34px;height:34px;font-size:12px;padding:3px;border-radius:2px}
 /* 書名頁 */
 .mast{padding:28px 0 56px}
-.mast .bar{display:flex;justify-content:space-between;gap:16px;align-items:baseline;font-size:12px;color:var(--ink2);border-bottom:1px solid var(--ink);padding-bottom:10px;margin-bottom:48px}
+.mast .bar{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px;align-items:baseline;font-size:12px;color:var(--ink2);border-bottom:1px solid var(--ink);padding-bottom:10px;margin-bottom:48px}
 .mast .bar b{font-family:"Noto Serif TC",serif;font-size:15px;color:var(--ink)}
 .mgrid{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(260px,400px);gap:56px;align-items:stretch}
 .vname{display:flex;flex-direction:row-reverse;gap:22px;align-items:flex-start;margin:0}
@@ -287,7 +287,7 @@ video{width:100%;background:#000;display:block;aspect-ratio:16/9}
 @media(max-width:800px){.colo .cg{grid-template-columns:minmax(0,1fr)}}
 /* 一頁版／列印版 */
 .title-page{padding:28px 0 40px}
-.toc table{border-collapse:collapse;width:100%;font-size:13.5px;border-top:1px solid var(--ink)}.toc th,.toc td{border-bottom:1px solid var(--rule);padding:8px 10px 8px 0;text-align:left;vertical-align:top}.toc th{font-size:12px;color:var(--mute);font-weight:500}.toc td a{text-decoration:none}.toc .code{color:var(--seal)}
+.toc table{border-collapse:collapse;width:100%;font-size:13.5px;border-top:1px solid var(--ink)}.toc td:nth-child(2),.toc td:nth-child(4),.toc td:nth-child(5),.toc td:nth-child(6){white-space:nowrap}.toc th,.toc td{border-bottom:1px solid var(--rule);padding:8px 10px 8px 0;text-align:left;vertical-align:top}.toc th{font-size:12px;color:var(--mute);font-weight:500}.toc td a{text-decoration:none}.toc .code{color:var(--seal)}
 section.proj{break-before:page;page-break-before:always;padding-top:20px}
 section.proj .runner{display:flex;justify-content:space-between;font-size:11.5px;color:var(--mute);border-bottom:1px solid var(--ink);padding-bottom:8px;margin-bottom:24px}
 .ptools{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--ink2);padding:14px 0;border-bottom:1px solid var(--rule)}
@@ -301,6 +301,14 @@ section.proj .runner{display:flex;justify-content:space-between;font-size:11.5px
   .yr .y{position:static}
   a{text-decoration:none}
   @page{size:A4;margin:14mm 12mm}
+  .mast{padding:0 0 10px}.mast .bar{margin-bottom:22px}
+  .mgrid{grid-template-columns:auto minmax(0,1fr) 210px!important;gap:28px!important;align-items:start!important}
+  .mgrid .txt{grid-column:auto!important;order:0!important}
+  .plate .slab{min-height:360px!important}.vname .n{font-size:92px!important}.vname .t{font-size:19px!important}
+  .lead{font-size:13.5px;line-height:1.85;margin-bottom:18px}.spec dd b{font-size:21px}.spec div{padding:6px 0}
+  .title-page{break-before:page;page-break-before:always}
+  .chap{margin-top:12px}.yr .y b{font-size:46px}
+  .phgrid{grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr)!important;gap:26px!important}
 }
 `
 
