@@ -269,6 +269,7 @@
         h('div', { class: 'brand' }, h('span', { class: 'brand-mark', html: ICONS.logo }), h('span', { class: 'brand-name', text: state.appName }), state.mode === 'demo' ? h('span', { class: 'pill demo', text: '示範' }) : null),
         h('div', { class: 'topbar-right' },
           h('button', { class: 'editbtn' + (state.edit ? ' on' : ''), type: 'button', title: '開啟後，專案、紀錄、檔案的卡片上會直接出現「改」和「刪除」；檔案可以勾選多個一起刪', text: state.edit ? '✓ 編輯模式' : '編輯模式', onclick: toggleEdit }),
+          state.user.role === 'admin' ? h('button', { class: 'linkbtn', type: 'button', title: '打開給人看的作品集網頁（卡片點開、或一頁看完全部）', text: '作品集', onclick: openPortfolioLinks }) : null,
           state.user.role === 'admin' ? h('button', { class: 'linkbtn', type: 'button', title: '拿一個唯讀網址，貼給任何 AI 就能讀整份作品集', text: '分享給 AI', onclick: openShareLink }) : null,
           h('button', { class: 'who', type: 'button', title: '帳號設定', text: state.user.name + (state.user.role === 'admin' ? '（管理者）' : ''), onclick: openAccount }),
           h('button', { class: 'linkbtn', type: 'button', text: '登出', onclick: logout }))),
@@ -1422,6 +1423,25 @@
     sh.body.appendChild(h('div', { class: 'meta', text: state.user.name + ' · ' + (state.user.role === 'admin' ? '管理者' : '成員') }));
     sh.body.appendChild(form);
     sh.body.appendChild(h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', text: '登出', onclick: () => { sh.close(); logout(); } })));
+  }
+  // 管理者專用：作品集網頁的兩個入口。網址帶金鑰，所以跟「分享給 AI」一樣要先跟伺服器拿。
+  async function openPortfolioLinks() {
+    const sh = openSheet('作品集');
+    const info = h('p', { class: 'hint', text: '載入中…' });
+    sh.body.appendChild(info);
+    try {
+      const d = await api('GET', '/share-link');
+      if (!d.page) throw new Error('拿不到作品集網址');
+      const all = d.page + '?all=1';
+      info.textContent = '兩個都不用登入，可以直接傳給別人看；只能看不能改。';
+      const item = (href, title, sub) => h('a', { class: 'menu-item', href, target: '_blank', rel: 'noopener' }, h('span', { class: 'menu-icon', html: ICONS.projects || '' }), h('span', {}, h('strong', { text: title }), h('small', { text: sub })));
+      sh.body.appendChild(h('div', { class: 'menu' },
+        item(d.page, '作品集網頁', '首頁有精選、經歷年表；專案卡點一下就在原地展開'),
+        item(all, '一頁看完全部', '所有專案的說明、檔案、紀錄排在同一頁，可用瀏覽器列印存成 PDF')));
+      sh.body.appendChild(h('div', { class: 'actions' },
+        h('button', { class: 'btn primary', type: 'button', text: '複製作品集網址', onclick: () => copyText(d.page) }),
+        h('button', { class: 'btn', type: 'button', text: '複製一頁版網址', onclick: () => copyText(all) })));
+    } catch (e) { info.textContent = e.message; }
   }
   // 管理者專用：拿「分享給 AI」的唯讀網址。文字全部給、檔案與縮圖連結 7 天有效；對方只能讀不能改。
   async function openShareLink() {
