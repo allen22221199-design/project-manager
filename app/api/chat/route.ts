@@ -438,8 +438,7 @@ export async function POST(req: NextRequest) {
               by.set(t.person, x)
             }
             return '回答全體的問題時：先講總共幾件、每個人各幾件（其中逾期幾件），再每人列最該先處理的幾件，'
-              + '其餘寫「另外還有 N 件」，不要把明細一筆一筆全部列完。
-'
+              + '其餘寫「另外還有 N 件」，不要把明細一筆一筆全部列完。\n'
               + '各人未完成件數（括號內是其中已逾期的）：'
               + Array.from(by.entries()).sort((a, b) => b[1].n - a[1].n)
                 .map(([p, x]) => `${p} ${x.n} 件（逾期 ${x.late}）`).join('、') + '\n\n'
