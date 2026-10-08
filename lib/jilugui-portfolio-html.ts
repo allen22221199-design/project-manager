@@ -1,26 +1,52 @@
 import type { Portfolio, ShareProject, ShareRecord, ShareFile } from './jilugui-share'
 
 // 紀錄櫃「作品集網頁」：給人看的唯讀版本。資料跟「分享給 AI」同一份（buildPortfolio），只是排成網頁。
-// 網址 /portfolio/<金鑰>（首頁）、/portfolio/<金鑰>/<專案 id>（專案頁）、/portfolio/<金鑰>?all=1（列印版）。
-// 視覺跟官網同一套：深色大面積、暖石色紙面、香檳金點綴、襯線標題（Noto Serif TC）。
-// 互動（適度）：進場淡入、數字跳動、大圖區跟著滑鼠的光、卡片微傾斜＋光暈、圖片燈箱、複製連結提示、回到頂端；
-// 使用者系統設「減少動態」時全部關掉，列印時也不會出現。
+// 網址 /portfolio/<金鑰>（首頁）、/portfolio/<金鑰>/<專案 id>（專案頁）、/portfolio/<金鑰>?all=1（一頁看完全部／列印版）。
+//
+// 設計概念：「PrinTex 樣板冊」。整本作品集當成煌盛自己的材質樣板冊來排——
+// 每個分類各用一款真實的 PrinTex 紋理（官網花色庫的原圖，放在 public/ptx/，標上真的花色編號），
+// 每個專案是一片「樣板」：左緣露出該分類的石材、上面貼著專案編號（Notion 的 PRJ-xx）。
+// 版面語彙取自型錄與規格表：直排姓名、朱文印章、壹貳參章節、細線表格、等寬字的編號與日期。
+// 刻意不用：漸層光暈、金色流光、圓角卡片陰影、英文小標、卡片傾斜、數字跳動這類常見的網頁模板手法。
 
 const CATEGORY_ORDER = ['系統開發', '行銷', '工程', '行政', '業務', '會議', '採購', '其他']
-const CAT_EN: Record<string, string> = { '系統開發': 'SYSTEMS', '行銷': 'MARKETING', '工程': 'ENGINEERING', '行政': 'OPERATIONS', '業務': 'SALES', '會議': 'MEETINGS', '採購': 'PROCUREMENT', '其他': 'OTHERS' }
 const COMPANY = '煌盛興業 EGRRA'
 const OWNER = '呂理論'
 const OWNER_EN = 'Alen Lu'
 const INTRO = '煌盛興業是 PrinTex™ 數位紋理技術與藝格板的製造商，四十多年金屬板製造與大理石紋開發經驗。這裡整理總經理呂理論近年主導或親手完成的工作：系統開發、行銷內容、工程打樣與內部教育訓練。每個專案都附上成果檔案、工作紀錄，以及客戶回饋、媒體露出、平台數字這類第三方留痕。'
+const NUM = ['壹', '貳', '參', '肆', '伍', '陸', '柒', '捌', '玖', '拾', '拾壹', '拾貳', '拾參']
+
+// 每個分類用一款 PrinTex 紋理（編號與名稱照官網花色庫）
+type Tex = { code: string; name: string; file: string }
+const TEX: Record<string, Tex> = {
+  '系統開發': { code: 'PT-M101', name: '克羅蒂灰', file: 'PTM101.jpg' },
+  '行銷': { code: 'PT-M208', name: '西班牙紅', file: 'PTM208.jpg' },
+  '工程': { code: 'PT-G102', name: '喬治亞灰', file: 'PTG102.jpg' },
+  '行政': { code: 'PT-W204', name: '灰橡', file: 'PTW204.jpg' },
+  '業務': { code: 'PT-M014', name: '白練', file: 'PTM014.jpg' },
+  '會議': { code: 'PT-M118', name: '石墨灰', file: 'PTM118.jpg' },
+  '採購': { code: 'PT-G001', name: '金麻', file: 'PTG001.jpg' },
+  '其他': { code: 'PT-M005', name: '月光白', file: 'PTM005.jpg' },
+}
+const HERO_TEX: Tex = { code: 'PT-M111', name: '水墨灰', file: 'PTM111.jpg' }
+const FOOT_TEX: Tex = { code: 'PT-M301', name: '墨淵', file: 'PTM301.jpg' }
+const texOf = (c: string) => TEX[c] || TEX['其他']
+const texUrl = (t: Tex) => `/ptx/${t.file}`
 
 export const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-const catEn = (c: string) => CAT_EN[c] || 'OTHERS'
 const tw = (iso: string) => new Date(iso).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false })
 const isVideo = (name: string) => /\.(mp4|mov|webm|m4v)$/i.test(name || '')
 const isImage = (name: string) => /\.(png|jpe?g|gif|webp)$/i.test(name || '')
 const extOf = (name: string) => (name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4)
-const year = (d: string) => (d || '').slice(0, 4)
-const pad2 = (n: number) => (n < 10 ? '0' : '') + n
+
+// 專案期間：紀錄與檔案日期的最早到最晚，寫成 2025.08—2025.11
+function periodOf(pr: ShareProject): string {
+  const ds = [...pr.records.map(r => r.date), ...pr.files.map(f => f.date), pr.lastDate].filter(d => /^\d{4}-\d{2}/.test(d || '')).sort()
+  if (!ds.length) return ''
+  const f = (d: string) => d.slice(0, 7).replace('-', '.')
+  const a = f(ds[0]), b = f(ds[ds.length - 1])
+  return a === b ? a : `${a}—${b}`
+}
 
 // 行內：**粗體** 與網址
 function inline(s: string): string {
@@ -77,209 +103,218 @@ export function noteHtml(note: string): string {
   return out.join('\n')
 }
 
-// 細噪點（SVG），鋪在深色區塊上做出紙與石材的質感
-const NOISE = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>")`
-
 const CSS = `
-:root{--bg:#f4f1ec;--paper:#fffdfa;--ink:#1b1a18;--muted:#6f6962;--line:#e4ddd2;--gold:#a8884f;--gold-2:#d8bd8a;--gold-3:#f1e2c4;--dark:#111316;--dark-2:#1b1d22;--shadow:0 1px 2px rgba(20,16,10,.04),0 18px 40px -24px rgba(20,16,10,.35)}
+:root{--stone:#ebe7df;--paper:#f8f6f1;--ink:#1c1b19;--ink2:#4a4743;--mute:#8a857c;--rule:#d2cbbe;--rule2:#b8b0a2;--seal:#a3322a;--slab:#1f1e1c}
 *{box-sizing:border-box}html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.7 "Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
-a{color:var(--gold);text-decoration:none}a:hover{text-decoration:underline}
+body{margin:0;background:var(--stone);color:var(--ink);font:16px/1.75 "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;letter-spacing:.02em}
 .serif{font-family:"Noto Serif TC","Songti TC","PMingLiU",serif}
-.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
-.eyebrow{font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--gold-2);font-weight:500}
-/* 進場 */
-.rv{opacity:0;transform:translateY(22px);transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1);transition-delay:var(--d,0s)}.rv.in{opacity:1;transform:none}
-@keyframes spin{to{transform:rotate(360deg)}}@keyframes shimmer{0%{background-position:0 0}100%{background-position:200% 0}}@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(168,136,79,.55)}100%{box-shadow:0 0 0 14px rgba(168,136,79,0)}}@keyframes pop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}@keyframes drift{0%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(2%,-3%,0) scale(1.06)}100%{transform:translate3d(0,0,0) scale(1)}}
-/* 首頁大圖區 */
-.hero{position:relative;overflow:hidden;background:var(--dark);color:#f4efe6;isolation:isolate;min-height:82vh;display:flex;align-items:center}
-.hero:before{content:"";position:absolute;inset:0;z-index:-3;background:radial-gradient(1200px 600px at 10% -10%,rgba(216,189,138,.24),transparent 60%),radial-gradient(900px 500px at 100% 110%,rgba(168,136,79,.22),transparent 60%),linear-gradient(135deg,#1a1c21 0%,#0f1114 55%,#19170f 100%)}
-.hero .veins{position:absolute;inset:-30%;z-index:-2;background:conic-gradient(from 180deg at 50% 50%,rgba(216,189,138,0) 0deg,rgba(216,189,138,.2) 70deg,rgba(216,189,138,0) 140deg,rgba(168,136,79,.14) 220deg,rgba(216,189,138,0) 320deg);filter:blur(70px);animation:spin 50s linear infinite}
-.hero .spot{position:absolute;inset:0;z-index:-2;background:radial-gradient(640px 420px at var(--mx,72%) var(--my,30%),rgba(216,189,138,.2),transparent 62%)}
-.hero:after{content:"";position:absolute;inset:0;z-index:-1;background-image:${NOISE};opacity:.14;mix-blend-mode:overlay;pointer-events:none}
-.hero .wm{position:absolute;right:-1%;bottom:-6%;z-index:-1;font-family:"Noto Serif TC",serif;font-weight:700;font-size:min(26vw,330px);line-height:1;color:transparent;-webkit-text-stroke:1px rgba(216,189,138,.16);user-select:none;pointer-events:none;letter-spacing:-.02em}
-.hero .wrap{padding:84px 20px 64px;width:100%;will-change:transform}
-.hero h1{font-family:"Noto Serif TC","Songti TC","PMingLiU",serif;font-weight:700;font-size:clamp(40px,6.4vw,76px);line-height:1.1;margin:16px 0 8px;letter-spacing:.01em}
-.hero h1 .gold{background:linear-gradient(90deg,var(--gold-3),var(--gold-2),#b8955a,var(--gold-3));background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shimmer 7s linear infinite}
-.hero .sub{font-family:"Noto Serif TC",serif;font-size:clamp(15px,1.7vw,20px);color:var(--gold-2);letter-spacing:.16em;margin:0 0 26px}
-.hero .intro{max-width:720px;font-size:16px;line-height:1.95;color:#d9d2c6;margin:0 0 34px}
-.rule{width:72px;height:2px;background:linear-gradient(90deg,var(--gold-2),transparent);margin:0 0 22px}
-.stats{display:flex;gap:44px;flex-wrap:wrap;margin:0 0 30px}
-.stat b{font-family:"Noto Serif TC",serif;font-size:52px;line-height:1;display:block;color:#fff;font-variant-numeric:tabular-nums}.stat span{font-size:12px;letter-spacing:.16em;color:var(--gold-2)}
-.layers{display:flex;gap:10px;flex-wrap:wrap}.layers span{font-size:12px;letter-spacing:.08em;color:#d6cdbd;border:1px solid rgba(216,189,138,.38);border-radius:999px;padding:6px 14px;backdrop-filter:blur(4px)}
-.btnp{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--gold-2),var(--gold));color:#1b1a18!important;border:0;border-radius:999px;padding:11px 22px;font-size:14px;font-weight:600;letter-spacing:.08em;cursor:pointer;font-family:inherit;box-shadow:0 12px 26px -12px rgba(216,189,138,.8);transition:transform .2s,box-shadow .2s,filter .2s}.btnp:hover{transform:translateY(-2px);box-shadow:0 18px 32px -12px rgba(216,189,138,.95);filter:brightness(1.05);text-decoration:none}.btnp:active{transform:translateY(0)}
-.tools{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:13px;color:#a79f92;margin-top:26px}
-.scroll-hint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);font-size:11px;letter-spacing:.3em;color:rgba(216,189,138,.7);display:flex;flex-direction:column;align-items:center;gap:6px}.scroll-hint i{display:block;width:1px;height:34px;background:linear-gradient(var(--gold-2),transparent);animation:pulse 2.4s ease-out infinite;box-shadow:none;border-radius:1px}
-/* 分類列（黏在上方） */
-.catnav{position:sticky;top:0;z-index:20;background:rgba(244,241,236,.86);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
-.catnav .wrap{display:flex;gap:8px;overflow-x:auto;padding:10px 20px;scrollbar-width:none;align-items:center}.catnav .wrap::-webkit-scrollbar{display:none}
-.catnav .brandmini{font-family:"Noto Serif TC",serif;font-weight:700;margin-right:auto;white-space:nowrap;font-size:14px;color:var(--ink)}
-.chip{position:relative;flex:0 0 auto;border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:7px 18px;font-size:13.5px;cursor:pointer;color:var(--muted);font-family:inherit;letter-spacing:.06em;transition:all .2s;overflow:hidden}
-.chip:after{content:"";position:absolute;left:50%;bottom:0;width:0;height:2px;background:var(--gold);transform:translateX(-50%);transition:width .25s}.chip:hover{border-color:var(--gold);color:var(--ink);transform:translateY(-1px)}.chip:hover:after{width:60%}
-.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}.chip.on:after{width:60%;background:var(--gold-2)}
-/* 區塊 */
-section.cat{padding:44px 0 10px}.sec-head{display:flex;align-items:baseline;gap:14px;margin:0 0 22px}
-.sec-head .num{font-family:"Noto Serif TC",serif;font-size:46px;line-height:1;color:transparent;-webkit-text-stroke:1px var(--gold);letter-spacing:-.02em}
-.sec-head h2{font-family:"Noto Serif TC",serif;font-size:28px;margin:0;font-weight:700}.sec-head .en{font-size:11px;letter-spacing:.26em;color:var(--gold);font-weight:600}.sec-head .n{font-size:13px;color:var(--muted);margin-left:auto}
-.band{background:var(--dark);color:#f4efe6;position:relative;isolation:isolate;padding:54px 0 60px;margin:34px 0 0}
-.band:before{content:"";position:absolute;inset:0;z-index:-2;background:radial-gradient(900px 420px at 0% 0%,rgba(216,189,138,.16),transparent 60%),linear-gradient(180deg,#121417,#17191d)}
-.band:after{content:"";position:absolute;inset:0;z-index:-1;background-image:${NOISE};opacity:.12;mix-blend-mode:overlay;pointer-events:none}
-.band .sec-head h2{color:#fff}.band .sec-head .n{color:#a79f92}.band .sec-head .num{-webkit-text-stroke-color:var(--gold-2)}.band .card{color:var(--ink)}
-.sec-head{flex-wrap:wrap}.sec-head h2{white-space:nowrap}
-@media(max-width:600px){.scroll-hint{display:none}.hero .wrap{padding:64px 20px 48px}.hero h1 .sp{display:block;height:0;overflow:hidden}.hero h1{font-size:40px}.stats{gap:28px}.stat b{font-size:42px}}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:22px}
-.featured{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}.featured .card{border-top:3px solid var(--gold-2)}.featured .card h3{font-size:21px}
-@media(max-width:899px){.featured{grid-template-columns:1fr}}
-.card{position:relative;background:var(--paper);border-radius:18px;overflow:hidden;text-decoration:none;color:inherit;display:flex;flex-direction:column;box-shadow:var(--shadow);transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .25s ease,box-shadow .3s ease;transform-style:preserve-3d}
-.card:hover{transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-6px);box-shadow:0 2px 4px rgba(20,16,10,.05),0 34px 56px -26px rgba(20,16,10,.5);text-decoration:none}
-.card:after{content:"";position:absolute;inset:0;border-radius:18px;background:radial-gradient(420px circle at var(--gx,50%) var(--gy,50%),rgba(216,189,138,.22),transparent 48%);opacity:0;transition:opacity .3s;pointer-events:none}.card:hover:after{opacity:1}
-.cover{aspect-ratio:3/2;background:linear-gradient(135deg,#e7e0d4,#d6ccbc);overflow:hidden;position:relative}
-.cover img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .7s cubic-bezier(.2,.7,.2,1)}.card:hover .cover img{transform:scale(1.06)}
-.cover .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:"Noto Serif TC",serif;font-size:56px;color:rgba(80,64,40,.25)}
-.card .body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:6px;flex:1}
-.kicker{display:flex;justify-content:space-between;align-items:center;font-size:11px;letter-spacing:.2em;color:var(--gold);font-weight:600}.kicker .st{color:var(--muted);letter-spacing:.04em;font-weight:400;font-size:12px}
-.card h3{font-family:"Noto Serif TC",serif;font-size:18px;margin:0;line-height:1.45;font-weight:700}
-.card h3 span{background-image:linear-gradient(var(--gold-2),var(--gold-2));background-size:0 2px;background-repeat:no-repeat;background-position:0 100%;transition:background-size .4s cubic-bezier(.2,.7,.2,1);padding-bottom:2px}.card:hover h3 span{background-size:100% 2px}
-.sum{font-size:14px;color:var(--muted);line-height:1.7;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.card .meta{margin-top:auto;padding-top:10px;font-size:12px;color:var(--muted);display:flex;gap:12px;border-top:1px solid var(--line);align-items:center}.card .meta .go{margin-left:auto;color:var(--gold);letter-spacing:.1em;opacity:0;transform:translateX(-6px);transition:all .3s}.card:hover .meta .go{opacity:1;transform:none}
-/* 經歷年表：依年、月分組的工作紀錄 */
-.exp{position:relative}
-.xyear{display:grid;grid-template-columns:150px minmax(0,1fr);gap:28px;padding:14px 0 22px;border-top:1px solid var(--line)}
-.xyear .y{position:sticky;top:66px;align-self:start;display:flex;flex-direction:column;gap:6px}
-.xyear .y b{font-family:"Noto Serif TC",serif;font-size:62px;line-height:1;color:transparent;-webkit-text-stroke:1px var(--gold);letter-spacing:-.02em;font-weight:700}
-.xyear .y span{font-size:11px;letter-spacing:.2em;color:var(--muted)}
-.ylist{position:relative;padding-left:28px}.ylist:before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:linear-gradient(var(--gold-2),var(--line))}
-.xmon{position:relative;font-size:11px;letter-spacing:.24em;color:var(--gold);font-weight:600;margin:16px 0 10px}.xmon:first-child{margin-top:2px}
-.xmon:before{content:"";position:absolute;left:-25px;top:3px;width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 4px var(--bg)}
-.xi{position:relative;display:grid;grid-template-columns:70px minmax(0,1fr);gap:14px;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin:0 0 10px;text-decoration:none;color:inherit;box-shadow:var(--shadow);transition:transform .25s,border-color .25s,box-shadow .3s}
-.xi:hover{transform:translateX(6px);border-color:var(--gold-2);text-decoration:none;box-shadow:0 2px 4px rgba(20,16,10,.05),0 22px 40px -22px rgba(20,16,10,.4)}
-.xi:before{content:"";position:absolute;left:-25px;top:22px;width:8px;height:8px;border-radius:50%;background:var(--paper);border:2px solid var(--gold);box-shadow:0 0 0 4px var(--bg);transition:transform .25s,background .25s}.xi:hover:before{background:var(--gold);transform:scale(1.3)}
-.xi .xd{font-family:"Noto Serif TC",serif;font-size:17px;color:var(--gold);font-weight:700;font-variant-numeric:tabular-nums;padding-top:2px;letter-spacing:.04em}
-.xi .xp{font-size:12px;letter-spacing:.06em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.xi .xp b{font-size:10px;letter-spacing:.16em;color:var(--gold);margin-right:8px;font-weight:600}
-.xi h3{font-family:"Noto Serif TC",serif;font-size:17px;margin:3px 0 4px;line-height:1.5;font-weight:700}
-.xi p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.65;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.xi .xs{margin-top:8px;font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center}.xi .xs span{border:1px solid var(--line);border-radius:999px;padding:1px 9px}
-.xi .xs .go{margin-left:auto;border:0;padding:0;color:var(--gold);letter-spacing:.1em;opacity:0;transform:translateX(-6px);transition:all .3s}.xi:hover .xs .go{opacity:1;transform:none}
-.xi .xb{min-width:0}
-@media(max-width:700px){.xyear{grid-template-columns:minmax(0,1fr);gap:10px}.xyear .y{position:static;flex-direction:row;align-items:baseline;gap:12px}.xyear .y b{font-size:44px}.ylist{padding-left:22px}.xmon:before,.xi:before{left:-19px}.xi{grid-template-columns:minmax(0,1fr);gap:2px;padding:12px 14px}.xi .xd{font-size:14px}.xi .xp{white-space:normal}}
-@media print{.xprint{page-break-before:always;break-before:page;padding-top:14px}.xyear{grid-template-columns:110px 1fr;gap:16px}.xyear .y{position:static}.xyear .y b{font-size:40px;color:var(--gold);-webkit-text-stroke:0}.xi{break-inside:avoid;page-break-inside:avoid;margin-bottom:8px;padding:10px 14px}.xi:hover{transform:none}.xi .xs .go{display:none}.xi:before,.xmon:before{box-shadow:0 0 0 4px #fff}}
-/* 機密檔案：只記錄不查閱 */
-.file.locked .cover{background:repeating-linear-gradient(135deg,#ece6dc 0 14px,#e4ddd0 14px 28px);display:flex;align-items:center;justify-content:center}
-.file.locked .cover .ph{position:static;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;letter-spacing:.1em;color:#6b5e49}
-.file.locked .cover .lk{font-family:"Noto Serif TC",serif;font-size:22px;letter-spacing:.3em;color:#6b5e49;border:1.5px solid #a8884f;border-radius:999px;padding:4px 16px 4px 22px;background:rgba(255,255,255,.55)}
-.file.locked .cover small{font-size:11px;letter-spacing:.16em;color:#8a7d66}
-.file.locked:hover{transform:none}.lockline{margin-top:auto;padding-top:8px;font-size:12px;color:#8a7d66;letter-spacing:.04em}
-.xf.locked .xft{background:repeating-linear-gradient(135deg,#ece6dc 0 10px,#e4ddd0 10px 20px)}.xf.locked .xft span{letter-spacing:.3em;color:#6b5e49}.xf.locked:hover .xft{transform:none}
-/* 首頁卡片原地展開的面板 */
-.xpanel{grid-column:1/-1;background:var(--paper);border:1px solid var(--gold-2);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;animation:pop .3s ease}
+.wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+/* 朱文印章：論呂／印理（由右上往下讀：呂理論印） */
+.seal{display:inline-grid;grid-template-columns:1fr 1fr;width:58px;height:58px;padding:5px;background:var(--seal);color:#f6efe6;font-family:"Noto Serif TC",serif;font-weight:900;font-size:21px;line-height:1;border-radius:3px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.18)}
+.seal i{font-style:normal;display:flex;align-items:center;justify-content:center}
+.seal.sm{width:34px;height:34px;font-size:12px;padding:3px;border-radius:2px}
+/* 書名頁 */
+.mast{padding:28px 0 56px}
+.mast .bar{display:flex;justify-content:space-between;gap:16px;align-items:baseline;font-size:12px;color:var(--ink2);border-bottom:1px solid var(--ink);padding-bottom:10px;margin-bottom:48px}
+.mast .bar b{font-family:"Noto Serif TC",serif;font-size:15px;color:var(--ink)}
+.mgrid{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(260px,400px);gap:56px;align-items:stretch}
+.vname{display:flex;flex-direction:row-reverse;gap:22px;align-items:flex-start;margin:0}
+.vname .n{writing-mode:vertical-rl;font-family:"Noto Serif TC",serif;font-weight:900;font-size:clamp(76px,9vw,132px);line-height:1;letter-spacing:.1em}
+.vname .t{writing-mode:vertical-rl;font-family:"Noto Serif TC",serif;font-weight:700;font-size:clamp(20px,2vw,26px);letter-spacing:.55em;color:var(--ink2);padding-top:.4em}
+.namecol{display:flex;flex-direction:column;justify-content:space-between;gap:28px}
+.namecol .en{font-size:12px;color:var(--mute);writing-mode:vertical-rl;letter-spacing:.2em}
+.lead{font-size:17px;line-height:2;color:var(--ink2);margin:0 0 28px;max-width:34em}
+.spec{margin:0 0 28px;border-top:1px solid var(--ink)}
+.spec div{display:grid;grid-template-columns:7em 1fr;gap:12px;align-items:baseline;border-bottom:1px solid var(--rule);padding:9px 0}
+.spec dt{font-size:13px;color:var(--mute)}.spec dd{margin:0;font-size:15px}
+.spec dd b{font-family:"Noto Serif TC",serif;font-size:26px;font-weight:700;margin-right:4px;line-height:1}
+.mlinks{display:flex;flex-wrap:wrap;gap:8px 26px;font-size:15px}
+.mlinks a{text-decoration:none;border-bottom:1px solid var(--ink);padding-bottom:2px}.mlinks a:hover{color:var(--seal);border-color:var(--seal)}
+.plate{margin:0;display:flex;flex-direction:column;gap:10px}
+.plate .slab{flex:1;min-height:440px;background:center/cover;box-shadow:0 1px 0 rgba(0,0,0,.08),0 22px 34px -26px rgba(0,0,0,.55),inset 0 0 0 1px rgba(0,0,0,.18)}
+.plate figcaption{font-size:11.5px;color:var(--ink2);display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--rule2);padding-top:7px}
+@media(max-width:900px){.mgrid{grid-template-columns:auto minmax(0,1fr);gap:28px}.mgrid .txt{grid-column:1/-1;order:3}.plate .slab{min-height:340px}}
+@media(max-width:560px){.mast{padding-bottom:36px}.mast .bar{margin-bottom:28px}.vname .n{font-size:64px}.vname .t{font-size:17px}.plate .slab{min-height:280px}.namecol .en{display:none}}
+/* 目錄列 */
+.idx{position:sticky;top:0;z-index:20;background:rgba(235,231,223,.95);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-top:1px solid var(--ink);border-bottom:1px solid var(--rule)}
+.idx .wrap{display:flex;align-items:center;gap:2px;overflow-x:auto;scrollbar-width:none}.idx .wrap::-webkit-scrollbar{display:none}
+.idx .who{display:flex;align-items:center;gap:10px;margin-right:14px;font-family:"Noto Serif TC",serif;font-weight:700;font-size:14px;white-space:nowrap}
+.chip{appearance:none;background:none;border:0;border-bottom:2px solid transparent;padding:13px 11px 11px;font:inherit;font-size:14px;color:var(--ink2);cursor:pointer;white-space:nowrap}
+.chip:hover{color:var(--ink)}.chip.on{color:var(--ink);border-bottom-color:var(--seal)}
+/* 章節 */
+section.cat{padding:8px 0 24px;scroll-margin-top:56px}
+.chap{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:22px;align-items:end;border-top:1px solid var(--ink);padding-top:20px;margin:64px 0 28px}
+.chap .no{font-family:"Noto Serif TC",serif;font-weight:900;font-size:58px;line-height:.85;color:var(--seal)}
+.chap h2{font-family:"Noto Serif TC",serif;font-weight:900;font-size:34px;line-height:1.15;margin:0}
+.chap .note{display:block;font-size:13px;color:var(--mute);margin-top:6px;font-weight:400;font-family:"Noto Sans TC",sans-serif}
+.chap .mat{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--ink2);text-align:right}
+.chap .mat i{display:block;width:54px;height:34px;background:center/cover;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
+@media(max-width:600px){.chap{grid-template-columns:auto minmax(0,1fr);margin-top:44px}.chap .no{font-size:44px}.chap h2{font-size:27px}.chap .mat{grid-column:1/-1;justify-content:flex-start;text-align:left}}
+/* 樣板（專案卡） */
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:30px 26px}
+@media(max-width:980px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:620px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{position:relative;display:flex;flex-direction:column;background:var(--paper);border:1px solid var(--rule);text-decoration:none;color:inherit;padding-left:14px;transition:border-color .2s}
+.card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:14px;background:var(--tex) center/cover;box-shadow:inset -1px 0 0 rgba(0,0,0,.15);transition:width .25s ease;z-index:1}
+.card:hover{border-color:var(--ink)}.card:hover:before{width:24px}
+.card .cover{aspect-ratio:4/3;overflow:hidden;background:#ddd7cc;border-bottom:1px solid var(--rule);position:relative}
+.card .cover img{width:100%;height:100%;object-fit:cover;display:block}
+.card .cover.tx{background:var(--tex) center/cover;display:flex;align-items:flex-end;padding:12px}
+.card .cover.tx span{background:rgba(248,246,241,.9);font-size:11px;padding:4px 8px;line-height:1.5}
+.card .lab{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--mute);padding:12px 18px 0}
+.card .lab .code{color:var(--seal)}
+.card h3{font-family:"Noto Serif TC",serif;font-weight:700;font-size:19px;line-height:1.45;margin:6px 18px 6px}
+.card .sum{font-size:14px;color:var(--ink2);line-height:1.75;margin:0 18px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.card .cfoot{margin:14px 18px 0;padding:11px 0 13px;border-top:1px dashed var(--rule2);margin-top:auto;display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--mute)}
+.card .sum+.cfoot,.card h3+.cfoot{margin-top:14px}
+.card .go{color:var(--ink)}
+.card.open{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}.card.open .go{color:var(--seal)}
+/* 卡片原地展開 */
+.xpanel{grid-column:1/-1;background:var(--paper);border:1px solid var(--ink);border-top-width:3px;animation:pop .25s ease}
 .xpanel[hidden]{display:none}
-.xpin{padding:22px 24px 24px}
-.xphead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap}
-.xphead .en{font-size:11px;letter-spacing:.22em;color:var(--gold);font-weight:600}.xphead h3{font-family:"Noto Serif TC",serif;font-size:22px;margin:4px 0 0;line-height:1.4;font-weight:700}
-.xpacts{display:flex;gap:8px;flex-wrap:wrap}.xpacts .btnp{padding:9px 18px;font-size:13px}.xpacts .btno{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:13px;color:var(--ink);cursor:pointer;background:var(--paper);font-family:inherit;transition:all .2s}.xpacts .btno:hover{border-color:var(--gold);color:var(--gold)}
-.xpsum{font-size:15px;line-height:1.85;color:var(--ink);margin:12px 0 10px;max-width:860px}
-.xpfacts{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted)}.xpfacts span,.xpfacts a{border:1px solid var(--line);border-radius:999px;padding:2px 10px}
-.xpsec{font-family:"Noto Serif TC",serif;font-size:16px;font-weight:700;margin:20px 0 10px;display:flex;align-items:baseline;gap:10px}.xpsec .en{font-size:10px;letter-spacing:.24em;color:var(--gold);font-family:"Noto Sans TC",sans-serif;font-weight:600}
-.xfiles{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 8px;scrollbar-width:thin;align-items:flex-start}
-.xf{flex:0 0 150px;text-decoration:none;color:inherit}.xf .xft{width:150px;height:110px;border-radius:12px;background:#efe9df;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);transition:transform .25s,border-color .25s}.xf .xft img{width:100%;height:100%;object-fit:cover;display:block}.xf .xft span{font-size:12px;letter-spacing:.2em;color:rgba(80,64,40,.5)}.xf:hover .xft{transform:translateY(-3px);border-color:var(--gold-2)}.xf:hover{text-decoration:none}
-.xf .xfn{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
-.xmore{flex:0 0 auto;align-self:center;font-size:13px;color:var(--gold);white-space:nowrap;padding:0 10px}.xrecs+.xmore{display:inline-block;margin-top:10px;padding:0}
-.xrecs{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:0 24px}
-.xrecs li{display:flex;gap:12px;font-size:14px;line-height:1.6;padding:7px 0;border-bottom:1px dashed var(--line)}.xrecs .d{color:var(--gold);font-weight:600;font-variant-numeric:tabular-nums;flex:0 0 auto;font-size:12.5px;letter-spacing:.06em;padding-top:2px}
-.card.open{box-shadow:0 0 0 2px var(--gold-2),var(--shadow)}.card.open .meta .go{opacity:1;transform:none}
-.band .xpanel{color:var(--ink)}
-@media(max-width:600px){.xpin{padding:16px 16px 18px}.xrecs{grid-template-columns:1fr}.xf{flex-basis:124px}.xf .xft{width:124px;height:92px}.xphead h3{font-size:19px}}
+.xpin{padding:22px 26px 26px}
+.xphead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;border-bottom:1px solid var(--rule);padding-bottom:14px}
+.xphead .lab{font-size:12px;color:var(--mute)}.xphead .lab .code{color:var(--seal)}
+.xphead h3{font-family:"Noto Serif TC",serif;font-size:23px;margin:4px 0 0;line-height:1.4;font-weight:900}
+.btnp,.btno{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:14px;padding:9px 16px;cursor:pointer;text-decoration:none;border:1px solid var(--ink)}
+.btnp{background:var(--ink);color:var(--paper)}.btnp:hover{background:var(--seal);border-color:var(--seal)}
+.btno{background:transparent;color:var(--ink)}.btno:hover{border-color:var(--seal);color:var(--seal)}
+.xpacts{display:flex;gap:8px;flex-wrap:wrap}
+.xpsum{font-size:15px;line-height:1.9;margin:14px 0 8px;max-width:52em}
+.xpfacts{font-size:12px;color:var(--ink2);display:flex;flex-wrap:wrap;gap:4px 18px}.xpfacts a{color:var(--seal)}
+.xpsec{display:flex;align-items:baseline;gap:10px;font-family:"Noto Serif TC",serif;font-weight:700;font-size:16px;margin:22px 0 10px}.xpsec .no{color:var(--seal)}
+.xfiles{display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;scrollbar-width:thin;align-items:flex-start}
+.xf{flex:0 0 150px;text-decoration:none;color:inherit}
+.xf .xft{width:150px;height:110px;background:#e4dfd5;border:1px solid var(--rule);overflow:hidden;display:flex;align-items:center;justify-content:center}
+.xf .xft img{width:100%;height:100%;object-fit:cover;display:block}.xf .xft span{font-size:12px;color:var(--mute)}
+.xf:hover .xft{border-color:var(--ink)}
+.xf .xfn{font-size:12px;color:var(--ink2);margin-top:6px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+.xf.locked .xft{background:#d9d3c8;position:relative}.xf.locked .xft span{background:var(--seal);color:#fff;padding:3px 10px;letter-spacing:.3em;font-size:11px}
+.xmore{align-self:center;white-space:nowrap;font-size:13px;color:var(--seal);text-decoration:none;padding:0 8px}
+.xrecs{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule)}
+.xrecs li{display:grid;grid-template-columns:100px minmax(0,1fr);gap:14px;font-size:14px;line-height:1.6;padding:8px 0;border-bottom:1px solid var(--rule)}
+.xrecs .d{color:var(--mute);font-size:12.5px;padding-top:2px}
+.xrecs+.xmore{display:inline-block;margin-top:10px;padding:0}
+@media(max-width:600px){.xpin{padding:16px}.xf{flex-basis:124px}.xf .xft{width:124px;height:92px}.xrecs li{grid-template-columns:1fr;gap:2px}}
+/* 經歷（帳冊式） */
+.yr{display:grid;grid-template-columns:150px minmax(0,1fr);gap:30px;border-top:1px solid var(--ink);padding-top:14px;margin-top:30px}
+.yr:first-child{margin-top:0}
+.yr .y{position:sticky;top:64px;align-self:start}
+.yr .y b{display:block;font-family:"Noto Serif TC",serif;font-weight:900;font-size:60px;line-height:1}
+.yr .y span{font-size:12px;color:var(--mute)}
+.mo{font-size:12px;color:var(--seal);letter-spacing:.12em;padding:4px 0 6px;border-bottom:1px solid var(--rule)}
+.mo~.mo{margin-top:18px}
+.xi{display:grid;grid-template-columns:62px minmax(0,1fr);gap:18px;padding:13px 10px 13px 12px;border-bottom:1px solid var(--rule);text-decoration:none;color:inherit;position:relative;transition:background .15s}
+.xi:hover{background:var(--paper)}.xi:hover:before{content:"";position:absolute;left:0;top:-1px;bottom:-1px;width:3px;background:var(--seal)}
+.xi .xd{font-size:14px;color:var(--ink);padding-top:2px}
+.xi .xp{font-size:12px;color:var(--mute)}.xi .xp .code{color:var(--seal);margin-right:8px}
+.xi h3{font-family:"Noto Serif TC",serif;font-weight:700;font-size:17px;line-height:1.5;margin:2px 0 3px}
+.xi p{margin:0;font-size:13.5px;color:var(--ink2);line-height:1.7;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.xi .xs{font-size:11.5px;color:var(--mute);margin-top:5px}
+@media(max-width:700px){.yr{grid-template-columns:minmax(0,1fr);gap:8px}.yr .y{position:static;display:flex;align-items:baseline;gap:12px}.yr .y b{font-size:42px}.xi{grid-template-columns:minmax(0,1fr);gap:2px;padding-left:8px}}
 /* 專案頁 */
-.phead{position:relative;background:var(--dark);color:#f4efe6;overflow:hidden;isolation:isolate}
-.phead .bg{position:absolute;inset:-4%;z-index:-3;background-size:cover;background-position:center;filter:saturate(.9);animation:drift 24s ease-in-out infinite}
-.phead .veil{position:absolute;inset:0;z-index:-2;background:linear-gradient(180deg,rgba(17,19,22,.5) 0%,rgba(17,19,22,.72) 55%,rgba(17,19,22,.97) 100%)}
-.phead .spot{position:absolute;inset:0;z-index:-1;background:radial-gradient(560px 360px at var(--mx,70%) var(--my,40%),rgba(216,189,138,.16),transparent 62%)}
-.phead .wrap{padding:28px 20px 48px;min-height:440px;display:flex;flex-direction:column;justify-content:flex-end}
-.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:auto;padding-bottom:44px;font-size:13px}.topbar a{color:#e8dfcf;letter-spacing:.06em;display:inline-flex;align-items:center;gap:6px}.topbar a:hover{color:#fff;text-decoration:none}.topbar a .ar{transition:transform .2s;display:inline-block}.topbar a:hover .ar{transform:translateX(-4px)}
-.phead h1{font-family:"Noto Serif TC",serif;font-size:clamp(30px,4.6vw,54px);line-height:1.18;margin:12px 0 16px;font-weight:700}
-.pmeta{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px;color:#d9d2c6}.pmeta .tag{border:1px solid rgba(216,189,138,.6);color:var(--gold-2);border-radius:999px;padding:3px 12px;letter-spacing:.12em;font-size:11px}
-.pmeta .st{border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:3px 12px}
-.layout{display:grid;grid-template-columns:minmax(0,1fr);gap:36px;padding:40px 0 64px}
-@media(min-width:960px){.layout{grid-template-columns:minmax(0,1fr) 300px}}
+.phd{padding:24px 0 40px}
+.crumb{display:flex;justify-content:space-between;gap:16px;font-size:12px;color:var(--ink2);border-bottom:1px solid var(--ink);padding-bottom:10px;margin-bottom:40px}
+.crumb a{text-decoration:none}.crumb a:hover{color:var(--seal)}
+.phgrid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:48px;align-items:end}
+.phgrid .lab{font-size:12px;color:var(--mute);display:flex;flex-wrap:wrap;gap:4px 16px}.phgrid .lab .code{color:var(--seal)}
+.phgrid h1{font-family:"Noto Serif TC",serif;font-weight:900;font-size:clamp(30px,4.2vw,50px);line-height:1.25;margin:12px 0 16px}
+.phgrid .lede{font-size:17px;line-height:1.95;color:var(--ink2);margin:0;max-width:32em}
+.mount{margin:0;position:relative;padding-left:18px}
+.mount:before{content:"";position:absolute;left:0;top:0;bottom:30px;width:18px;background:var(--tex) center/cover;box-shadow:inset -1px 0 0 rgba(0,0,0,.15)}
+.mount .pic{aspect-ratio:4/3;background:#ddd7cc;border:1px solid var(--rule2);overflow:hidden}
+.mount .pic img{width:100%;height:100%;object-fit:cover;display:block}
+.mount .pic.tx{background:var(--tex) center/cover}
+.mount figcaption{font-size:11.5px;color:var(--ink2);display:flex;justify-content:space-between;gap:10px;padding-top:8px}
+@media(max-width:860px){.phgrid{grid-template-columns:minmax(0,1fr);gap:28px}}
+.layout{display:grid;grid-template-columns:minmax(0,1fr);gap:40px;padding:8px 0 72px}
+@media(min-width:980px){.layout{grid-template-columns:minmax(0,1fr) 280px}}
 .side{align-self:start;position:sticky;top:20px}
-.facts{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:20px 22px;box-shadow:var(--shadow)}
-.facts dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:8px 14px;font-size:14px}.facts dt{color:var(--muted);font-size:11px;letter-spacing:.14em;padding-top:3px}.facts dd{margin:0}
-.facts .acts{display:flex;flex-direction:column;gap:8px;margin-top:16px}.facts .btnp{justify-content:center}.facts .btno{display:inline-flex;justify-content:center;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:10px 18px;font-size:14px;color:var(--ink);cursor:pointer;background:var(--paper);font-family:inherit;transition:all .2s}.facts .btno:hover{border-color:var(--gold);color:var(--gold);text-decoration:none}
-h2.sec{font-family:"Noto Serif TC",serif;font-size:25px;margin:44px 0 18px;display:flex;align-items:baseline;gap:12px}h2.sec:first-child{margin-top:0}h2.sec .en{font-size:11px;letter-spacing:.26em;color:var(--gold);font-family:"Noto Sans TC",sans-serif;font-weight:600}
+.facts{border-top:1px solid var(--ink)}
+.facts div{display:grid;grid-template-columns:4.5em 1fr;gap:10px;border-bottom:1px solid var(--rule);padding:9px 0;font-size:14px}
+.facts dt{color:var(--mute);font-size:12.5px}.facts dd{margin:0;word-break:break-all}.facts dd a{color:var(--seal)}
+.side .acts{display:flex;flex-direction:column;gap:8px;margin-top:18px}.side .acts>*{justify-content:center}
+h2.sec{display:flex;align-items:baseline;gap:12px;font-family:"Noto Serif TC",serif;font-weight:900;font-size:24px;margin:52px 0 18px;padding-top:14px;border-top:1px solid var(--ink)}
+h2.sec:first-child{margin-top:0}h2.sec .no{color:var(--seal);font-size:20px}h2.sec small{font-family:"Noto Sans TC",sans-serif;font-weight:400;font-size:13px;color:var(--mute)}
 .rich{max-width:860px}.rich p{margin:10px 0}.rich h4{font-family:"Noto Serif TC",serif;margin:22px 0 8px;font-size:17px}.rich ul,.rich ol{margin:8px 0 8px 24px}
-.tbl{overflow-x:auto;margin:14px 0}.rich table{border-collapse:separate;border-spacing:0;width:100%;font-size:14px;background:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-.rich th{font-size:11px;letter-spacing:.14em;color:var(--muted);font-weight:600;text-align:left;padding:10px 14px;background:#f6f1e9;border-bottom:1px solid var(--line)}
-.rich td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.7;transition:background .2s}.rich tr:hover td{background:#fbf8f2}.rich tr:last-child td{border-bottom:0}
-.rich td:first-child{color:var(--gold);font-weight:600;white-space:nowrap;width:1%}
+.tbl{overflow-x:auto;margin:14px 0}.rich table{border-collapse:collapse;width:100%;font-size:14px;border-top:1px solid var(--ink)}
+.rich th{font-size:12px;color:var(--mute);font-weight:500;text-align:left;padding:8px 12px 8px 0;border-bottom:1px solid var(--rule2)}
+.rich td{padding:9px 12px 9px 0;border-bottom:1px solid var(--rule);vertical-align:top;line-height:1.75}
+.rich td:first-child{color:var(--ink);font-weight:700;white-space:nowrap;width:1%;padding-right:22px}
 /* 成果檔案 */
-.files{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:18px}
-.file{background:var(--paper);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow);transition:transform .25s,box-shadow .3s}.file:hover{transform:translateY(-4px);box-shadow:0 2px 4px rgba(20,16,10,.05),0 28px 48px -24px rgba(20,16,10,.45)}
-.file .cover{aspect-ratio:4/3;background:#ece6dc;display:block}.file .cover img{object-fit:contain;background:#efe9df;transition:transform .6s}.file:hover .cover img{transform:scale(1.04)}.file .cover .ph{font-size:22px;letter-spacing:.2em;color:rgba(80,64,40,.45)}
-.file a.cover:after{content:"放大檢視";position:absolute;left:0;right:0;bottom:0;padding:26px 10px 10px;text-align:center;background:linear-gradient(transparent,rgba(17,19,22,.65));color:#fff;font-size:11px;letter-spacing:.3em;opacity:0;transition:opacity .25s}.file a.cover[data-ext]:after{content:"開啟 " attr(data-ext)}.file:hover a.cover:after{opacity:1}
+.files{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:20px}
+.file{background:var(--paper);border:1px solid var(--rule);display:flex;flex-direction:column}
+.file:hover{border-color:var(--ink)}
+.file .cover{aspect-ratio:4/3;background:#e4dfd5;display:block;position:relative;overflow:hidden;border-bottom:1px solid var(--rule)}
+.file .cover img{width:100%;height:100%;object-fit:contain;display:block}
+.file .cover .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;letter-spacing:.2em;color:var(--mute)}
+.file a.cover:after{content:"放大";position:absolute;left:0;bottom:0;background:var(--ink);color:var(--paper);font-size:11px;letter-spacing:.2em;padding:5px 10px;opacity:0;transition:opacity .2s}.file a.cover[data-ext]:after{content:"開啟 " attr(data-ext)}.file:hover a.cover:after{opacity:1}
 .file .body{padding:12px 14px 14px;font-size:14px;display:flex;flex-direction:column;gap:5px;flex:1}
-.file .name{font-weight:600;line-height:1.45;word-break:break-all}.file .fmeta{font-size:12px;color:var(--muted);display:flex;gap:10px}.file .note{font-size:13px;color:var(--muted);line-height:1.6;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.file .acts{margin-top:auto;padding-top:8px;display:flex;gap:14px;font-size:13px}.file .acts a{position:relative}.file .acts a:after{content:"";position:absolute;left:0;bottom:-2px;width:0;height:1px;background:var(--gold);transition:width .25s}.file .acts a:hover{text-decoration:none}.file .acts a:hover:after{width:100%}
+.file .name{font-weight:700;line-height:1.5;word-break:break-all}
+.file .fmeta{font-size:11.5px;color:var(--mute);display:flex;gap:12px}
+.file .note{font-size:13px;color:var(--ink2);line-height:1.65;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.file .acts{margin-top:auto;padding-top:8px;display:flex;gap:16px;font-size:13px}.file .acts a{text-decoration:none;border-bottom:1px solid var(--ink)}.file .acts a:hover{color:var(--seal);border-color:var(--seal)}
+.file.locked:hover{border-color:var(--rule)}
+.file.locked .cover{background:var(--tex,#cfc8bb) center/cover}
+.file.locked .cover:before{content:"";position:absolute;inset:0;background:rgba(235,231,223,.58)}
+.file.locked .tape{position:absolute;left:-12%;right:-12%;top:44%;transform:rotate(-7deg);background:var(--seal);color:#f6efe6;text-align:center;font-size:12.5px;letter-spacing:.35em;padding:7px 0;box-shadow:0 2px 0 rgba(0,0,0,.12)}
+.file.locked .lockline{margin-top:auto;padding-top:8px;font-size:12px;color:var(--seal)}
 video{width:100%;background:#000;display:block;aspect-ratio:16/9}
-/* 工作紀錄：時間軸 */
-.tl{position:relative;padding-left:30px}.tl:before{content:"";position:absolute;left:9px;top:8px;bottom:8px;width:2px;background:linear-gradient(var(--gold-2),var(--line))}
-.rec{position:relative;background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:18px 22px;margin:0 0 18px;box-shadow:var(--shadow);transition:border-color .25s,transform .25s}.rec:hover{border-color:var(--gold-2);transform:translateX(4px)}
-.rec:before{content:"";position:absolute;left:-27px;top:22px;width:12px;height:12px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 4px var(--bg);transition:transform .25s}.rec:hover:before{transform:scale(1.35);animation:pulse 1.2s ease-out}
-.rec .date{font-size:12px;letter-spacing:.14em;color:var(--gold);font-weight:600}.rec h3{font-family:"Noto Serif TC",serif;margin:4px 0 8px;font-size:19px;line-height:1.45;font-weight:700}
-.rec .meta{display:flex;flex-wrap:wrap;gap:6px;font-size:12px;color:var(--muted);margin-bottom:6px}.rec .meta span,.rec .meta a{border:1px solid var(--line);border-radius:999px;padding:1px 10px}
-.fchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.fchips span,.fchips a{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--muted);background:#faf7f2}
-.empty{color:var(--muted);font-size:14px}
+/* 紀錄 */
+.rec{border-top:1px solid var(--rule);padding:20px 0 6px}
+.rec:first-child{border-top:1px solid var(--ink)}
+.rec .date{font-size:12.5px;color:var(--seal)}
+.rec h3{font-family:"Noto Serif TC",serif;margin:4px 0 6px;font-size:19px;line-height:1.5;font-weight:700}
+.rec .meta{font-size:12px;color:var(--mute);margin-bottom:4px}.rec .meta a{color:var(--seal)}
+.fchips{font-size:12px;color:var(--ink2);margin:8px 0 10px;line-height:1.9}.fchips span:before,.fchips a:before{content:"▸ ";color:var(--mute)}.fchips span,.fchips a{margin-right:14px;text-decoration:none}
+.empty{color:var(--mute);font-size:14px}
 /* 燈箱、提示、回頂端 */
-.lb{position:fixed;inset:0;background:rgba(10,10,12,.93);display:none;align-items:center;justify-content:center;z-index:100;padding:24px}.lb.on{display:flex}
-.lb img{max-width:92vw;max-height:84vh;border-radius:12px;box-shadow:0 30px 80px rgba(0,0,0,.6);animation:pop .25s ease}.lb .cap{position:absolute;bottom:18px;left:0;right:0;text-align:center;color:#e8dfcf;font-size:13px;padding:0 60px}
+.lb{position:fixed;inset:0;background:rgba(20,19,17,.94);display:none;align-items:center;justify-content:center;z-index:100;padding:24px}.lb.on{display:flex}
+.lb img{max-width:92vw;max-height:84vh;box-shadow:0 30px 80px rgba(0,0,0,.6)}.lb .cap{position:absolute;bottom:18px;left:0;right:0;text-align:center;color:#e8e2d8;font-size:13px;padding:0 60px}
 .lb .x{position:absolute;top:10px;right:18px;color:#fff;font-size:34px;cursor:pointer;line-height:1}.lb .nav{position:absolute;top:50%;transform:translateY(-50%);color:#fff;font-size:44px;cursor:pointer;padding:10px 18px;user-select:none;opacity:.7}.lb .nav:hover{opacity:1}.lb .prev{left:6px}.lb .next{right:6px}
-.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);background:var(--ink);color:#fff;padding:10px 20px;border-radius:999px;font-size:14px;opacity:0;transition:all .3s;z-index:110;pointer-events:none;box-shadow:var(--shadow)}.toast.on{opacity:1;transform:translate(-50%,0)}
-.totop{position:fixed;right:18px;bottom:18px;width:46px;height:46px;border-radius:50%;background:var(--ink);color:var(--gold-2);display:flex;align-items:center;justify-content:center;opacity:0;transform:translateY(12px);transition:.3s;z-index:50;cursor:pointer;box-shadow:var(--shadow);font-size:18px}.totop.on{opacity:1;transform:none}.totop:hover{background:var(--gold);color:#1b1a18}
-/* 頁尾 */
-.foot{background:var(--dark);color:#b9b2a7;padding:48px 0;margin-top:48px;font-size:13px;position:relative;isolation:isolate}
-.foot:after{content:"";position:absolute;inset:0;z-index:-1;background-image:${NOISE};opacity:.1;mix-blend-mode:overlay;pointer-events:none}
-.foot .wrap{display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;align-items:flex-start}
-.foot b{font-family:"Noto Serif TC",serif;color:#f4efe6;font-size:18px;display:block;margin-bottom:4px}.foot a{color:#e3d7c1;position:relative}.foot a:after{content:"";position:absolute;left:0;bottom:-3px;width:0;height:1px;background:var(--gold-2);transition:width .25s}.foot a:hover{text-decoration:none}.foot a:hover:after{width:100%}.foot .links{display:flex;gap:18px;flex-wrap:wrap}
-/* 列印版 */
-.cover-page{padding:60px 0 30px}.cover-page h1{font-family:"Noto Serif TC",serif;font-size:40px;margin:14px 0 8px}
-.toc table{border-collapse:collapse;width:100%;font-size:13px}.toc th,.toc td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}.toc th{background:#f6f1e9;font-size:11px;letter-spacing:.12em}
-section.proj{page-break-before:always;break-before:page;padding-top:14px}
-section.proj .hero-img{border-radius:14px;overflow:hidden;max-height:300px;margin:12px 0}section.proj .hero-img img{width:100%;max-height:300px;object-fit:cover;display:block}
-section.proj h1{font-family:"Noto Serif TC",serif;font-size:28px;margin:10px 0 8px}
-section.proj .pmeta{color:var(--muted)}section.proj .pmeta .tag{border-color:var(--gold);color:var(--gold)}section.proj .pmeta .st{border-color:var(--line)}
-@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.rv{opacity:1;transform:none}.card,.card:hover{transform:none}}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,16px);background:var(--ink);color:var(--paper);padding:9px 18px;font-size:14px;opacity:0;transition:all .25s;z-index:110;pointer-events:none}.toast.on{opacity:1;transform:translate(-50%,0)}
+.totop{position:fixed;right:18px;bottom:18px;width:44px;height:44px;background:var(--ink);color:var(--paper);display:flex;align-items:center;justify-content:center;opacity:0;transform:translateY(10px);transition:.25s;z-index:50;cursor:pointer;font-size:17px}.totop.on{opacity:1;transform:none}.totop:hover{background:var(--seal)}
+/* 版權頁 */
+.colo{position:relative;color:#d9d3c8;margin-top:56px;padding:46px 0 40px;background:var(--slab) center/cover;isolation:isolate;font-size:13px}
+.colo:before{content:"";position:absolute;inset:0;background:rgba(24,23,21,.82);z-index:-1}
+.colo .cg{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:32px;align-items:start}
+.colo b{display:block;font-family:"Noto Serif TC",serif;font-size:19px;color:#f3eee6;margin-bottom:6px}
+.colo .mats{line-height:1.9;color:#b9b2a6}
+.colo .links{display:flex;flex-direction:column;gap:6px}.colo .links a{text-decoration:none;color:#e9e2d6}.colo .links a:hover{color:#fff;text-decoration:underline}
+.colo .gen{margin-top:26px;padding-top:12px;border-top:1px solid rgba(255,255,255,.14);font-size:12px;color:#9b948a}
+@media(max-width:800px){.colo .cg{grid-template-columns:minmax(0,1fr)}}
+/* 一頁版／列印版 */
+.title-page{padding:28px 0 40px}
+.toc table{border-collapse:collapse;width:100%;font-size:13.5px;border-top:1px solid var(--ink)}.toc th,.toc td{border-bottom:1px solid var(--rule);padding:8px 10px 8px 0;text-align:left;vertical-align:top}.toc th{font-size:12px;color:var(--mute);font-weight:500}.toc td a{text-decoration:none}.toc .code{color:var(--seal)}
+section.proj{break-before:page;page-break-before:always;padding-top:20px}
+section.proj .runner{display:flex;justify-content:space-between;font-size:11.5px;color:var(--mute);border-bottom:1px solid var(--ink);padding-bottom:8px;margin-bottom:24px}
+.ptools{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--ink2);padding:14px 0;border-bottom:1px solid var(--rule)}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media print{
-  :root{--bg:#fff;--paper:#fff;--line:#d5cfc6;--shadow:none}
-  body{font-size:12px;line-height:1.55}.wrap{max-width:none;padding:0}
-  .catnav,.tools,.topbar,.foot,.side .acts,.totop,.lb,.toast,.scroll-hint,.veins,.spot,.wm,.card .meta .go,.xpanel{display:none!important}
-  .rv{opacity:1!important;transform:none!important}.card,.card:hover{transform:none!important}
-  .hero,.phead,.band{background:#fff;color:var(--ink);min-height:auto}.hero:before,.hero:after,.phead .bg,.phead .veil,.phead .spot,.band:before,.band:after{display:none}.hero .intro{color:var(--muted)}.stat b{color:var(--ink)}.hero h1 .gold{color:var(--ink);background:none;-webkit-text-fill-color:initial}.band .sec-head h2{color:var(--ink)}
-  .card,.rec,.file,.tbl,.hero-img{break-inside:avoid;page-break-inside:avoid;box-shadow:none!important;border:1px solid var(--line)}
-  .sum,.file .note{display:block;-webkit-line-clamp:unset;overflow:visible}
-  .grid,.featured{grid-template-columns:repeat(3,1fr);gap:10px}.files{grid-template-columns:repeat(3,1fr);gap:10px}
-  video{display:none}a{color:inherit}
-  h2.sec{margin-top:18px;break-after:avoid-page;page-break-after:avoid}.hero-img,section.proj h1,.pmeta{break-after:avoid-page;page-break-after:avoid}
-  .cover-page{page-break-after:always;break-after:page}.layout{display:block}.side{position:static}
+  :root{--stone:#fff;--paper:#fff}
+  body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .idx,.ptools,.totop,.lb,.toast,.side .acts,.card .go{display:none!important}
+  .wrap{max-width:none;padding:0 6mm}
+  .file,.rec,.xi,.card{break-inside:avoid;page-break-inside:avoid}
+  .yr .y{position:static}
+  a{text-decoration:none}
+  @page{size:A4;margin:14mm 12mm}
 }
 `
 
-// 互動（純瀏覽器 JS，不用任何套件）；系統「減少動態」時只留功能、不做動畫
+// 互動（純瀏覽器 JS，不用任何套件）：分類切換、卡片原地展開、圖片燈箱、複製連結、回到頂端。沒有裝飾性動畫。
 const JS = `
 (function(){
 var rm=matchMedia('(prefers-reduced-motion: reduce)').matches;
-var els=document.querySelectorAll('.rv');
-if('IntersectionObserver' in window&&!rm){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -8% 0px'});els.forEach(function(e){io.observe(e)})}else{els.forEach(function(e){e.classList.add('in')})}
-document.querySelectorAll('[data-n]').forEach(function(b){var n=+b.getAttribute('data-n')||0;if(rm){b.textContent=n;return}var t0=null;function step(t){if(!t0)t0=t;var p=Math.min(1,(t-t0)/1400);p=1-Math.pow(1-p,3);b.textContent=Math.round(n*p);if(p<1)requestAnimationFrame(step)}requestAnimationFrame(step)});
-var hero=document.querySelector('.hero,.phead');
-if(hero&&!rm){hero.addEventListener('mousemove',function(e){var r=hero.getBoundingClientRect();hero.style.setProperty('--mx',((e.clientX-r.left)/r.width*100)+'%');hero.style.setProperty('--my',((e.clientY-r.top)/r.height*100)+'%')});
-var inner=hero.querySelector('.wrap');addEventListener('scroll',function(){var y=scrollY;if(y<1000&&inner){inner.style.transform='translateY('+(y*.14)+'px)';inner.style.opacity=String(Math.max(0,1-y/750))}},{passive:true})}
-if(!rm&&matchMedia('(hover:hover)').matches){document.querySelectorAll('.card').forEach(function(c){c.addEventListener('mousemove',function(e){var r=c.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;c.style.setProperty('--gx',(x*100)+'%');c.style.setProperty('--gy',(y*100)+'%');c.style.setProperty('--rx',((.5-y)*5)+'deg');c.style.setProperty('--ry',((x-.5)*5)+'deg')});c.addEventListener('mouseleave',function(){c.style.setProperty('--rx','0deg');c.style.setProperty('--ry','0deg')})})}
-var tt=document.createElement('div');tt.className='totop';tt.innerHTML='&uarr;';tt.title='回到頂端';document.body.appendChild(tt);tt.addEventListener('click',function(){scrollTo({top:0,behavior:'smooth'})});addEventListener('scroll',function(){tt.classList.toggle('on',scrollY>700)},{passive:true});
+var tt=document.createElement('div');tt.className='totop';tt.innerHTML='&uarr;';tt.title='回到頂端';document.body.appendChild(tt);tt.addEventListener('click',function(){scrollTo({top:0,behavior:rm?'auto':'smooth'})});addEventListener('scroll',function(){tt.classList.toggle('on',scrollY>700)},{passive:true});
 function toast(m){var t=document.querySelector('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t)}t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('on')},1800)}
 document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){var v=b.getAttribute('data-copy');(navigator.clipboard?navigator.clipboard.writeText(v):Promise.reject()).then(function(){toast('已複製連結')},function(){prompt('複製這個網址',v)})})});
 var chips=document.querySelectorAll('#chips .chip'),secs=document.querySelectorAll('section.cat');
 chips.forEach(function(c){c.addEventListener('click',function(){chips.forEach(function(x){x.classList.remove('on')});c.classList.add('on');var v=c.getAttribute('data-cat');
-secs.forEach(function(s){var sc=s.getAttribute('data-cat');s.style.display=(v==='全部'||sc===v)?'':'none';if(v==='全部'||sc===v)s.querySelectorAll('.rv').forEach(function(e){e.classList.add('in')})});
-var t=document.getElementById('cat-'+v);if(v!=='全部'&&t){var y=t.getBoundingClientRect().top+scrollY-64;scrollTo({top:y,behavior:'smooth'})}})});
+secs.forEach(function(s){var sc=s.getAttribute('data-cat');s.style.display=(v==='全部'||sc===v)?'':'none'});
+var t=document.getElementById('cat-'+v);if(v!=='全部'&&t){scrollTo({top:t.getBoundingClientRect().top+scrollY-48,behavior:rm?'auto':'smooth'})}})});
 var imgs=[].slice.call(document.querySelectorAll('[data-lb]'));
 if(imgs.length){var lb=document.createElement('div');lb.className='lb';lb.innerHTML='<span class="x" title="關閉">&times;</span><span class="nav prev">&#8249;</span><img alt=""><span class="nav next">&#8250;</span><div class="cap"></div>';document.body.appendChild(lb);var cur=0;
 function show(i){cur=(i+imgs.length)%imgs.length;var im=lb.querySelector('img');im.src=imgs[cur].getAttribute('data-lb');lb.querySelector('.cap').textContent=imgs[cur].getAttribute('data-cap')||'';lb.classList.add('on');document.body.style.overflow='hidden'}
@@ -290,12 +325,12 @@ lb.querySelector('.prev').addEventListener('click',function(){show(cur-1)});lb.q
 addEventListener('keydown',function(e){if(!lb.classList.contains('on'))return;if(e.key==='Escape')hide();if(e.key==='ArrowLeft')show(cur-1);if(e.key==='ArrowRight')show(cur+1)})}
 var cards=[].slice.call(document.querySelectorAll('.card[data-x]'));
 function panelOf(c){return document.getElementById('xp-'+c.getAttribute('data-x'))}
-function setGo(id,open){document.querySelectorAll('.card[data-x="'+id+'"]').forEach(function(c){c.classList.toggle('open',open);var g=c.querySelector('.go');if(g)g.textContent=open?'收合 ▴':'展開 ▾'})}
+function setGo(id,open){document.querySelectorAll('.card[data-x="'+id+'"]').forEach(function(c){c.classList.toggle('open',open);var g=c.querySelector('.go');if(g)g.textContent=open?'收合 －':'展開 ＋'})}
 function closeAll(){document.querySelectorAll('.xpanel').forEach(function(p){if(!p.hidden){p.hidden=true;setGo(p.id.slice(3),false)}})}
 function place(c,p){var grid=c.parentNode,top=c.offsetTop,last=c,n=c.nextElementSibling;while(n){if(n.classList.contains('card')){if(Math.abs(n.offsetTop-top)<2)last=n;else break}n=n.nextElementSibling}if(last.nextSibling!==p)grid.insertBefore(p,last.nextSibling)}
-function openCard(c){var p=panelOf(c);if(!p)return;closeAll();place(c,p);p.hidden=false;setGo(c.getAttribute('data-x'),true);setTimeout(function(){var r=p.getBoundingClientRect();if(r.bottom>innerHeight||r.top<0)scrollTo({top:scrollY+c.getBoundingClientRect().top-72,behavior:rm?'auto':'smooth'})},30)}
+function openCard(c){var p=panelOf(c);if(!p)return;closeAll();place(c,p);p.hidden=false;setGo(c.getAttribute('data-x'),true);setTimeout(function(){var r=p.getBoundingClientRect();if(r.bottom>innerHeight||r.top<0)scrollTo({top:scrollY+c.getBoundingClientRect().top-64,behavior:rm?'auto':'smooth'})},30)}
 cards.forEach(function(c){c.addEventListener('click',function(e){if(e.metaKey||e.ctrlKey||e.shiftKey||e.altKey||e.button!==0)return;var p=panelOf(c);if(!p)return;e.preventDefault();if(p.hidden)openCard(c);else{p.hidden=true;setGo(c.getAttribute('data-x'),false)}})});
-document.querySelectorAll('.xpanel .xclose').forEach(function(b){b.addEventListener('click',function(){var p=b.closest('.xpanel');p.hidden=true;setGo(p.id.slice(3),false);var c=document.querySelector('.card[data-x="'+p.id.slice(3)+'"]');if(c&&c.getBoundingClientRect().top<0)scrollTo({top:scrollY+c.getBoundingClientRect().top-72,behavior:rm?'auto':'smooth'})})});
+document.querySelectorAll('.xpanel .xclose').forEach(function(b){b.addEventListener('click',function(){var p=b.closest('.xpanel');p.hidden=true;setGo(p.id.slice(3),false);var c=document.querySelector('.card[data-x="'+p.id.slice(3)+'"]');if(c&&c.getBoundingClientRect().top<0)scrollTo({top:scrollY+c.getBoundingClientRect().top-64,behavior:rm?'auto':'smooth'})})});
 })();
 `
 
@@ -308,7 +343,7 @@ function page(opt: { title: string; desc: string; body: string; ogImage?: string
 <title>${esc(opt.title)}</title>
 <meta name="description" content="${esc(opt.desc)}">
 <meta name="robots" content="noindex,nofollow">
-<meta name="theme-color" content="#111316">
+<meta name="theme-color" content="#ebe7df">
 <meta property="og:title" content="${esc(opt.title)}">
 <meta property="og:description" content="${esc(opt.desc)}">
 ${opt.ogImage ? `<meta property="og:image" content="${esc(opt.ogImage)}">` : ''}
@@ -316,7 +351,7 @@ ${opt.url ? `<meta property="og:url" content="${esc(opt.url)}">` : ''}
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>${CSS}</style>
 </head>
 <body>${opt.body}
@@ -325,25 +360,31 @@ ${opt.url ? `<meta property="og:url" content="${esc(opt.url)}">` : ''}
 </html>`
 }
 
-function cardHtml(p: ShareProject, key: string, i = 0): string {
-  const cover = p.cover ? `<img src="${esc(p.cover)}" alt="" loading="lazy">` : `<span class="ph">${esc((p.name || '＃').slice(0, 1))}</span>`
-  const meta = [p.lastDate ? year(p.lastDate) : '', `紀錄 ${p.records.length}`, `檔案 ${p.files.length}`].filter(Boolean)
-  return `<a class="card rv" style="--d:${Math.min(i, 5) * 0.07}s" href="/portfolio/${esc(key)}/${esc(p.id)}" data-x="${esc(p.id)}">
-  <div class="cover">${cover}</div>
-  <div class="body">
-    <div class="kicker"><span>${esc(catEn(p.category))}・${esc(p.category || '其他')}</span><span class="st">${esc(p.status || '')}</span></div>
-    <h3><span>${esc(p.name)}</span></h3>
-    <div class="sum">${esc(p.summary)}</div>
-    <div class="meta">${meta.map(m => `<span>${esc(m)}</span>`).join('')}<span class="go">展開 ▾</span></div>
-  </div>
+const sealHtml = (sm = false) => `<span class="seal${sm ? ' sm' : ''}" aria-hidden="true"><i>論</i><i>呂</i><i>印</i><i>理</i></span>`
+
+function cardHtml(p: ShareProject, key: string): string {
+  const t = texOf(p.category || '其他')
+  const cover = p.cover ? `<div class="cover"><img src="${esc(p.cover)}" alt="" loading="lazy"></div>` : `<div class="cover tx"><span class="mono">${esc(t.code)}　${esc(t.name)}</span></div>`
+  const per = periodOf(p)
+  return `<a class="card" style="--tex:url('${texUrl(t)}')" href="/portfolio/${esc(key)}/${esc(p.id)}" data-x="${esc(p.id)}">
+  ${cover}
+  <div class="lab mono"><span class="code">${esc(p.code || '—')}</span><span>${esc(per)}</span></div>
+  <h3>${esc(p.name)}</h3>
+  ${p.summary ? `<p class="sum">${esc(p.summary)}</p>` : ''}
+  <div class="cfoot mono"><span>紀錄 ${p.records.length}　檔案 ${p.files.length}${p.status ? '　' + esc(p.status) : ''}</span><span class="go">展開 ＋</span></div>
 </a>`
 }
 
-function footHtml(p: Portfolio): string {
-  return `<footer class="foot"><div class="wrap">
-  <div><b>${esc(COMPANY)}</b>PrinTex™ 數位紋理・藝格板｜${esc(OWNER)}（${esc(OWNER_EN)}）工作作品集</div>
-  <div class="links"><a href="https://egrra.vercel.app/" target="_blank" rel="noopener">官方網站</a><a href="https://www.tiktok.com/@marblemetal" target="_blank" rel="noopener">TikTok 大理石魔術師呂哥</a><a href="https://www.youtube.com/@marblemetal" target="_blank" rel="noopener">YouTube</a><a href="https://www.instagram.com/egrra1199/" target="_blank" rel="noopener">Instagram</a></div>
-  <div style="flex-basis:100%;font-size:12px;color:#8e877c">此頁由紀錄櫃 App 在 ${esc(tw(p.generatedAt))}（台北）產生；檔案與縮圖連結到 ${esc(tw(p.linkExpiresAt))} 前有效，之後重新整理即可。</div>
+function colophon(p: Portfolio): string {
+  const used = CATEGORY_ORDER.filter(c => p.projects.some(x => (x.category || '其他') === c))
+  const mats = [`封面　${HERO_TEX.code} ${HERO_TEX.name}`, ...used.map(c => `${c}　${texOf(c).code} ${texOf(c).name}`), `本頁底　${FOOT_TEX.code} ${FOOT_TEX.name}`]
+  return `<footer class="colo" style="background-image:url('${texUrl(FOOT_TEX)}')"><div class="wrap">
+  <div class="cg">
+    <div><b>${esc(COMPANY)}</b>PrinTex™ 數位紋理・藝格板<br>${esc(OWNER)}（${esc(OWNER_EN)}）工作作品集</div>
+    <div class="mats mono">本冊以 PrinTex™ 花色樣板排版<br>${mats.map(esc).join('<br>')}</div>
+    <div class="links"><a href="https://egrra.vercel.app/" target="_blank" rel="noopener">官方網站</a><a href="https://www.tiktok.com/@marblemetal" target="_blank" rel="noopener">TikTok 大理石魔術師呂哥</a><a href="https://www.youtube.com/@marblemetal" target="_blank" rel="noopener">YouTube</a><a href="https://www.instagram.com/egrra1199/" target="_blank" rel="noopener">Instagram</a></div>
+  </div>
+  <div class="gen">此頁由紀錄櫃 App 在 ${esc(tw(p.generatedAt))}（台北）產生；檔案與縮圖連結到 ${esc(tw(p.linkExpiresAt))} 前有效，之後重新整理即可。</div>
 </div></footer>`
 }
 
@@ -351,27 +392,27 @@ function footHtml(p: Portfolio): string {
 function panelHtml(p: ShareProject, key: string): string {
   const href = `/portfolio/${esc(key)}/${esc(p.id)}`
   const sum = firstLine(p.note) || p.summary
-  const facts = [p.status ? `<span>狀態 ${esc(p.status)}</span>` : '', p.lastDate ? `<span>最近 ${esc(p.lastDate)}</span>` : '', `<span>紀錄 ${p.records.length}</span>`, `<span>檔案 ${p.files.length}</span>`, p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">連結 ↗</a>` : ''].filter(Boolean).join('')
+  const facts = [p.status ? `<span>狀態 ${esc(p.status)}</span>` : '', periodOf(p) ? `<span>期間 ${esc(periodOf(p))}</span>` : '', `<span>紀錄 ${p.records.length}</span>`, `<span>檔案 ${p.files.length}</span>`, p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">連結 ↗</a>` : ''].filter(Boolean).join('')
   const visual = p.files.filter(f => f.thumb || isVideo(f.name) || isImage(f.name))
   const files = [...visual, ...p.files.filter(f => !visual.includes(f))]
   const tile = (f: ShareFile) => {
     if (f.confidential) return `<div class="xf locked"><div class="xft"><span>機密</span></div><div class="xfn">${esc(f.name)}</div></div>`
     const lb = f.url && isImage(f.name) ? ` data-lb="${esc(f.url)}" data-cap="${esc(f.name)}"` : ''
-    const th = f.thumb ? `<img src="${esc(f.thumb)}" alt="" loading="lazy">` : `<span>${esc(isVideo(f.name) ? '影片' : extOf(f.name))}</span>`
+    const th = f.thumb ? `<img src="${esc(f.thumb)}" alt="" loading="lazy">` : `<span class="mono">${esc(isVideo(f.name) ? '影片' : extOf(f.name))}</span>`
     return `<a class="xf" href="${esc(f.url || href)}"${lb} target="_blank" rel="noopener"><div class="xft">${th}</div><div class="xfn">${esc(f.name)}</div></a>`
   }
   const MAXF = 12, MAXR = 6
   const fl = files.length ? `<div class="xfiles">${files.slice(0, MAXF).map(tile).join('')}${files.length > MAXF ? `<a class="xmore" href="${href}">還有 ${files.length - MAXF} 個 →</a>` : ''}</div>` : '<p class="empty">這個專案沒有放檔案（例如 SOP、說明書類只留紀錄）。</p>'
-  const rl = p.records.length ? `<ul class="xrecs">${p.records.slice(0, MAXR).map(r => `<li><span class="d">${esc(r.date || '')}</span><span class="t">${esc(r.title)}</span></li>`).join('')}</ul>${p.records.length > MAXR ? `<a class="xmore" href="${href}">全部 ${p.records.length} 筆紀錄 →</a>` : ''}` : '<p class="empty">沒有紀錄。</p>'
+  const rl = p.records.length ? `<ul class="xrecs">${p.records.slice(0, MAXR).map(r => `<li><span class="d mono">${esc(r.date || '')}</span><span>${esc(r.title)}</span></li>`).join('')}</ul>${p.records.length > MAXR ? `<a class="xmore" href="${href}">全部 ${p.records.length} 筆紀錄 →</a>` : ''}` : '<p class="empty">沒有紀錄。</p>'
   return `<div class="xpanel" id="xp-${esc(p.id)}" hidden><div class="xpin">
-  <div class="xphead"><div><div class="en">${esc(catEn(p.category))}・${esc(p.category || '其他')}</div><h3>${esc(p.name)}</h3></div><div class="xpacts"><a class="btnp" href="${href}">開啟專案頁 →</a><button class="btno xclose" type="button">收合 ▴</button></div></div>
-  ${sum ? `<p class="xpsum">${esc(sum)}</p>` : ''}<div class="xpfacts">${facts}</div>
-  <div class="xpsec"><span class="en">WORKS</span>成果檔案（${p.files.length}）</div>${fl}
-  <div class="xpsec"><span class="en">TIMELINE</span>工作紀錄（${p.records.length}）</div>${rl}
+  <div class="xphead"><div><div class="lab mono"><span class="code">${esc(p.code || '')}</span>　${esc(p.category || '其他')}</div><h3>${esc(p.name)}</h3></div><div class="xpacts"><a class="btnp" href="${href}">開啟專案頁 →</a><button class="btno xclose" type="button">收合</button></div></div>
+  ${sum ? `<p class="xpsum">${esc(sum)}</p>` : ''}<div class="xpfacts mono">${facts}</div>
+  <div class="xpsec"><span class="no">一</span>成果檔案（${p.files.length}）</div>${fl}
+  <div class="xpsec"><span class="no">二</span>工作紀錄（${p.records.length}）</div>${rl}
 </div></div>`
 }
 
-// 經歷年表：2024 年起的每一筆工作紀錄，依年、月分組，由新到舊；每筆可點進專案（列印版連到書內該專案那一節）
+// 經歷：2024 年起的每一筆工作紀錄，依年、月分組，由新到舊（帳冊式）；每筆可點進專案（列印版連到書內該專案那一節）
 const TL_START_YEAR = 2024
 const firstLine = (note: string): string => {
   for (const raw of String(note || '').split(/\r?\n/)) {
@@ -381,13 +422,13 @@ const firstLine = (note: string): string => {
   }
   return ''
 }
-function timelineHtml(p: Portfolio, key: string, print = false): string {
+function ledgerHtml(p: Portfolio, key: string, print = false): { html: string; count: number; range: string } {
   type E = { pr: ShareProject; idx: number; r: ShareRecord; t: number }
   const toT = (d: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : NaN }
   const START = Date.UTC(TL_START_YEAR, 0, 1)
   const es: E[] = []
   p.projects.forEach((pr, idx) => pr.records.forEach(r => { const t = toT(r.date); if (!isNaN(t) && t >= START) es.push({ pr, idx, r, t }) }))
-  if (!es.length) return ''
+  if (!es.length) return { html: '', count: 0, range: '' }
   es.sort((a, b) => b.t - a.t || a.pr.name.localeCompare(b.pr.name))
   const years = new Map<string, Map<string, E[]>>()
   for (const e of es) {
@@ -400,18 +441,45 @@ function timelineHtml(p: Portfolio, key: string, print = false): string {
   const item = (e: E) => {
     const href = print ? `#p${e.idx + 1}` : `/portfolio/${esc(key)}/${esc(e.pr.id)}`
     const sum = firstLine(e.r.note)
-    const tags = [e.r.status ? `<span>${esc(e.r.status)}</span>` : '', e.r.files.length ? `<span>檔案 ${e.r.files.length}</span>` : ''].filter(Boolean).join('')
-    return `<a class="xi rv" href="${href}"><div class="xd">${esc(e.r.date.slice(5))}</div><div class="xb"><div class="xp"><b>${esc(catEn(e.r.category || e.pr.category))}</b>${esc(e.pr.name)}</div><h3>${esc(e.r.title)}</h3>${sum ? `<p>${esc(sum)}</p>` : ''}<div class="xs">${tags}<span class="go">查看專案 →</span></div></div></a>`
+    const tags = [e.r.status, e.r.files.length ? `檔案 ${e.r.files.length}` : ''].filter(Boolean).join('　')
+    return `<a class="xi" href="${href}"><div class="xd mono">${esc(e.r.date.slice(5).replace('-', '.'))}</div><div><div class="xp"><span class="code mono">${esc(e.pr.code || '')}</span>${esc(e.pr.name)}</div><h3>${esc(e.r.title)}</h3>${sum ? `<p>${esc(sum)}</p>` : ''}${tags ? `<div class="xs mono">${esc(tags)}</div>` : ''}</div></a>`
   }
   const blocks = Array.from(years.entries()).map(([y, ym]) => {
     const n = Array.from(ym.values()).reduce((s, a) => s + a.length, 0)
-    const months = Array.from(ym.entries()).map(([m, list]) => `<div class="xmon rv">${+m} 月</div>${list.map(item).join('\n')}`).join('\n')
-    return `<div class="xyear"><div class="y rv"><b>${esc(y)}</b><span>${n} 筆經歷</span></div><div class="ylist">${months}</div></div>`
+    const months = Array.from(ym.entries()).map(([m, list]) => `<div class="mo mono">${esc(y)}.${esc(m)}</div>${list.map(item).join('\n')}`).join('\n')
+    return `<div class="yr"><div class="y"><b>${esc(y)}</b><span>${n} 筆經歷</span></div><div>${months}</div></div>`
   }).join('\n')
   const yrs = Array.from(years.keys())
-  const range = `${esc(yrs[yrs.length - 1])} — ${esc(yrs[0])}`
-  if (print) return `<section class="xprint"><h2 class="sec" style="margin-top:0"><span class="en">TIMELINE</span>經歷年表 ${range}</h2><p style="font-size:13px;color:var(--muted);margin:0 0 14px">${es.length} 筆工作紀錄，由新到舊；每一筆都連到書內該專案那一節。</p><div class="exp">${blocks}</div></section>`
-  return `<section class="cat" data-cat="年表" id="timeline"><div class="wrap"><div class="sec-head rv"><span class="num">⟶</span><div><div class="en">TIMELINE</div><h2>經歷年表 ${range}</h2></div><span class="n">${es.length} 筆經歷，由新到舊，點一下進專案</span></div><div class="exp">${blocks}</div></div></section>`
+  return { html: blocks, count: es.length, range: `${yrs[yrs.length - 1]}—${yrs[0]}` }
+}
+
+function chapHead(no: string, title: string, note: string, tex?: Tex): string {
+  return `<div class="chap"><span class="no">${esc(no)}</span><h2>${esc(title)}<span class="note">${esc(note)}</span></h2>${tex ? `<div class="mat mono"><span>本章材質<br>${esc(tex.code)}　${esc(tex.name)}</span><i style="background-image:url('${texUrl(tex)}')"></i></div>` : '<span></span>'}</div>`
+}
+
+function mastHtml(p: Portfolio, key: string, opt: { print: boolean }): string {
+  const yearNow = String(new Date().getFullYear())
+  const links = opt.print
+    ? `<div class="mlinks"><span>線上版：${esc(p.origin)}/portfolio/${esc(key)}</span></div>`
+    : `<nav class="mlinks"><a href="#featured">精選作品</a><a href="#timeline">經歷</a><a href="/portfolio/${esc(key)}?all=1">一頁看完全部（可列印）</a></nav>`
+  return `<header class="mast"><div class="wrap">
+  <div class="bar"><b>${esc(COMPANY)}</b><span class="mono">PrinTex™ 數位紋理・藝格板　／　${TL_START_YEAR}—${esc(yearNow)}</span></div>
+  <div class="mgrid">
+    <div class="namecol"><h1 class="vname"><span class="n">${esc(OWNER)}</span><span class="t">工作作品集</span></h1><div>${sealHtml()}</div></div>
+    <div class="txt">
+      <p class="lead">${esc(INTRO)}</p>
+      <dl class="spec">
+        <div><dt>專案</dt><dd><b>${p.stats.projects}</b>件</dd></div>
+        <div><dt>工作紀錄</dt><dd><b>${p.stats.records}</b>筆</dd></div>
+        <div><dt>成果檔案</dt><dd><b>${p.stats.files}</b>個</dd></div>
+        <div><dt>佐證</dt><dd>客戶回饋・媒體露出・平台數字</dd></div>
+        <div><dt>機密資料</dt><dd>只記錄，不開放查閱</dd></div>
+      </dl>
+      ${links}
+    </div>
+    <figure class="plate"><div class="slab" style="background-image:url('${texUrl(HERO_TEX)}')"></div><figcaption class="mono"><span>${esc(HERO_TEX.code)}　${esc(HERO_TEX.name)}</span><span>${esc(OWNER_EN)}</span></figcaption></figure>
+  </div>
+</div></header>`
 }
 
 export function portfolioIndexHtml(p: Portfolio, key: string): string {
@@ -422,113 +490,117 @@ export function portfolioIndexHtml(p: Portfolio, key: string): string {
   const evidence = (x: ShareProject) => /媒體露出|客戶回饋|第三方|佐證|使用數據/.test(x.note || '') ? 8 : 0
   const score = (x: ShareProject) => (x.cover ? 3 : -99) + evidence(x) + x.files.length + x.records.length * 2
   const featured = [...p.projects].filter(x => x.cover && x.files.length).sort((a, b) => score(b) - score(a)).slice(0, 3)
-  const sections = allCats.map((c, ci) => {
+  const led = ledgerHtml(p, key)
+  let n = 0
+  const featHtml = featured.length ? `<section class="cat" data-cat="精選" id="featured"><div class="wrap">${chapHead(NUM[n++], '精選作品', '有客戶回饋、媒體露出或平台數字的案子')}<div class="grid">${featured.map(x => cardHtml(x, key)).join('\n')}</div></div></section>` : ''
+  const ledHtml = led.count ? `<section class="cat" data-cat="經歷" id="timeline"><div class="wrap">${chapHead(NUM[n++], `經歷 ${led.range}`, `${led.count} 筆工作紀錄，由新到舊；點一筆進專案`)}${led.html}</div></section>` : ''
+  const sections = allCats.map(c => {
     const items = p.projects.filter(x => (x.category || '其他') === c)
-    return `<section class="cat" data-cat="${esc(c)}" id="cat-${esc(c)}"><div class="wrap"><div class="sec-head rv"><span class="num">${pad2(ci + 1)}</span><div><div class="en">${esc(catEn(c))}</div><h2>${esc(c)}</h2></div><span class="n">${items.length} 個專案</span></div><div class="grid">${items.map((x, i) => cardHtml(x, key, i) + panelHtml(x, key)).join('\n')}</div></div></section>`
+    return `<section class="cat" data-cat="${esc(c)}" id="cat-${esc(c)}"><div class="wrap">${chapHead(NUM[n++] || '', c, `${items.length} 個專案`, texOf(c))}<div class="grid">${items.map(x => cardHtml(x, key) + panelHtml(x, key)).join('\n')}</div></div></section>`
   }).join('\n')
-  const chips = ['全部', ...allCats].map((c, i) => `<button class="chip${i === 0 ? ' on' : ''}" data-cat="${esc(c)}" type="button">${esc(c)}</button>`).join('')
-  const body = `<header class="hero"><div class="veins"></div><div class="spot"></div><div class="wm">EGRRA</div><div class="wrap">
-  <div class="eyebrow rv" style="--d:.05s">${esc(COMPANY)}　·　PrinTex™ 數位紋理・藝格板</div>
-  <h1 class="rv" style="--d:.15s">${esc(OWNER)}<span class="sp">　</span><span class="gold">工作作品集</span></h1>
-  <p class="sub rv" style="--d:.25s">PORTFOLIO OF ${esc(OWNER_EN.toUpperCase())}　·　${TL_START_YEAR} — ${esc(String(new Date().getFullYear()))}</p>
-  <div class="rule rv" style="--d:.3s"></div>
-  <p class="intro rv" style="--d:.35s">${esc(INTRO)}</p>
-  <div class="stats rv" style="--d:.45s"><div class="stat"><b data-n="${p.stats.projects}">0</b><span>專案 PROJECTS</span></div><div class="stat"><b data-n="${p.stats.records}">0</b><span>工作紀錄 RECORDS</span></div><div class="stat"><b data-n="${p.stats.files}">0</b><span>檔案 FILES</span></div></div>
-  <div class="layers rv" style="--d:.55s"><span>成果檔案</span><span>工作紀錄</span><span>第三方留痕：客戶回饋・媒體露出・平台數字</span></div>
-  <div class="tools rv" style="--d:.65s"><a class="btnp" href="#featured">看精選作品 ↓</a><a class="btnp" style="background:transparent;color:var(--gold-2)!important;border:1px solid rgba(216,189,138,.6);box-shadow:none" href="/portfolio/${esc(key)}?all=1">列印版 · 可另存 PDF</a><span>線上版每次打開都是最新資料</span></div>
-</div><div class="scroll-hint"><span>SCROLL</span><i></i></div></header>
-<nav class="catnav"><div class="wrap" id="chips"><span class="brandmini">${esc(OWNER)}・作品集</span>${chips}</div></nav>
+  const chips = ['全部', ...(featured.length ? ['精選'] : []), ...(led.count ? ['經歷'] : []), ...allCats].map((c, i) => `<button class="chip${i === 0 ? ' on' : ''}" data-cat="${esc(c)}" type="button">${esc(c)}</button>`).join('')
+  const body = `${mastHtml(p, key, { print: false })}
+<nav class="idx"><div class="wrap" id="chips"><span class="who">${sealHtml(true)}${esc(OWNER)}</span>${chips}</div></nav>
 <main>
-${featured.length ? `<section class="band cat" data-cat="精選" id="featured"><div class="wrap"><div class="sec-head rv"><span class="num">★</span><div><div class="en">FEATURED</div><h2>精選作品</h2></div><span class="n">有客戶回饋、媒體露出或平台數字的案子</span></div><div class="featured">${featured.map((x, i) => cardHtml(x, key, i)).join('\n')}</div></div></section>` : ''}
-${timelineHtml(p, key)}
+${featHtml}
+${ledHtml}
 ${sections}
 </main>
-${footHtml(p)}`
+${colophon(p)}`
   const og = featured[0]?.cover || p.projects.find(x => x.cover)?.cover
   return page({ title: `${OWNER} 工作作品集｜${COMPANY}`, desc: INTRO, body, ogImage: og, url: `${p.origin}/portfolio/${key}` })
 }
 
 function fileHtml(f: ShareFile, print = false): string {
-  if (f.confidential) return `<div class="file locked rv"><div class="cover"><span class="ph"><span class="lk">機密</span><small>只記錄，不開放查閱</small></span></div><div class="body"><div class="name">${esc(f.name)}</div><div class="fmeta">${f.category ? `<span>${esc(f.category)}</span>` : ''}${f.date ? `<span>${esc(f.date)}</span>` : ''}</div>${f.note ? `<div class="note">${esc(f.note)}</div>` : ''}<div class="lockline">內含機密資料，只列出紀錄，不提供開啟與下載</div></div></div>`
+  const meta = `<div class="fmeta mono">${f.category ? `<span>${esc(f.category)}</span>` : ''}${f.date ? `<span>${esc(f.date)}</span>` : ''}</div>`
+  if (f.confidential) return `<div class="file locked"><div class="cover"><span class="tape">機密　只記錄不查閱</span></div><div class="body"><div class="name">${esc(f.name)}</div>${meta}${f.note ? `<div class="note">${esc(f.note)}</div>` : ''}<div class="lockline">內含機密資料，只列出紀錄，不提供開啟與下載</div></div></div>`
   let media: string
   if (f.url && isVideo(f.name) && !print) media = `<video controls preload="metadata"${f.thumb ? ` poster="${esc(f.thumb)}"` : ''} src="${esc(f.url)}"></video>`
   else if (f.thumb && f.url && isImage(f.name)) media = `<a class="cover" href="${esc(f.url)}" data-lb="${esc(f.url)}" data-cap="${esc(f.name)}" target="_blank" rel="noopener"><img src="${esc(f.thumb)}" alt="" loading="lazy"></a>`
   else if (f.thumb) media = `<a class="cover" href="${esc(f.url || '#')}" data-ext="${esc(extOf(f.name))}" target="_blank" rel="noopener"><img src="${esc(f.thumb)}" alt="" loading="lazy"></a>`
-  else media = `<div class="cover"><span class="ph">${esc(isVideo(f.name) ? '影片' : extOf(f.name))}</span></div>`
+  else media = `<div class="cover"><span class="ph mono">${esc(isVideo(f.name) ? '影片' : extOf(f.name))}</span></div>`
   const acts = f.url ? `<div class="acts"><a href="${esc(f.url)}" target="_blank" rel="noopener">開啟</a><a href="${esc(f.download)}">下載</a></div>` : ''
-  return `<div class="file rv">${media}<div class="body"><div class="name">${esc(f.name)}</div><div class="fmeta">${f.category ? `<span>${esc(f.category)}</span>` : ''}${f.date ? `<span>${esc(f.date)}</span>` : ''}</div>${f.note ? `<div class="note">${esc(f.note)}</div>` : ''}${acts}</div></div>`
+  return `<div class="file">${media}<div class="body"><div class="name">${esc(f.name)}</div>${meta}${f.note ? `<div class="note">${esc(f.note)}</div>` : ''}${acts}</div></div>`
 }
 
 function recordHtml(r: ShareRecord): string {
-  const meta = [r.status ? `<span>${esc(r.status)}</span>` : '', r.category ? `<span>${esc(r.category)}</span>` : '', ...r.tags.map(t => `<span>${esc(t)}</span>`), r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener">連結 ↗</a>` : ''].filter(Boolean).join('')
+  const meta = [r.status, r.category, ...r.tags].filter(Boolean).map(esc).join('　／　') + (r.link ? `　／　<a href="${esc(r.link)}" target="_blank" rel="noopener">連結 ↗</a>` : '')
   const files = r.files.length ? `<div class="fchips">${r.files.map(n => `<span>${esc(n)}</span>`).join('')}</div>` : ''
   const att = r.attachments.length ? `<div class="fchips">${r.attachments.map(a => `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.name)}</a>`).join('')}</div>` : ''
-  return `<article class="rec rv"><div class="date">${esc(r.date || '（無日期）')}</div><h3>${esc(r.title)}</h3><div class="meta">${meta}</div>${r.note ? `<div class="rich">${noteHtml(r.note)}</div>` : ''}${files}${att}</article>`
+  return `<article class="rec"><div class="date mono">${esc(r.date || '（無日期）')}</div><h3>${esc(r.title)}</h3><div class="meta mono">${meta}</div>${r.note ? `<div class="rich">${noteHtml(r.note)}</div>` : ''}${files}${att}</article>`
 }
 
-// 專案的主體（說明、檔案、紀錄），專案頁與列印版共用
+// 專案的主體（說明、檔案、紀錄），專案頁與一頁版共用
 function projectBody(pr: ShareProject, opt: { print: boolean }): string {
   const files = pr.files
   const visual = files.filter(f => f.thumb || isVideo(f.name) || isImage(f.name))
   const others = files.filter(f => !visual.includes(f))
-  return `${pr.note ? `<h2 class="sec rv"><span class="en">ABOUT</span>專案說明</h2><div class="rich rv">${noteHtml(pr.note)}</div>` : ''}
-<h2 class="sec rv"><span class="en">WORKS</span>成果檔案（${files.length}）</h2>
-${files.length ? `<div class="files">${[...visual, ...others].map(f => fileHtml(f, opt.print)).join('\n')}</div>` : '<p class="empty">這個專案沒有放檔案（例如 SOP、說明書類只留紀錄）。</p>'}
-<h2 class="sec rv"><span class="en">TIMELINE</span>工作紀錄（${pr.records.length}）</h2>
-${pr.records.length ? `<div class="tl">${pr.records.map(recordHtml).join('\n')}</div>` : '<p class="empty">沒有紀錄。</p>'}`
+  const t = texOf(pr.category || '其他')
+  let k = 0
+  const no = () => ['一', '二', '三', '四'][k++]
+  return `${pr.note ? `<h2 class="sec"><span class="no">${no()}</span>專案說明</h2><div class="rich">${noteHtml(pr.note)}</div>` : ''}
+<h2 class="sec"><span class="no">${no()}</span>成果檔案<small>${files.length} 個</small></h2>
+${files.length ? `<div class="files" style="--tex:url('${texUrl(t)}')">${[...visual, ...others].map(f => fileHtml(f, opt.print)).join('\n')}</div>` : '<p class="empty">這個專案沒有放檔案（例如 SOP、說明書類只留紀錄）。</p>'}
+<h2 class="sec"><span class="no">${no()}</span>工作紀錄<small>${pr.records.length} 筆</small></h2>
+${pr.records.length ? `<div class="recs">${pr.records.map(recordHtml).join('\n')}</div>` : '<p class="empty">沒有紀錄。</p>'}`
+}
+
+function projectHead(pr: ShareProject, crumb: string): string {
+  const t = texOf(pr.category || '其他')
+  const per = periodOf(pr)
+  const pic = pr.cover ? `<div class="pic"><img src="${esc(pr.cover)}" alt=""></div>` : `<div class="pic tx"></div>`
+  return `<header class="phd"><div class="wrap">
+  ${crumb}
+  <div class="phgrid">
+    <div><div class="lab mono"><span class="code">${esc(pr.code || '')}</span><span>${esc(pr.category || '其他')}</span><span>${esc(pr.status || '')}</span>${per ? `<span>${esc(per)}</span>` : ''}</div>
+      <h1>${esc(pr.name)}</h1>${pr.summary ? `<p class="lede">${esc(pr.summary)}</p>` : ''}</div>
+    <figure class="mount" style="--tex:url('${texUrl(t)}')">${pic}<figcaption class="mono"><span>材質　${esc(t.code)} ${esc(t.name)}</span><span>紀錄 ${pr.records.length}・檔案 ${pr.files.length}</span></figcaption></figure>
+  </div>
+</div></header>`
 }
 
 export function projectHtml(p: Portfolio, pr: ShareProject, key: string): string {
   const url = `${p.origin}/portfolio/${key}/${pr.id}`
-  const body = `<header class="phead">
-  ${pr.cover ? `<div class="bg" style="background-image:url('${esc(pr.cover)}')"></div>` : ''}<div class="veil"></div><div class="spot"></div>
-  <div class="wrap">
-    <div class="topbar"><a href="/portfolio/${esc(key)}"><span class="ar">←</span> 回作品集</a><a href="/portfolio/${esc(key)}">${esc(COMPANY)}｜${esc(OWNER)} 工作作品集</a></div>
-    <div class="eyebrow rv" style="--d:.05s">${esc(catEn(pr.category))}　·　${esc(pr.category || '其他')}</div>
-    <h1 class="rv" style="--d:.15s">${esc(pr.name)}</h1>
-    <div class="pmeta rv" style="--d:.25s"><span class="tag">${esc(pr.category || '其他')}</span><span class="st">${esc(pr.status || '—')}</span>${pr.lastDate ? `<span>最近 ${esc(pr.lastDate)}</span>` : ''}<span>紀錄 ${pr.records.length}・檔案 ${pr.files.length}</span></div>
-  </div>
-</header>
+  const crumb = `<div class="crumb mono"><a href="/portfolio/${esc(key)}">← ${esc(OWNER)} 工作作品集</a><span>${esc(COMPANY)}</span></div>`
+  const per = periodOf(pr)
+  const body = `${projectHead(pr, crumb)}
 <div class="wrap"><div class="layout">
   <main>${projectBody(pr, { print: false })}</main>
-  <aside class="side"><div class="facts rv">
-    <dl><dt>分類</dt><dd>${esc(pr.category || '其他')}</dd><dt>狀態</dt><dd>${esc(pr.status || '—')}</dd>${pr.lastDate ? `<dt>最近</dt><dd>${esc(pr.lastDate)}</dd>` : ''}<dt>紀錄</dt><dd>${pr.records.length} 筆</dd><dt>檔案</dt><dd>${pr.files.length} 個</dd>${pr.link ? `<dt>連結</dt><dd><a href="${esc(pr.link)}" target="_blank" rel="noopener" style="word-break:break-all">${esc(pr.link.replace(/^https?:\/\//, ''))}</a></dd>` : ''}</dl>
+  <aside class="side">
+    <dl class="facts mono">
+      <div><dt>編號</dt><dd>${esc(pr.code || '—')}</dd></div>
+      <div><dt>分類</dt><dd>${esc(pr.category || '其他')}</dd></div>
+      <div><dt>狀態</dt><dd>${esc(pr.status || '—')}</dd></div>
+      ${per ? `<div><dt>期間</dt><dd>${esc(per)}</dd></div>` : ''}
+      <div><dt>紀錄</dt><dd>${pr.records.length} 筆</dd></div>
+      <div><dt>檔案</dt><dd>${pr.files.length} 個</dd></div>
+      ${pr.link ? `<div><dt>連結</dt><dd><a href="${esc(pr.link)}" target="_blank" rel="noopener">${esc(pr.link.replace(/^https?:\/\//, ''))}</a></dd></div>` : ''}
+    </dl>
     <div class="acts">${pr.link ? `<a class="btnp" href="${esc(pr.link)}" target="_blank" rel="noopener">開啟連結 ↗</a>` : ''}<button class="btno" type="button" data-copy="${esc(url)}">複製這頁連結</button><a class="btno" href="/portfolio/${esc(key)}">回作品集</a></div>
-  </div></aside>
+  </aside>
 </div></div>
-${footHtml(p)}`
+${colophon(p)}`
   return page({ title: `${pr.name}｜${OWNER} 工作作品集`, desc: pr.summary || INTRO, body, ogImage: pr.cover || undefined, url })
 }
 
-// 列印版：封面、專案一覽、每個專案一節（每節從新的一頁開始）。瀏覽器「列印 → 另存 PDF」就是書面版作品集。
+// 一頁版（也是列印版）：書名頁、專案一覽、經歷、每個專案一節（列印時每節從新的一頁開始）。瀏覽器「列印 → 另存 PDF」就是書面版。
 export function portfolioFullHtml(p: Portfolio, key: string): string {
-  const toc = p.projects.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.category || '其他')}</td><td><a href="#p${i + 1}">${esc(x.name)}</a></td><td>${esc(x.status || '')}</td><td>${esc(x.lastDate || '')}</td><td>${x.records.length}／${x.files.length}</td></tr>`).join('')
-  const sections = p.projects.map((pr, i) => `<section class="proj" id="p${i + 1}">
-<div class="eyebrow" style="color:var(--gold)">${esc(COMPANY)}｜${esc(OWNER)} 工作作品集　${i + 1}／${p.projects.length}</div>
-${pr.cover ? `<div class="hero-img"><img src="${esc(pr.cover)}" alt=""></div>` : ''}
-<h1>${esc(pr.name)}</h1>
-<div class="pmeta"><span class="tag">${esc(pr.category || '其他')}</span><span class="st">${esc(pr.status || '—')}</span>${pr.lastDate ? `<span>最近 ${esc(pr.lastDate)}</span>` : ''}<span>紀錄 ${pr.records.length}・檔案 ${pr.files.length}</span>${pr.link ? `<span>連結：<a href="${esc(pr.link)}">${esc(pr.link)}</a></span>` : ''}</div>
+  const toc = p.projects.map((x, i) => `<tr><td class="mono">${i + 1}</td><td class="mono code">${esc(x.code || '')}</td><td><a href="#p${i + 1}">${esc(x.name)}</a></td><td>${esc(x.category || '其他')}</td><td class="mono">${esc(periodOf(x))}</td><td class="mono">${x.records.length}／${x.files.length}</td></tr>`).join('')
+  const led = ledgerHtml(p, key, true)
+  const sections = p.projects.map((pr, i) => `<section class="proj" id="p${i + 1}"><div class="wrap">
+${projectHead(pr, `<div class="crumb mono"><span>${esc(OWNER)} 工作作品集</span><span>${i + 1}／${p.projects.length}</span></div>`)}
 ${projectBody(pr, { print: true })}
-</section>`).join('\n')
-  const body = `<div class="wrap">
-<div class="tools" style="color:var(--muted)"><a class="btnp" href="/portfolio/${esc(key)}">← 回線上版</a><span>這一頁是列印版：用瀏覽器「列印」選「另存為 PDF」，就是書面版作品集。</span></div>
-<section class="cover-page">
-  <div class="eyebrow" style="color:var(--gold)">${esc(COMPANY)}　·　PrinTex™ 數位紋理・藝格板</div>
-  <h1>${esc(OWNER)}　工作作品集</h1>
-  <p class="sub" style="color:var(--gold);letter-spacing:.12em;margin:0 0 18px">PORTFOLIO OF ${esc(OWNER_EN.toUpperCase())}</p>
-  <p class="intro" style="max-width:760px;color:var(--muted)">${esc(INTRO)}</p>
-  <div class="stats" style="gap:32px"><div class="stat"><b style="color:var(--ink)">${p.stats.projects}</b><span style="color:var(--gold)">專案</span></div><div class="stat"><b style="color:var(--ink)">${p.stats.records}</b><span style="color:var(--gold)">工作紀錄</span></div><div class="stat"><b style="color:var(--ink)">${p.stats.files}</b><span style="color:var(--gold)">檔案</span></div></div>
-  <div style="font-size:13px;color:var(--muted)">書面版產生於 ${esc(tw(p.generatedAt))}（台北）。線上版：<a href="${esc(p.origin)}/portfolio/${esc(key)}">${esc(p.origin)}/portfolio/${esc(key)}</a>（每次打開都是最新資料，檔案可直接開啟）。</div>
-</section>
-<section class="toc">
-<h2 class="sec" style="margin-top:0"><span class="en">INDEX</span>專案一覽</h2>
-<table><tr><th>#</th><th>分類</th><th>專案</th><th>狀態</th><th>最近</th><th>紀錄／檔案</th></tr>${toc}</table>
-</section>
-${timelineHtml(p, key, true)}
+</div></section>`).join('\n')
+  const body = `<div class="wrap"><div class="ptools"><a class="btnp" href="/portfolio/${esc(key)}">← 回作品集首頁</a><span>這一頁把所有專案排在一起；用瀏覽器「列印」選「另存為 PDF」，就是書面版作品集。</span></div></div>
+${mastHtml(p, key, { print: true })}
+<section class="title-page"><div class="wrap">
+${chapHead('目', '專案一覽', `${p.projects.length} 個專案；編號、期間、紀錄／檔案數`)}
+<div class="toc"><table><tr><th>#</th><th>編號</th><th>專案</th><th>分類</th><th>期間</th><th>紀錄／檔案</th></tr>${toc}</table></div>
+</div></section>
+${led.count ? `<section class="proj"><div class="wrap">${chapHead('歷', `經歷 ${led.range}`, `${led.count} 筆工作紀錄，由新到舊；每一筆都連到書內該專案那一節`)}${led.html}</div></section>` : ''}
 ${sections}
-<div style="padding:30px 0;font-size:12px;color:var(--muted)">此書面版由紀錄櫃 App 產生；文中「開啟／下載」連結到 ${esc(tw(p.linkExpiresAt))} 前有效，之後請用線上版重新取得。</div>
-</div>`
-  // 列印版：不延遲載圖、不做進場動畫（否則另存 PDF 時會空白）
-  const html = body.replace(/ loading="lazy"/g, '').replace(/ class="([^"]*)\brv\b([^"]*)"/g, ' class="$1$2"')
-  return page({ title: `${OWNER} 工作作品集（列印版）｜${COMPANY}`, desc: INTRO, body: html, ogImage: p.projects.find(x => x.cover)?.cover, url: `${p.origin}/portfolio/${key}?all=1` })
+${colophon(p)}`
+  // 一頁版：不延遲載圖（否則另存 PDF 時圖會空白）
+  const html = body.replace(/ loading="lazy"/g, '')
+  return page({ title: `${OWNER} 工作作品集（一頁版）｜${COMPANY}`, desc: INTRO, body: html, ogImage: p.projects.find(x => x.cover)?.cover, url: `${p.origin}/portfolio/${key}?all=1` })
 }

@@ -9,7 +9,7 @@ const CATEGORY_ORDER = ['系統開發', '行銷', '工程', '行政', '業務', 
 
 export type ShareFile = { id: string; name: string; category: string; date: string; note: string; tags: string[]; by: string; url: string; download: string; thumb: string; confidential: boolean }
 export type ShareRecord = { id: string; title: string; date: string; status: string; category: string; tags: string[]; by: string; link: string; note: string; files: string[]; attachments: { name: string; url: string }[] }
-export type ShareProject = { id: string; name: string; category: string; status: string; lastDate: string; link: string; cover: string; summary: string; note: string; records: ShareRecord[]; files: ShareFile[] }
+export type ShareProject = { id: string; code: string; name: string; category: string; status: string; lastDate: string; link: string; cover: string; summary: string; note: string; records: ShareRecord[]; files: ShareFile[] }
 export type Portfolio = {
   app: string; company: string; generatedAt: string; linkExpiresAt: string; origin: string
   stats: { projects: number; records: number; files: number }
@@ -115,7 +115,7 @@ export async function buildPortfolio(origin: string): Promise<Portfolio> {
   const rank = (c: string) => { const i = CATEGORY_ORDER.indexOf(c); return i < 0 ? 99 : i }
   const sortedProjects = [...projects].sort((a, b) => rank(a.category) - rank(b.category) || (b.lastDate || '').localeCompare(a.lastDate || ''))
   const out: ShareProject[] = sortedProjects.map((p: JProject) => ({
-    id: p.id, name: p.name, category: p.category, status: p.status, lastDate: p.lastDate, link: p.link,
+    id: p.id, code: p.code || '', name: p.name, category: p.category, status: p.status, lastDate: p.lastDate, link: p.link,
     cover: coverOf(p), summary: summaryOf(p.note), note: p.note,
     records: records.filter(r => r.projectId === p.id).sort(byDate).map(toRecord),
     files: files.filter(f => f.projectId === p.id).sort(byDate).map(toFile),
